@@ -1,0 +1,73 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: RDS PostgreSQL for Maite Trading (Timescale optional via extension)
+
+Parameters:
+  EnvironmentName:
+    Type: String
+  VpcId:
+    Type: String
+  PrivateSubnetIds:
+    Type: CommaDelimitedList
+  DbSecurityGroupId:
+    Type: String
+  DbSecretArn:
+    Type: String
+  DbInstanceClass:
+    Type: String
+    Default: db.t4g.micro
+
+Resources:
+  DbSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: Maite private subnets
+      SubnetIds: !Ref PrivateSubnetIds
+      Tags:
+        - Key: Name
+          Value: !Sub maite-${EnvironmentName}-db-subnets
+
+  DbInstance:
+    Type: AWS::RDS::DBInstance
+    DeletionPolicy: Snapshot
+    UpdateReplacePolicy: Snapshot
+    Properties:
+      DBInstanceIdentifier: !Sub maite-${EnvironmentName}-pg
+      DBName: maite
+      Engine: postgres
+      EngineVersion: "16.3"
+      DBInstanceClass: !Ref DbInstanceClass
+      AllocatedStorage: 20
+      MaxAllocatedStorage: 100
+      StorageType: gp3
+      StorageEncrypted: true
+      MasterUsername: !Join
+        - ""
+        - - "{{resolve:secretsmanager:"
+          - !Ref DbSecretArn
+          - ":SecretString:username}}"
+      MasterUserPassword: !Join
+        - ""
+        - - "{{resolve:secretsmanager:"
+          - !Ref DbSecretArn
+          - ":SecretString:password}}"
+      VPCSecurityGroups:
+        - !Ref DbSecurityGroupId
+      DBSubnetGroupName: !Ref DbSubnetGroup
+      PubliclyAccessible: false
+      BackupRetentionPeriod: 7
+      PreferredBackupWindow: "07:00-08:00"
+      PreferredMaintenanceWindow: "sun:08:00-sun:09:00"
+      DeletionProtection: false
+      Tags:
+        - Key: Name
+          Value: !Sub maite-${EnvironmentName}-rds
+
+Outputs:
+  DbEndpointAddress:
+    Value: !GetAtt DbInstance.Endpoint.Address
+  DbEndpointPort:
+    Value: !GetAtt DbInstance.Endpoint.Port
+  DbName:
+    Value: maite
+  DbInstanceId:
+    Value: !Ref DbInstance

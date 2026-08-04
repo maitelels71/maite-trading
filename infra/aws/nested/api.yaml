@@ -1,0 +1,118 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: ECR repository + App Runner service for Maite API
+
+Parameters:
+  EnvironmentName:
+    Type: String
+  DbSecretArn:
+    Type: String
+  AppSecretArn:
+    Type: String
+  DatabaseHost:
+    Type: String
+  DatabasePort:
+    Type: String
+  DatabaseName:
+    Type: String
+  ApiImageTag:
+    Type: String
+    Default: latest
+  CorsOrigins:
+    Type: String
+    Default: "*"
+  UseMockProviders:
+    Type: String
+    Default: "true"
+
+Resources:
+  EcrRepository:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: !Sub maite-${EnvironmentName}-api
+      ImageScanningConfiguration:
+        ScanOnPush: true
+      EncryptionConfiguration:
+        EncryptionType: AES256
+
+  AppRunnerAccessRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub maite-${EnvironmentName}-apprunner-access
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: build.apprunner.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSAppRunnerServicePolicyForECRAccess
+
+  AppRunnerInstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub maite-${EnvironmentName}-apprunner-instance
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: tasks.apprunner.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: ReadSecrets
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - secretsmanager:GetSecretValue
+                Resource:
+                  - !Ref DbSecretArn
+                  - !Ref AppSecretArn
+
+  ApiService:
+    Type: AWS::AppRunner::Service
+    Properties:
+      ServiceName: !Sub maite-${EnvironmentName}-api
+      SourceConfiguration:
+        AuthenticationConfiguration:
+          AccessRoleArn: !GetAtt AppRunnerAccessRole.Arn
+        AutoDeploymentsEnabled: false
+        ImageRepository:
+          ImageIdentifier: !Sub ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${EcrRepository}:${ApiImageTag}
+          ImageRepositoryType: ECR
+          ImageConfiguration:
+            Port: "8000"
+            RuntimeEnvironmentVariables:
+              - Name: APP_ENV
+                Value: !Ref EnvironmentName
+              - Name: CORS_ORIGINS
+                Value: !Ref CorsOrigins
+              - Name: USE_MOCK_PROVIDERS
+                Value: !Ref UseMockProviders
+              - Name: DATABASE_URL
+                Value: !Sub
+                  - "postgresql+psycopg2://{{resolve:secretsmanager:${DbSecretArn}:SecretString:username}}:{{resolve:secretsmanager:${DbSecretArn}:SecretString:password}}@${DatabaseHost}:${DatabasePort}/${DatabaseName}"
+                  - DbSecretArn: !Ref DbSecretArn
+      InstanceConfiguration:
+        Cpu: "1 vCPU"
+        Memory: "2 GB"
+        InstanceRoleArn: !GetAtt AppRunnerInstanceRole.Arn
+      HealthCheckConfiguration:
+        Protocol: HTTP
+        Path: /health
+        Interval: 10
+        Timeout: 5
+        HealthyThreshold: 1
+        UnhealthyThreshold: 5
+
+Outputs:
+  EcrRepositoryUri:
+    Value: !Sub ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${EcrRepository}
+  EcrRepositoryName:
+    Value: !Ref EcrRepository
+  ApiServiceUrl:
+    Value: !Sub https://${ApiService.ServiceUrl}
+  ApiServiceArn:
+    Value: !Ref ApiService
