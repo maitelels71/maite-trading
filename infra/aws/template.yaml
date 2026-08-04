@@ -1,0 +1,237 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  Maite Trading Strategy Analyzer — root CloudFormation stack.
+  Deploys network, secrets, RDS PostgreSQL, backend (App Runner + ECR),
+  and frontend (Amplify Hosting) as nested stacks.
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: Project
+        Parameters:
+          - ProjectName
+          - EnvironmentName
+      - Label:
+          default: Database
+        Parameters:
+          - DBInstanceClass
+          - DBAllocatedStorage
+          - DBUsername
+          - DBPassword
+      - Label:
+          default: Backend (App Runner)
+        Parameters:
+          - ApiImageUri
+          - ApiCpu
+          - ApiMemory
+          - ApiPort
+      - Label:
+          default: Frontend (Amplify)
+        Parameters:
+          - FrontendRepository
+          - FrontendBranch
+          - GithubTokenSecretArn
+      - Label:
+          default: Networking
+        Parameters:
+          - CreateNatGateway
+
+Parameters:
+  ProjectName:
+    Type: String
+    Default: maite-trading
+    AllowedPattern: "[a-z0-9-]+"
+    Description: Prefix for resource names
+
+  EnvironmentName:
+    Type: String
+    Default: staging
+    AllowedValues: [staging, production]
+    Description: Deployment stage
+
+  DBInstanceClass:
+    Type: String
+    Default: db.t4g.micro
+    Description: RDS instance class
+
+  DBAllocatedStorage:
+    Type: Number
+    Default: 20
+    MinValue: 20
+    Description: RDS allocated storage (GB)
+
+  DBUsername:
+    Type: String
+    Default: maite
+    NoEcho: true
+
+  DBPassword:
+    Type: String
+    NoEcho: true
+    MinLength: 16
+    Description: Master password for RDS (store only via deploy params / Secrets Manager)
+
+  ApiImageUri:
+    Type: String
+    Default: ""
+    Description: >
+      Full ECR image URI for the FastAPI service
+      (e.g. 123.dkr.ecr.us-east-1.amazonaws.com/maite-trading-api:latest).
+      Leave empty on first deploy to create ECR only; update stack after first push.
+
+  ApiCpu:
+    Type: String
+    Default: "1024"
+    AllowedValues: ["256", "512", "1024", "2048", "4096"]
+
+  ApiMemory:
+    Type: String
+    Default: "2048"
+    AllowedValues: ["512", "1024", "2048", "3072", "4096", "6144", "8192"]
+
+  ApiPort:
+    Type: Number
+    Default: 8000
+
+  FrontendRepository:
+    Type: String
+    Default: ""
+    Description: Optional GitHub repo URL for Amplify (owner/name or full HTTPS URL)
+
+  FrontendBranch:
+    Type: String
+    Default: main
+
+  GithubTokenSecretArn:
+    Type: String
+    Default: ""
+    Description: >
+      Optional Secrets Manager ARN containing a GitHub personal access token
+      for Amplify. Leave empty to create the Amplify app without a connected repo.
+
+  CreateNatGateway:
+    Type: String
+    Default: "true"
+    AllowedValues: ["true", "false"]
+    Description: NAT Gateway for private subnets (needed for App Runner VPC connector egress)
+
+Resources:
+  NetworkStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: ./nested/network.yaml
+      Parameters:
+        ProjectName: !Ref ProjectName
+        EnvironmentName: !Ref EnvironmentName
+        CreateNatGateway: !Ref CreateNatGateway
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref EnvironmentName
+
+  SecretsStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: ./nested/secrets.yaml
+      Parameters:
+        ProjectName: !Ref ProjectName
+        EnvironmentName: !Ref EnvironmentName
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref EnvironmentName
+
+  DatabaseStack:
+    Type: AWS::CloudFormation::Stack
+    DependsOn: NetworkStack
+    Properties:
+      TemplateURL: ./nested/database.yaml
+      Parameters:
+        ProjectName: !Ref ProjectName
+        EnvironmentName: !Ref EnvironmentName
+        VpcId: !GetAtt NetworkStack.Outputs.VpcId
+        PrivateSubnetIds: !GetAtt NetworkStack.Outputs.PrivateSubnetIds
+        DbSecurityGroupId: !GetAtt NetworkStack.Outputs.DbSecurityGroupId
+        DBInstanceClass: !Ref DBInstanceClass
+        DBAllocatedStorage: !Ref DBAllocatedStorage
+        DBUsername: !Ref DBUsername
+        DBPassword: !Ref DBPassword
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref EnvironmentName
+
+  ApiStack:
+    Type: AWS::CloudFormation::Stack
+    DependsOn:
+      - NetworkStack
+      - SecretsStack
+      - DatabaseStack
+    Properties:
+      TemplateURL: ./nested/api.yaml
+      Parameters:
+        ProjectName: !Ref ProjectName
+        EnvironmentName: !Ref EnvironmentName
+        VpcId: !GetAtt NetworkStack.Outputs.VpcId
+        PrivateSubnetIds: !GetAtt NetworkStack.Outputs.PrivateSubnetIds
+        ApiSecurityGroupId: !GetAtt NetworkStack.Outputs.ApiSecurityGroupId
+        ApiImageUri: !Ref ApiImageUri
+        ApiCpu: !Ref ApiCpu
+        ApiMemory: !Ref ApiMemory
+        ApiPort: !Ref ApiPort
+        DatabaseSecretArn: !GetAtt DatabaseStack.Outputs.DatabaseSecretArn
+        AppSecretsArn: !GetAtt SecretsStack.Outputs.AppSecretsArn
+        DatabaseHost: !GetAtt DatabaseStack.Outputs.RDSEndpointAddress
+        DatabasePort: !GetAtt DatabaseStack.Outputs.RDSEndpointPort
+        DatabaseName: !GetAtt DatabaseStack.Outputs.DatabaseName
+        DatabaseUsername: !Ref DBUsername
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref EnvironmentName
+
+  FrontendStack:
+    Type: AWS::CloudFormation::Stack
+    DependsOn: ApiStack
+    Properties:
+      TemplateURL: ./nested/frontend.yaml
+      Parameters:
+        ProjectName: !Ref ProjectName
+        EnvironmentName: !Ref EnvironmentName
+        FrontendRepository: !Ref FrontendRepository
+        FrontendBranch: !Ref FrontendBranch
+        GithubTokenSecretArn: !Ref GithubTokenSecretArn
+        ApiServiceUrl: !GetAtt ApiStack.Outputs.ApiServiceUrl
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref EnvironmentName
+
+Outputs:
+  VpcId:
+    Description: Application VPC
+    Value: !GetAtt NetworkStack.Outputs.VpcId
+  RDSEndpoint:
+    Description: Private RDS hostname
+    Value: !GetAtt DatabaseStack.Outputs.RDSEndpointAddress
+  DatabaseSecretArn:
+    Value: !GetAtt DatabaseStack.Outputs.DatabaseSecretArn
+  AppSecretsArn:
+    Description: Schwab + TradeAdvocate secrets (fill after deploy)
+    Value: !GetAtt SecretsStack.Outputs.AppSecretsArn
+  EcrRepositoryUri:
+    Description: Push backend image here, then update ApiImageUri
+    Value: !GetAtt ApiStack.Outputs.EcrRepositoryUri
+  ApiServiceUrl:
+    Description: Public HTTPS URL for FastAPI (App Runner), or PENDING until image is set
+    Value: !GetAtt ApiStack.Outputs.ApiServiceUrl
+  AmplifyAppId:
+    Value: !GetAtt FrontendStack.Outputs.AmplifyAppId
+  AmplifyDefaultDomain:
+    Value: !GetAtt FrontendStack.Outputs.AmplifyDefaultDomain

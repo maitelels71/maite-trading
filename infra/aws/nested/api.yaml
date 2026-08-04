@@ -1,0 +1,194 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: ECR repository + App Runner service for FastAPI backend
+
+Parameters:
+  ProjectName:
+    Type: String
+  EnvironmentName:
+    Type: String
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+  PrivateSubnetIds:
+    Type: CommaDelimitedList
+  ApiSecurityGroupId:
+    Type: AWS::EC2::SecurityGroup::Id
+  ApiImageUri:
+    Type: String
+    Default: ""
+  ApiCpu:
+    Type: String
+  ApiMemory:
+    Type: String
+  ApiPort:
+    Type: Number
+  DatabaseSecretArn:
+    Type: String
+  AppSecretsArn:
+    Type: String
+  DatabaseHost:
+    Type: String
+  DatabasePort:
+    Type: String
+  DatabaseName:
+    Type: String
+  DatabaseUsername:
+    Type: String
+    NoEcho: true
+
+Conditions:
+  HasApiImage: !Not [!Equals [!Ref ApiImageUri, ""]]
+
+Resources:
+  EcrRepository:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: !Sub "${ProjectName}-${EnvironmentName}-api"
+      ImageScanningConfiguration:
+        ScanOnPush: true
+      EncryptionConfiguration:
+        EncryptionType: AES256
+      LifecyclePolicy:
+        LifecyclePolicyText: |
+          {
+            "rules": [
+              {
+                "rulePriority": 1,
+                "description": "Keep last 10 images",
+                "selection": {
+                  "tagStatus": "any",
+                  "countType": "imageCountMoreThan",
+                  "countNumber": 10
+                },
+                "action": { "type": "expire" }
+              }
+            ]
+          }
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref EnvironmentName
+
+  AppRunnerEcrAccessRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${ProjectName}-${EnvironmentName}-apprunner-ecr"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: build.apprunner.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSAppRunnerServicePolicyForECRAccess
+
+  AppRunnerInstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${ProjectName}-${EnvironmentName}-apprunner-instance"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: tasks.apprunner.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: ReadSecrets
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - secretsmanager:GetSecretValue
+                  - secretsmanager:DescribeSecret
+                Resource:
+                  - !Ref DatabaseSecretArn
+                  - !Ref AppSecretsArn
+
+  VpcConnector:
+    Type: AWS::AppRunner::VpcConnector
+    Properties:
+      VpcConnectorName: !Sub "${ProjectName}-${EnvironmentName}-vpc"
+      Subnets: !Ref PrivateSubnetIds
+      SecurityGroups:
+        - !Ref ApiSecurityGroupId
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref EnvironmentName
+
+  ApiLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/apprunner/${ProjectName}-${EnvironmentName}-api"
+      RetentionInDays: 30
+
+  ApiService:
+    Type: AWS::AppRunner::Service
+    Condition: HasApiImage
+    Properties:
+      ServiceName: !Sub "${ProjectName}-${EnvironmentName}-api"
+      SourceConfiguration:
+        AuthenticationConfiguration:
+          AccessRoleArn: !GetAtt AppRunnerEcrAccessRole.Arn
+        AutoDeploymentsEnabled: true
+        ImageRepository:
+          ImageIdentifier: !Ref ApiImageUri
+          ImageRepositoryType: ECR
+          ImageConfiguration:
+            Port: !Sub "${ApiPort}"
+            RuntimeEnvironmentVariables:
+              ENVIRONMENT: !Ref EnvironmentName
+              DATABASE_HOST: !Ref DatabaseHost
+              DATABASE_PORT: !Ref DatabasePort
+              DATABASE_NAME: !Ref DatabaseName
+              DATABASE_USER: !Ref DatabaseUsername
+              APP_SECRETS_ARN: !Ref AppSecretsArn
+              DATABASE_SECRET_ARN: !Ref DatabaseSecretArn
+            RuntimeEnvironmentSecrets:
+              DATABASE_PASSWORD: !Sub "${DatabaseSecretArn}:password::"
+      InstanceConfiguration:
+        Cpu: !Ref ApiCpu
+        Memory: !Ref ApiMemory
+        InstanceRoleArn: !GetAtt AppRunnerInstanceRole.Arn
+      NetworkConfiguration:
+        EgressConfiguration:
+          EgressType: VPC
+          VpcConnectorArn: !GetAtt VpcConnector.VpcConnectorArn
+        IngressConfiguration:
+          IsPubliclyAccessible: true
+      HealthCheckConfiguration:
+        Protocol: HTTP
+        Path: /health
+        Interval: 10
+        Timeout: 5
+        HealthyThreshold: 1
+        UnhealthyThreshold: 5
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref EnvironmentName
+
+Outputs:
+  EcrRepositoryUri:
+    Value: !GetAtt EcrRepository.RepositoryUri
+  EcrRepositoryName:
+    Value: !Ref EcrRepository
+  VpcConnectorArn:
+    Value: !GetAtt VpcConnector.VpcConnectorArn
+  ApiServiceUrl:
+    Value: !If
+      - HasApiImage
+      - !Sub
+          - "https://${Url}"
+          - Url: !GetAtt ApiService.ServiceUrl
+      - "PENDING_PUSH_IMAGE_THEN_SET_ApiImageUri"
+  ApiServiceArn:
+    Value: !If
+      - HasApiImage
+      - !GetAtt ApiService.ServiceArn
+      - "PENDING"

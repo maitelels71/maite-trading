@@ -1,0 +1,58 @@
+[
+  {
+    "ParameterKey": "ProjectName",
+    "ParameterValue": "maite-trading"
+  },
+  {
+    "ParameterKey": "EnvironmentName",
+    "ParameterValue": "staging"
+  },
+  {
+    "ParameterKey": "DBInstanceClass",
+    "ParameterValue": "db.t4g.micro"
+  },
+  {
+    "ParameterKey": "DBAllocatedStorage",
+    "ParameterValue": "20"
+  },
+  {
+    "ParameterKey": "DBUsername",
+    "ParameterValue": "maite"
+  },
+  {
+    "ParameterKey": "DBPassword",
+    "ParameterValue": "REPLACE_WITH_16_PLUS_CHAR_PASSWORD"
+  },
+  {
+    "ParameterKey": "ApiImageUri",
+    "ParameterValue": ""
+  },
+  {
+    "ParameterKey": "ApiCpu",
+    "ParameterValue": "1024"
+  },
+  {
+    "ParameterKey": "ApiMemory",
+    "ParameterValue": "2048"
+  },
+  {
+    "ParameterKey": "ApiPort",
+    "ParameterValue": "8000"
+  },
+  {
+    "ParameterKey": "FrontendRepository",
+    "ParameterValue": ""
+  },
+  {
+    "ParameterKey": "FrontendBranch",
+    "ParameterValue": "main"
+  },
+  {
+    "ParameterKey": "GithubTokenSecretArn",
+    "ParameterValue": ""
+  },
+  {
+    "ParameterKey": "CreateNatGateway",
+    "ParameterValue": "true"
+  }
+]

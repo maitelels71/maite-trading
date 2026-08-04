@@ -1,0 +1,224 @@
+name: Deploy AWS
+
+# Packages CloudFormation, deploys infra, builds/pushes the API image to ECR,
+# then updates App Runner with the new image URI.
+# Amplify builds the Next.js frontend once the GitHub repo is linked in the stack.
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Target environment
+        required: true
+        type: choice
+        options:
+          - staging
+          - production
+        default: staging
+      skip_infra:
+        description: Skip CloudFormation package/deploy
+        required: false
+        type: boolean
+        default: false
+      skip_image:
+        description: Skip Docker build/push to ECR
+        required: false
+        type: boolean
+        default: false
+  push:
+    branches: [main, master]
+    paths:
+      - "backend/**"
+      - "infra/aws/**"
+      - ".github/workflows/deploy-aws.yml"
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
+  PROJECT_NAME: ${{ vars.PROJECT_NAME || 'maite-trading' }}
+
+jobs:
+  deploy:
+    name: Deploy (${{ github.event.inputs.environment || 'staging' }})
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment || 'staging' }}
+    env:
+      ENVIRONMENT: ${{ github.event.inputs.environment || 'staging' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set stack names
+        run: |
+          echo "STACK_NAME=${PROJECT_NAME}-${ENVIRONMENT}" >> "$GITHUB_ENV"
+          echo "TEMPLATE_BUCKET=${{ vars.CFN_TEMPLATE_BUCKET }}" >> "$GITHUB_ENV"
+
+      - name: Validate required configuration
+        run: |
+          test -n "$TEMPLATE_BUCKET" || { echo "Missing variable CFN_TEMPLATE_BUCKET"; exit 1; }
+          test -n "${{ secrets.DB_PASSWORD }}" || { echo "Missing secret DB_PASSWORD"; exit 1; }
+
+      - name: Configure AWS credentials (OIDC)
+        if: ${{ vars.AWS_AUTH_MODE != 'access-keys' }}
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Configure AWS credentials (access keys)
+        if: ${{ vars.AWS_AUTH_MODE == 'access-keys' }}
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Ensure CFN template bucket exists
+        run: |
+          if aws s3api head-bucket --bucket "$TEMPLATE_BUCKET" 2>/dev/null; then
+            echo "Bucket s3://$TEMPLATE_BUCKET OK"
+          else
+            echo "Creating s3://$TEMPLATE_BUCKET"
+            if [ "$AWS_REGION" = "us-east-1" ]; then
+              aws s3api create-bucket --bucket "$TEMPLATE_BUCKET" --region "$AWS_REGION"
+            else
+              aws s3api create-bucket \
+                --bucket "$TEMPLATE_BUCKET" \
+                --region "$AWS_REGION" \
+                --create-bucket-configuration LocationConstraint="$AWS_REGION"
+            fi
+            aws s3api put-public-access-block \
+              --bucket "$TEMPLATE_BUCKET" \
+              --public-access-block-configuration \
+              BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true
+          fi
+
+      - name: Package CloudFormation
+        if: ${{ github.event_name == 'push' || github.event.inputs.skip_infra != 'true' || github.event.inputs.skip_image != 'true' }}
+        working-directory: infra/aws
+        run: |
+          aws cloudformation package \
+            --template-file template.yaml \
+            --s3-bucket "$TEMPLATE_BUCKET" \
+            --s3-prefix "$STACK_NAME/cfn" \
+            --output-template-file packaged.yaml \
+            --region "$AWS_REGION"
+
+      - name: Resolve existing ApiImageUri
+        id: image_param
+        if: ${{ github.event_name == 'push' || github.event.inputs.skip_infra != 'true' }}
+        run: |
+          IMAGE=""
+          if aws cloudformation describe-stacks --stack-name "$STACK_NAME" --region "$AWS_REGION" >/dev/null 2>&1; then
+            IMAGE=$(aws cloudformation describe-stacks \
+              --stack-name "$STACK_NAME" \
+              --region "$AWS_REGION" \
+              --query "Stacks[0].Parameters[?ParameterKey=='ApiImageUri'].ParameterValue" \
+              --output text)
+            if [ "$IMAGE" = "None" ]; then IMAGE=""; fi
+          fi
+          echo "value=$IMAGE" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy CloudFormation stack
+        if: ${{ github.event_name == 'push' || github.event.inputs.skip_infra != 'true' }}
+        working-directory: infra/aws
+        env:
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+          API_IMAGE_URI: ${{ steps.image_param.outputs.value }}
+          FRONTEND_REPOSITORY: ${{ vars.FRONTEND_REPOSITORY }}
+          FRONTEND_BRANCH: ${{ vars.FRONTEND_BRANCH || 'main' }}
+          GITHUB_TOKEN_SECRET_ARN: ${{ secrets.GITHUB_TOKEN_SECRET_ARN }}
+        run: |
+          PARAMS=(
+            "ProjectName=${PROJECT_NAME}"
+            "EnvironmentName=${ENVIRONMENT}"
+            "DBPassword=${DB_PASSWORD}"
+            "ApiImageUri=${API_IMAGE_URI}"
+            "FrontendBranch=${FRONTEND_BRANCH}"
+          )
+          if [ -n "$FRONTEND_REPOSITORY" ]; then
+            PARAMS+=("FrontendRepository=${FRONTEND_REPOSITORY}")
+          fi
+          if [ -n "$GITHUB_TOKEN_SECRET_ARN" ]; then
+            PARAMS+=("GithubTokenSecretArn=${GITHUB_TOKEN_SECRET_ARN}")
+          fi
+
+          aws cloudformation deploy \
+            --template-file packaged.yaml \
+            --stack-name "$STACK_NAME" \
+            --parameter-overrides "${PARAMS[@]}" \
+            --capabilities CAPABILITY_NAMED_IAM \
+            --region "$AWS_REGION" \
+            --no-fail-on-empty-changeset
+
+      - name: Read ECR repository URI
+        id: ecr
+        run: |
+          REPO_URI=$(aws cloudformation describe-stacks \
+            --stack-name "$STACK_NAME" \
+            --region "$AWS_REGION" \
+            --query "Stacks[0].Outputs[?OutputKey=='EcrRepositoryUri'].OutputValue" \
+            --output text)
+          if [ -z "$REPO_URI" ] || [ "$REPO_URI" = "None" ]; then
+            echo "EcrRepositoryUri output missing — deploy infra first."
+            exit 1
+          fi
+          echo "uri=$REPO_URI" >> "$GITHUB_OUTPUT"
+
+      - name: Login to Amazon ECR
+        if: ${{ github.event_name == 'push' || github.event.inputs.skip_image != 'true' }}
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push API image
+        if: ${{ github.event_name == 'push' || github.event.inputs.skip_image != 'true' }}
+        env:
+          REPO_URI: ${{ steps.ecr.outputs.uri }}
+        run: |
+          IMAGE_TAG="${GITHUB_SHA::12}"
+          docker build -t "$REPO_URI:$IMAGE_TAG" -t "$REPO_URI:latest" backend
+          docker push "$REPO_URI:$IMAGE_TAG"
+          docker push "$REPO_URI:latest"
+          echo "IMAGE_URI=$REPO_URI:$IMAGE_TAG" >> "$GITHUB_ENV"
+
+      - name: Update App Runner image via CloudFormation
+        if: ${{ github.event_name == 'push' || github.event.inputs.skip_image != 'true' }}
+        working-directory: infra/aws
+        env:
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+          FRONTEND_REPOSITORY: ${{ vars.FRONTEND_REPOSITORY }}
+          FRONTEND_BRANCH: ${{ vars.FRONTEND_BRANCH || 'main' }}
+          GITHUB_TOKEN_SECRET_ARN: ${{ secrets.GITHUB_TOKEN_SECRET_ARN }}
+        run: |
+          PARAMS=(
+            "ProjectName=${PROJECT_NAME}"
+            "EnvironmentName=${ENVIRONMENT}"
+            "DBPassword=${DB_PASSWORD}"
+            "ApiImageUri=${IMAGE_URI}"
+            "FrontendBranch=${FRONTEND_BRANCH}"
+          )
+          if [ -n "$FRONTEND_REPOSITORY" ]; then
+            PARAMS+=("FrontendRepository=${FRONTEND_REPOSITORY}")
+          fi
+          if [ -n "$GITHUB_TOKEN_SECRET_ARN" ]; then
+            PARAMS+=("GithubTokenSecretArn=${GITHUB_TOKEN_SECRET_ARN}")
+          fi
+
+          aws cloudformation deploy \
+            --template-file packaged.yaml \
+            --stack-name "$STACK_NAME" \
+            --parameter-overrides "${PARAMS[@]}" \
+            --capabilities CAPABILITY_NAMED_IAM \
+            --region "$AWS_REGION" \
+            --no-fail-on-empty-changeset
+
+      - name: Print stack outputs
+        run: |
+          aws cloudformation describe-stacks \
+            --stack-name "$STACK_NAME" \
+            --region "$AWS_REGION" \
+            --query "Stacks[0].Outputs" \
+            --output table

@@ -1,0 +1,109 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: AWS Amplify Hosting app for Next.js frontend
+
+Parameters:
+  ProjectName:
+    Type: String
+  EnvironmentName:
+    Type: String
+  FrontendRepository:
+    Type: String
+    Default: ""
+  FrontendBranch:
+    Type: String
+    Default: main
+  GithubTokenSecretArn:
+    Type: String
+    Default: ""
+  ApiServiceUrl:
+    Type: String
+    Description: Backend public URL injected as NEXT_PUBLIC_API_BASE_URL
+
+Conditions:
+  HasRepo: !Not [!Equals [!Ref FrontendRepository, ""]]
+  HasGithubToken: !Not [!Equals [!Ref GithubTokenSecretArn, ""]]
+  ConnectGithub: !And [!Condition HasRepo, !Condition HasGithubToken]
+  IsProduction: !Equals [!Ref EnvironmentName, "production"]
+
+Resources:
+  AmplifyServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${ProjectName}-${EnvironmentName}-amplify"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: amplify.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AdministratorAccess-Amplify
+
+  AmplifyApp:
+    Type: AWS::Amplify::App
+    Properties:
+      Name: !Sub "${ProjectName}-${EnvironmentName}-web"
+      Description: Maite Trading Strategy Analyzer frontend
+      Platform: WEB_COMPUTE
+      IAMServiceRole: !GetAtt AmplifyServiceRole.Arn
+      EnvironmentVariables:
+        - Name: NEXT_PUBLIC_API_BASE_URL
+          Value: !Ref ApiServiceUrl
+        - Name: AMPLIFY_MONOREPO_APP_ROOT
+          Value: frontend
+      BuildSpec: |
+        version: 1
+        applications:
+          - appRoot: frontend
+            frontend:
+              phases:
+                preBuild:
+                  commands:
+                    - npm ci
+                build:
+                  commands:
+                    - npm run build
+              artifacts:
+                baseDirectory: .next
+                files:
+                  - "**/*"
+              cache:
+                paths:
+                  - node_modules/**/*
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref EnvironmentName
+      Repository: !If
+        - HasRepo
+        - !Ref FrontendRepository
+        - !Ref AWS::NoValue
+      AccessToken: !If
+        - ConnectGithub
+        - !Sub "{{resolve:secretsmanager:${GithubTokenSecretArn}}}"
+        - !Ref AWS::NoValue
+
+  AmplifyBranch:
+    Type: AWS::Amplify::Branch
+    Condition: HasRepo
+    Properties:
+      AppId: !GetAtt AmplifyApp.AppId
+      BranchName: !Ref FrontendBranch
+      EnableAutoBuild: true
+      Stage: !If
+        - IsProduction
+        - PRODUCTION
+        - BETA
+      EnvironmentVariables:
+        - Name: NEXT_PUBLIC_API_BASE_URL
+          Value: !Ref ApiServiceUrl
+
+Outputs:
+  AmplifyAppId:
+    Value: !GetAtt AmplifyApp.AppId
+  AmplifyDefaultDomain:
+    Value: !GetAtt AmplifyApp.DefaultDomain
+  AmplifyConsoleUrl:
+    Value: !Sub "https://console.aws.amazon.com/amplify/home?region=${AWS::Region}#/${AmplifyApp.AppId}"
