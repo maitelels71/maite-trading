@@ -87,8 +87,8 @@ Also create GitHub Environment **staging** (Settings → Environments) and optio
 
 ### 5) First deploy
 
-1. Push these IAM files + workflows to `main` (if not already)  
-2. GitHub → **Actions** → **Deploy AWS** → **Run workflow** → `staging`  
+1. Push workflows to `main`
+2. GitHub → **Actions** → **Deploy Cheap (SAM)** → **Run workflow** → `staging`
 
 ## Verify OIDC locally (optional)
 

@@ -1,97 +1,37 @@
-# GitHub Actions → AWS deploy
+# GitHub Actions → AWS deploy (OIDC)
 
-Deploy is automated by [`.github/workflows/deploy-aws.yml`](../../.github/workflows/deploy-aws.yml).
+The **recommended** deploy workflow is:
 
-CI (tests/build) runs on every PR via [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml).
+[`.github/workflows/deploy-cheap.yml`](../../.github/workflows/deploy-cheap.yml) — **Deploy Cheap (SAM)**
 
-## What the deploy workflow does
+That stack uses Lambda + DynamoDB + S3/CloudFront (no NAT / RDS / App Runner).
 
-1. Assumes an AWS role (OIDC recommended) or access keys  
-2. Ensures the CloudFormation template S3 bucket exists  
-3. `cloudformation package` + `deploy` for `infra/aws/template.yaml`  
-4. Builds `backend/Dockerfile` and pushes to ECR  
-5. Updates the stack with `ApiImageUri` so App Runner pulls the new image  
+See [`../sam/README.md`](../sam/README.md).
 
-Amplify deploys the frontend when the repo is linked (stack parameter `FrontendRepository`).
+## One-time IAM setup (OIDC)
 
-## One-time setup
+Still required so GitHub can assume the AWS role. Files live in [`iam/`](iam/).
 
-### 1. GitHub Environments
+### Variables (repo)
 
-Create environments: **staging** (and later **production**).
+| Variable | Example |
+|----------|---------|
+| `AWS_REGION` | `us-east-1` |
+| `PROJECT_NAME` | `maite-trading` |
 
-### 2. Variables (repo or environment)
-
-| Variable | Example | Purpose |
-|----------|---------|---------|
-| `AWS_REGION` | `us-east-1` | Deploy region |
-| `PROJECT_NAME` | `maite-trading` | Stack/resource prefix |
-| `CFN_TEMPLATE_BUCKET` | `maite-trading-cfn-123456789012` | S3 bucket for packaged templates (globally unique) |
-| `AWS_AUTH_MODE` | _(empty)_ or `access-keys` | Default = OIDC via `AWS_ROLE_ARN` |
-| `FRONTEND_REPOSITORY` | `https://github.com/YOU/maite-trading` | Optional Amplify repo URL |
-| `FRONTEND_BRANCH` | `main` | Amplify branch |
-
-### 3. Secrets (environment)
+### Secrets (repo)
 
 | Secret | Purpose |
 |--------|---------|
-| `AWS_ROLE_ARN` | IAM role for GitHub OIDC (recommended) |
-| `DB_PASSWORD` | RDS master password (16+ chars) |
-| `GITHUB_TOKEN_SECRET_ARN` | Optional Secrets Manager ARN with GitHub PAT for Amplify |
-| `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` | Only if `AWS_AUTH_MODE=access-keys` |
+| `AWS_ROLE_ARN` | `arn:aws:iam::289981265319:role/maite-trading-github-actions` |
 
-### 4. IAM role for GitHub OIDC (recommended)
+`DB_PASSWORD` is **not** required for the cheap SAM stack.
 
-In AWS IAM → Identity providers → add **GitHub** OIDC provider if missing:
+## Run deploy
 
-- URL: `https://token.actions.githubusercontent.com`  
-- Audience: `sts.amazonaws.com`
+Actions → **Deploy Cheap (SAM)** → Run workflow → `staging`
 
-Trust policy example (replace `ACCOUNT`, `ORG`, `REPO`):
+## Legacy expensive templates
 
-```json
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Effect": "Allow",
-      "Principal": {
-        "Federated": "arn:aws:iam::ACCOUNT:oidc-provider/token.actions.githubusercontent.com"
-      },
-      "Action": "sts:AssumeRoleWithWebIdentity",
-      "Condition": {
-        "StringEquals": {
-          "token.actions.githubusercontent.com:aud": "sts.amazonaws.com"
-        },
-        "StringLike": {
-          "token.actions.githubusercontent.com:sub": "repo:ORG/REPO:*"
-        }
-      }
-    }
-  ]
-}
-```
-
-Attach permissions broad enough for first bring-up (CloudFormation, S3, ECR, EC2/VPC, RDS, App Runner, Amplify, IAM, Secrets Manager, Logs). Tighten later.
-
-Put the role ARN in GitHub secret `AWS_ROLE_ARN`.
-
-## Run a deploy
-
-- **Automatic:** push to `main` when `backend/**` or `infra/aws/**` changes  
-- **Manual:** Actions → **Deploy AWS** → Run workflow → choose `staging`
-
-## After first successful deploy
-
-1. Open stack outputs (`ApiServiceUrl`, `AmplifyDefaultDomain`, `AppSecretsArn`)  
-2. Fill Schwab / TradeAdvocate values in Secrets Manager (`maite-trading/staging/app`)  
-3. Run DB migrate against RDS (SSM port-forward or one-off task):
-
-```bash
-alembic upgrade head
-python -m scripts.db_cli seed
-```
-
-## Local scripts still work
-
-`infra/aws/scripts/package-and-deploy.*` remain for manual deploys without GitHub.
+`infra/aws/template.yaml` (App Runner + RDS + NAT) remains only as reference.  
+There is **no** GitHub workflow for it anymore.

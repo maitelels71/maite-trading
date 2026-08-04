@@ -35,13 +35,11 @@ infra/aws/
 
 ## Deploy via GitHub Actions (recommended)
 
-See [`GITHUB_ACTIONS.md`](GITHUB_ACTIONS.md).
+Use **Deploy Cheap (SAM)** — see [`../sam/README.md`](../sam/README.md) and [`GITHUB_ACTIONS.md`](GITHUB_ACTIONS.md).
 
-- Workflow: `.github/workflows/deploy-aws.yml`
-- Trigger: push to `main` (backend/infra changes) or **Actions → Deploy AWS → Run workflow**
-- Requires GitHub secrets/vars: `AWS_ROLE_ARN`, `DB_PASSWORD`, `CFN_TEMPLATE_BUCKET`
+The old App Runner + RDS workflow was removed.
 
-## Manual deploy flow (optional)
+## Manual expensive deploy (optional / not recommended)
 
 CloudFormation nested `TemplateURL` values must be on S3. Package first, then deploy.
 
