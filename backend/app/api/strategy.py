@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.api.storage import get_dynamo_store, using_dynamo
 from app.database.session import get_db
 from app.domain.enums import Side
 from app.domain.strategy_types import StrategyResult
@@ -52,17 +53,28 @@ def evaluate_strategy(
     body: StrategyEvaluateRequest,
     db: Session = Depends(get_db),
 ) -> StrategyEvaluateResponse:
-    engine = StrategyEngine(session=db)
     try:
-        result = engine.evaluate_symbol(
-            strategy_name=body.strategy,
-            symbol=body.ticker,
-            timeframe=body.timeframe,
-            start=body.date,
-            end=body.date,
-            parameters=body.parameters,
-            market_type=body.market_type,
-        )
+        if using_dynamo():
+            result = _evaluate_dynamo(
+                strategy_name=body.strategy,
+                ticker=body.ticker,
+                timeframe=body.timeframe,
+                start=body.date,
+                end=body.date,
+                parameters=body.parameters,
+                market_type=body.market_type,
+            )
+        else:
+            engine = StrategyEngine(session=db)
+            result = engine.evaluate_symbol(
+                strategy_name=body.strategy,
+                symbol=body.ticker,
+                timeframe=body.timeframe,
+                start=body.date,
+                end=body.date,
+                parameters=body.parameters,
+                market_type=body.market_type,
+            )
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except Exception as exc:  # noqa: BLE001 — map provider/instrument errors
@@ -85,27 +97,71 @@ def backtest_strategy(
     body: StrategyBacktestRequest,
     db: Session = Depends(get_db),
 ) -> StrategyBacktestResponse:
-    engine = StrategyEngine(session=db)
-    mds = MarketDataService(db)
     try:
-        instrument = mds.get_instrument(body.ticker, market_type=body.market_type)
-        result = engine.evaluate_symbol(
-            strategy_name=body.strategy,
-            symbol=body.ticker,
-            timeframe=body.timeframe,
-            start=body.start_date,
-            end=body.end_date,
-            parameters=body.parameters,
-            market_type=body.market_type,
-        )
+        if using_dynamo():
+            store = get_dynamo_store()
+            instrument = store.get_instrument(body.ticker, market_type=body.market_type)
+            result = _evaluate_dynamo(
+                strategy_name=body.strategy,
+                ticker=body.ticker,
+                timeframe=body.timeframe,
+                start=body.start_date,
+                end=body.end_date,
+                parameters=body.parameters,
+                market_type=body.market_type,
+            )
+            run_id = None
+            if body.persist:
+                run_id = store.save_backtest_run(
+                    strategy=body.strategy,
+                    symbol=instrument["symbol"],
+                    market_type=instrument["market_type"],
+                    timeframe=body.timeframe,
+                    start_date=body.start_date,
+                    end_date=body.end_date,
+                    parameters=body.parameters,
+                    metrics={
+                        "total_trades": result.metrics.total_trades,
+                        "winning_trades": result.metrics.winning_trades,
+                        "losing_trades": result.metrics.losing_trades,
+                        "win_rate": result.metrics.win_rate,
+                        "profit_loss": str(result.metrics.profit_loss),
+                        "max_drawdown": str(result.metrics.max_drawdown),
+                    },
+                    trades=[
+                        {
+                            "side": t.side.value if isinstance(t.side, Side) else str(t.side),
+                            "signal": t.signal,
+                            "entry_time": t.entry_time.isoformat(),
+                            "entry_price": str(t.entry_price),
+                            "exit_time": t.exit_time.isoformat() if t.exit_time else None,
+                            "exit_price": str(t.exit_price) if t.exit_price is not None else None,
+                            "profit_loss": str(t.profit_loss) if t.profit_loss is not None else None,
+                            "notes": t.notes,
+                        }
+                        for t in result.trades
+                    ],
+                )
+        else:
+            engine = StrategyEngine(session=db)
+            mds = MarketDataService(db)
+            instrument = mds.get_instrument(body.ticker, market_type=body.market_type)
+            result = engine.evaluate_symbol(
+                strategy_name=body.strategy,
+                symbol=body.ticker,
+                timeframe=body.timeframe,
+                start=body.start_date,
+                end=body.end_date,
+                parameters=body.parameters,
+                market_type=body.market_type,
+            )
+            run_id = None
+            if body.persist:
+                run_id = _persist_run(db, body, instrument, result)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-    run_id = None
-    if body.persist:
-        run_id = _persist_run(db, body, instrument, result)
 
     metrics = result.metrics
     return StrategyBacktestResponse(
@@ -124,6 +180,45 @@ def backtest_strategy(
         trades=_trades_out(result),
         signals=_signals_out(result),
     )
+
+
+def _evaluate_dynamo(
+    *,
+    strategy_name: str,
+    ticker: str,
+    timeframe: str,
+    start: date | datetime,
+    end: date | datetime,
+    parameters: dict,
+    market_type: str | None,
+) -> StrategyResult:
+    from datetime import datetime as dt
+
+    from app.domain.enums import SessionType
+    from app.domain.strategy_types import StrategyContext
+
+    store = get_dynamo_store()
+    store.seed_defaults()
+    instrument = store.get_instrument(ticker, market_type=market_type)
+    start_dt = start if isinstance(start, dt) else dt.combine(start, dt.min.time())
+    end_dt = end if isinstance(end, dt) else dt.combine(end, dt.max.time().replace(microsecond=0))
+    candles = store.get_candles_by_range(
+        instrument["symbol"],
+        instrument["market_type"],
+        timeframe,
+        start_dt,
+        end_dt,
+    )
+    context = StrategyContext(
+        ticker=ticker,
+        timeframe=timeframe,
+        start=start,
+        end=end,
+        parameters=parameters or {},
+        timezone="America/New_York",
+        session=SessionType.RTH,
+    )
+    return StrategyEngine().evaluate(strategy_name, candles, context)
 
 
 def _metrics_out(result: StrategyResult) -> MetricsOut:

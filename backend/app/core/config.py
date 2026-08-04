@@ -24,6 +24,8 @@ class Settings(BaseSettings):
         alias="CORS_ORIGINS",
     )
 
+    # Database — local Postgres OR AWS RDS (preferred for shared/staging)
+    # On AWS, App Runner receives DATABASE_HOST / DATABASE_SECRET_ARN from CloudFormation.
     database_url: str = Field(
         default="postgresql+psycopg://maite:maite@localhost:5432/maite_trading",
         alias="DATABASE_URL",
@@ -36,6 +38,9 @@ class Settings(BaseSettings):
     database_password: str = Field(default="", alias="DATABASE_PASSWORD")
     database_secret_arn: str = Field(default="", alias="DATABASE_SECRET_ARN")
     app_secrets_arn: str = Field(default="", alias="APP_SECRETS_ARN")
+
+    # sql = local/Postgres path; dynamodb = cheap SAM stack
+    storage_backend: str = Field(default="sql", alias="STORAGE_BACKEND")
 
     # Charles Schwab OAuth2 (equities / ETFs)
     schwab_client_id: str = Field(default="", alias="SCHWAB_CLIENT_ID")

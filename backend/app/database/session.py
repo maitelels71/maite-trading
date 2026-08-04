@@ -60,6 +60,13 @@ def get_session_factory() -> sessionmaker[Session]:
 
 def get_db() -> Generator[Session, None, None]:
     """FastAPI dependency — yields a request-scoped SQLAlchemy session."""
+    from app.core.storage_backend import using_dynamo
+
+    if using_dynamo():
+        # Cheap SAM stack — no SQL engine.
+        yield None  # type: ignore[misc]
+        return
+
     session = get_session_factory()()
     try:
         yield session

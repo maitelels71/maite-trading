@@ -1,0 +1,269 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  Maite Trading — low-cost serverless stack (OceanView-style).
+  API Gateway HTTP API + Lambda + DynamoDB + S3/CloudFront.
+  No NAT Gateway, no RDS, no App Runner.
+
+Parameters:
+  ProjectName:
+    Type: String
+    Default: maite-trading
+  EnvironmentName:
+    Type: String
+    Default: staging
+    AllowedValues: [staging, production]
+  CorsOrigins:
+    Type: String
+    Default: "*"
+
+Globals:
+  Function:
+    Runtime: python3.12
+    Timeout: 60
+    MemorySize: 512
+    Architectures: [x86_64]
+    Environment:
+      Variables:
+        ENVIRONMENT: !Ref EnvironmentName
+        STORAGE_BACKEND: dynamodb
+        TABLE_INSTRUMENTS: !Ref InstrumentsTable
+        TABLE_CANDLES: !Ref CandlesTable
+        TABLE_STRATEGIES: !Ref StrategiesTable
+        TABLE_BACKTEST_RUNS: !Ref BacktestRunsTable
+        TABLE_TRADES: !Ref TradesTable
+        APP_SECRETS_ARN: !Ref AppSecrets
+        CORS_ORIGINS: !Ref CorsOrigins
+        DEFAULT_TIMEZONE: America/New_York
+
+Resources:
+  HttpApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      StageName: !Ref EnvironmentName
+      CorsConfiguration:
+        AllowOrigins:
+          - "*"
+        AllowHeaders:
+          - "*"
+        AllowMethods:
+          - GET
+          - POST
+          - PUT
+          - PATCH
+          - DELETE
+          - OPTIONS
+
+  ApiFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${ProjectName}-${EnvironmentName}-api"
+      CodeUri: ../../backend/
+      Handler: app.lambda_handler.handler
+      Description: FastAPI (Mangum) trading research API
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref InstrumentsTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref CandlesTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref StrategiesTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref BacktestRunsTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref TradesTable
+        - Statement:
+            - Effect: Allow
+              Action:
+                - secretsmanager:GetSecretValue
+              Resource: !Ref AppSecrets
+      Events:
+        ProxyApi:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /{proxy+}
+            Method: ANY
+        RootApi:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /
+            Method: ANY
+    Metadata:
+      BuildMethod: python3.12
+
+  InstrumentsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "${ProjectName}-${EnvironmentName}-instruments"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: pk
+          AttributeType: S
+      KeySchema:
+        - AttributeName: pk
+          KeyType: HASH
+
+  CandlesTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "${ProjectName}-${EnvironmentName}-candles"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: pk
+          AttributeType: S
+        - AttributeName: sk
+          AttributeType: S
+      KeySchema:
+        - AttributeName: pk
+          KeyType: HASH
+        - AttributeName: sk
+          KeyType: RANGE
+
+  StrategiesTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "${ProjectName}-${EnvironmentName}-strategies"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: pk
+          AttributeType: S
+      KeySchema:
+        - AttributeName: pk
+          KeyType: HASH
+
+  BacktestRunsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "${ProjectName}-${EnvironmentName}-backtest-runs"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: pk
+          AttributeType: S
+      KeySchema:
+        - AttributeName: pk
+          KeyType: HASH
+
+  TradesTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "${ProjectName}-${EnvironmentName}-trades"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: pk
+          AttributeType: S
+        - AttributeName: sk
+          AttributeType: S
+      KeySchema:
+        - AttributeName: pk
+          KeyType: HASH
+        - AttributeName: sk
+          KeyType: RANGE
+
+  AppSecrets:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: !Sub "${ProjectName}/${EnvironmentName}/app"
+      Description: Schwab + TradeAdvocate credentials
+      SecretString: !Sub |
+        {
+          "SCHWAB_CLIENT_ID": "",
+          "SCHWAB_CLIENT_SECRET": "",
+          "SCHWAB_REDIRECT_URI": "https://127.0.0.1:8182",
+          "TRADEADVOCATE_API_KEY": "",
+          "TRADEADVOCATE_API_SECRET": "",
+          "TRADEADVOCATE_BASE_URL": "",
+          "TRADEADVOCATE_ACCOUNT_ID": "",
+          "DEFAULT_TIMEZONE": "America/New_York",
+          "CORS_ORIGINS": "${CorsOrigins}"
+        }
+
+  WebBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "${ProjectName}-${EnvironmentName}-web-${AWS::AccountId}"
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+
+  WebBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref WebBucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: AllowCloudFrontRead
+            Effect: Allow
+            Principal:
+              Service: cloudfront.amazonaws.com
+            Action: s3:GetObject
+            Resource: !Sub "${WebBucket.Arn}/*"
+            Condition:
+              StringEquals:
+                AWS:SourceArn: !Sub "arn:aws:cloudfront::${AWS::AccountId}:distribution/${WebDistribution}"
+
+  WebOAC:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties:
+      OriginAccessControlConfig:
+        Name: !Sub "${ProjectName}-${EnvironmentName}-oac"
+        OriginAccessControlOriginType: s3
+        SigningBehavior: always
+        SigningProtocol: sigv4
+
+  WebDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        Comment: !Sub "${ProjectName} ${EnvironmentName} UI"
+        DefaultRootObject: index.html
+        Origins:
+          - Id: webS3
+            DomainName: !GetAtt WebBucket.RegionalDomainName
+            OriginAccessControlId: !GetAtt WebOAC.Id
+            S3OriginConfig: {}
+        DefaultCacheBehavior:
+          TargetOriginId: webS3
+          ViewerProtocolPolicy: redirect-to-https
+          AllowedMethods: [GET, HEAD, OPTIONS]
+          CachedMethods: [GET, HEAD]
+          Compress: true
+          ForwardedValues:
+            QueryString: false
+            Cookies:
+              Forward: none
+        CustomErrorResponses:
+          - ErrorCode: 403
+            ResponseCode: 200
+            ResponsePagePath: /index.html
+          - ErrorCode: 404
+            ResponseCode: 200
+            ResponsePagePath: /index.html
+        PriceClass: PriceClass_100
+
+Outputs:
+  ApiUrl:
+    Description: HTTP API base URL (append paths like /health)
+    Value: !Sub "https://${HttpApi}.execute-api.${AWS::Region}.amazonaws.com/${EnvironmentName}"
+  WebBucketName:
+    Description: S3 bucket for frontend static files
+    Value: !Ref WebBucket
+  CloudFrontUrl:
+    Description: Frontend URL
+    Value: !Sub "https://${WebDistribution.DomainName}"
+  CloudFrontDistributionId:
+    Value: !Ref WebDistribution
+  AppSecretsArn:
+    Value: !Ref AppSecrets
+  StackMode:
+    Value: cheap-serverless
+    Description: No NAT / RDS / App Runner

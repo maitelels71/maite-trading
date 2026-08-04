@@ -54,15 +54,21 @@ cd infra/aws
 .\scripts\package-and-deploy.ps1 -StackName maite-trading-staging -Region us-east-1 -TemplateBucket YOUR_CFN_BUCKET -DbPassword "LONG_RANDOM_PASSWORD"
 ```
 
-## AWS deploy (GitHub Actions)
+## AWS deploy
 
-Infra and API deploy from GitHub Actions — see [`infra/aws/GITHUB_ACTIONS.md`](infra/aws/GITHUB_ACTIONS.md).
+### Recommended (cheap / OceanView-style)
 
-```text
-push main → CI tests
-         → Deploy AWS (CloudFormation + ECR image → App Runner)
-Amplify builds frontend when the repo is linked in the stack
-```
+Use **Deploy Cheap (SAM)** — Lambda + DynamoDB + S3/CloudFront.
+
+- Docs: [`infra/sam/README.md`](infra/sam/README.md)
+- **No manual CloudFormation clicks** — GitHub Action / `sam deploy` creates the stack
+- No NAT Gateway, no RDS, no App Runner
+
+### Optional (expensive)
+
+`infra/aws/` App Runner + RDS + NAT — only if you need always-on SQL. Prefer the cheap stack for staging.
+
+See also [`infra/aws/GITHUB_ACTIONS.md`](infra/aws/GITHUB_ACTIONS.md) for OIDC setup (shared by both workflows).
 
 ## Local development
 

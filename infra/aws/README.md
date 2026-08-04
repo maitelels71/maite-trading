@@ -1,4 +1,4 @@
-# AWS infrastructure — Maite Trading
+# Optional expensive stack (App Runner + RDS + NAT). Prefer infra/sam.
 
 CloudFormation (YAML) defines each deployable service. **No Docker Compose.**
 
