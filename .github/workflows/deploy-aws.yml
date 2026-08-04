@@ -44,7 +44,9 @@ jobs:
   deploy:
     name: Deploy (${{ github.event.inputs.environment || 'staging' }})
     runs-on: ubuntu-latest
-    environment: ${{ github.event.inputs.environment || 'staging' }}
+    # Repository-level secrets/variables are used (no GitHub Environment required for staging).
+    # To protect production later, add `environment: production` when that input is selected
+    # via a dedicated job, or set Environment protection rules separately.
     env:
       ENVIRONMENT: ${{ github.event.inputs.environment || 'staging' }}
     steps:
@@ -57,9 +59,19 @@ jobs:
           echo "TEMPLATE_BUCKET=${{ vars.CFN_TEMPLATE_BUCKET }}" >> "$GITHUB_ENV"
 
       - name: Validate required configuration
+        env:
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+          AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
         run: |
+          echo "Checking required GitHub Actions configuration..."
           test -n "$TEMPLATE_BUCKET" || { echo "Missing variable CFN_TEMPLATE_BUCKET"; exit 1; }
-          test -n "${{ secrets.DB_PASSWORD }}" || { echo "Missing secret DB_PASSWORD"; exit 1; }
+          test -n "$DB_PASSWORD" || { echo "Missing secret DB_PASSWORD"; exit 1; }
+          if [ "${{ vars.AWS_AUTH_MODE }}" = "access-keys" ]; then
+            test -n "${{ secrets.AWS_ACCESS_KEY_ID }}" || { echo "Missing secret AWS_ACCESS_KEY_ID"; exit 1; }
+          else
+            test -n "$AWS_ROLE_ARN" || { echo "Missing secret AWS_ROLE_ARN"; exit 1; }
+          fi
+          echo "Config OK (bucket=$TEMPLATE_BUCKET)"
 
       - name: Configure AWS credentials (OIDC)
         if: ${{ vars.AWS_AUTH_MODE != 'access-keys' }}
