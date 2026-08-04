@@ -1,0 +1,71 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Amplify Hosting for Maite Next.js frontend
+
+Parameters:
+  EnvironmentName:
+    Type: String
+  Repository:
+    Type: String
+  Branch:
+    Type: String
+    Default: main
+  ApiBaseUrl:
+    Type: String
+
+Resources:
+  AmplifyApp:
+    Type: AWS::Amplify::App
+    Properties:
+      Name: !Sub maite-${EnvironmentName}-web
+      Repository: !Ref Repository
+      Platform: WEB_COMPUTE
+      EnvironmentVariables:
+        - Name: NEXT_PUBLIC_API_BASE_URL
+          Value: !Ref ApiBaseUrl
+        - Name: AMPLIFY_MONOREPO_APP_ROOT
+          Value: frontend
+      BuildSpec: |
+        version: 1
+        applications:
+          - appRoot: frontend
+            frontend:
+              phases:
+                preBuild:
+                  commands:
+                    - npm ci
+                build:
+                  commands:
+                    - npm run build
+              artifacts:
+                baseDirectory: .next
+                files:
+                  - "**/*"
+              cache:
+                paths:
+                  - node_modules/**/*
+      Tags:
+        - Key: Environment
+          Value: !Ref EnvironmentName
+
+  AmplifyBranch:
+    Type: AWS::Amplify::Branch
+    Properties:
+      AppId: !GetAtt AmplifyApp.AppId
+      BranchName: !Ref Branch
+      EnableAutoBuild: true
+      Framework: Next.js - SSR
+      Stage: !If
+        - IsProd
+        - PRODUCTION
+        - BETA
+
+Conditions:
+  IsProd: !Equals [!Ref EnvironmentName, production]
+
+Outputs:
+  AmplifyAppId:
+    Value: !GetAtt AmplifyApp.AppId
+  DefaultDomain:
+    Value: !GetAtt AmplifyApp.DefaultDomain
+  BranchName:
+    Value: !Ref AmplifyBranch

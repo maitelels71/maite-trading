@@ -1,0 +1,103 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Maite Trading Strategy Analyzer — root nested stack (network, secrets, database, API, frontend)
+
+Parameters:
+  EnvironmentName:
+    Type: String
+    Default: staging
+  DbUsername:
+    Type: String
+    Default: maite
+  DbPassword:
+    Type: String
+    NoEcho: true
+  DbInstanceClass:
+    Type: String
+    Default: db.t4g.micro
+  ApiImageTag:
+    Type: String
+    Default: latest
+  FrontendRepository:
+    Type: String
+    Description: GitHub repo URL for Amplify (e.g. https://github.com/org/maite-trading)
+  FrontendBranch:
+    Type: String
+    Default: main
+  CorsOrigins:
+    Type: String
+    Default: "*"
+  UseMockProviders:
+    Type: String
+    Default: "true"
+    AllowedValues: ["true", "false"]
+
+Resources:
+  NetworkStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: nested/network.yaml
+      Parameters:
+        EnvironmentName: !Ref EnvironmentName
+
+  SecretsStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: nested/secrets.yaml
+      Parameters:
+        EnvironmentName: !Ref EnvironmentName
+        DbUsername: !Ref DbUsername
+        DbPassword: !Ref DbPassword
+
+  DatabaseStack:
+    Type: AWS::CloudFormation::Stack
+    DependsOn: SecretsStack
+    Properties:
+      TemplateURL: nested/database.yaml
+      Parameters:
+        EnvironmentName: !Ref EnvironmentName
+        VpcId: !GetAtt NetworkStack.Outputs.VpcId
+        PrivateSubnetIds: !GetAtt NetworkStack.Outputs.PrivateSubnetIds
+        DbSecurityGroupId: !GetAtt NetworkStack.Outputs.DbSecurityGroupId
+        DbSecretArn: !GetAtt SecretsStack.Outputs.DbSecretArn
+        DbInstanceClass: !Ref DbInstanceClass
+
+  ApiStack:
+    Type: AWS::CloudFormation::Stack
+    DependsOn: DatabaseStack
+    Properties:
+      TemplateURL: nested/api.yaml
+      Parameters:
+        EnvironmentName: !Ref EnvironmentName
+        DbSecretArn: !GetAtt SecretsStack.Outputs.DbSecretArn
+        AppSecretArn: !GetAtt SecretsStack.Outputs.AppSecretArn
+        DatabaseHost: !GetAtt DatabaseStack.Outputs.DbEndpointAddress
+        DatabasePort: !GetAtt DatabaseStack.Outputs.DbEndpointPort
+        DatabaseName: !GetAtt DatabaseStack.Outputs.DbName
+        ApiImageTag: !Ref ApiImageTag
+        CorsOrigins: !Ref CorsOrigins
+        UseMockProviders: !Ref UseMockProviders
+
+  FrontendStack:
+    Type: AWS::CloudFormation::Stack
+    DependsOn: ApiStack
+    Properties:
+      TemplateURL: nested/frontend.yaml
+      Parameters:
+        EnvironmentName: !Ref EnvironmentName
+        Repository: !Ref FrontendRepository
+        Branch: !Ref FrontendBranch
+        ApiBaseUrl: !GetAtt ApiStack.Outputs.ApiServiceUrl
+
+Outputs:
+  VpcId:
+    Value: !GetAtt NetworkStack.Outputs.VpcId
+  DbEndpoint:
+    Value: !GetAtt DatabaseStack.Outputs.DbEndpointAddress
+  ApiUrl:
+    Value: !GetAtt ApiStack.Outputs.ApiServiceUrl
+  EcrRepositoryUri:
+    Value: !GetAtt ApiStack.Outputs.EcrRepositoryUri
+  AmplifyAppId:
+    Value: !GetAtt FrontendStack.Outputs.AmplifyAppId
+  AmplifyDefaultDomain:
+    Value: !GetAtt FrontendStack.Outputs.DefaultDomain

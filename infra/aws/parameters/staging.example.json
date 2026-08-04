@@ -1,0 +1,38 @@
+[
+  {
+    "ParameterKey": "EnvironmentName",
+    "ParameterValue": "staging"
+  },
+  {
+    "ParameterKey": "DbUsername",
+    "ParameterValue": "maite"
+  },
+  {
+    "ParameterKey": "DbPassword",
+    "ParameterValue": "CHANGE_ME_STRONG_PASSWORD"
+  },
+  {
+    "ParameterKey": "DbInstanceClass",
+    "ParameterValue": "db.t4g.micro"
+  },
+  {
+    "ParameterKey": "ApiImageTag",
+    "ParameterValue": "latest"
+  },
+  {
+    "ParameterKey": "FrontendRepository",
+    "ParameterValue": "https://github.com/maitelels71/maite-trading"
+  },
+  {
+    "ParameterKey": "FrontendBranch",
+    "ParameterValue": "main"
+  },
+  {
+    "ParameterKey": "CorsOrigins",
+    "ParameterValue": "https://staging.example.com,http://localhost:3000"
+  },
+  {
+    "ParameterKey": "UseMockProviders",
+    "ParameterValue": "true"
+  }
+]
