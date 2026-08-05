@@ -175,6 +175,7 @@ Resources:
           "TRADEADVOCATE_API_SECRET": "",
           "TRADEADVOCATE_BASE_URL": "",
           "TRADEADVOCATE_ACCOUNT_ID": "",
+          "FINNHUB_API_KEY": "",
           "DEFAULT_TIMEZONE": "America/New_York",
           "CORS_ORIGINS": "${CorsOrigins}"
         }

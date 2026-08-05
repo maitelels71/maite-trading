@@ -102,6 +102,69 @@ export type BacktestResponse = {
   signals: Signal[];
 };
 
+export type ScanHit = {
+  symbol: string;
+  name: string;
+  market_type: MarketType | string;
+  data_provider: DataProvider | string;
+  strategy: string;
+  status: string;
+  matched: boolean;
+  detail: string;
+  last_signal?: Signal | null;
+  open_trade?: Trade | null;
+  metrics?: Metrics | null;
+};
+
+export type ScanResponse = {
+  scanned_at: string;
+  session_date: string;
+  timeframe: string;
+  strategies: string[];
+  hits: ScanHit[];
+  match_count: number;
+  total_checked: number;
+};
+
+export type NewsImpact = "red" | "orange" | "yellow" | "info";
+
+export type NewsItem = {
+  id: string;
+  source: string;
+  headline: string;
+  summary?: string;
+  url?: string;
+  published_at?: string | null;
+  symbols?: string[];
+  impact: NewsImpact | string;
+  reason?: string;
+  category?: string;
+};
+
+export type EconomicEvent = {
+  id: string;
+  country: string;
+  event: string;
+  impact: NewsImpact | string;
+  scheduled_at?: string | null;
+  estimate?: string | null;
+  previous?: string | null;
+  actual?: string | null;
+  reason?: string;
+};
+
+export type NewsBriefing = {
+  as_of: string;
+  session_date: string;
+  provider: string;
+  configured: boolean;
+  message?: string;
+  red_events: EconomicEvent[];
+  aware_items: NewsItem[];
+  watchlist_items: NewsItem[];
+  market_items: NewsItem[];
+};
+
 export const FALLBACK_INSTRUMENTS: Instrument[] = [
   { symbol: "NQ", name: "E-mini Nasdaq-100", market_type: "future", data_provider: "tradeadvocate", active: true },
   { symbol: "ES", name: "E-mini S&P 500", market_type: "future", data_provider: "tradeadvocate", active: true },

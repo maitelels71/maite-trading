@@ -3,6 +3,8 @@ import type {
   Candle,
   EvaluateResponse,
   Instrument,
+  NewsBriefing,
+  ScanResponse,
   Strategy,
 } from "./types";
 
@@ -107,4 +109,27 @@ export async function backtestStrategy(payload: {
     method: "POST",
     body: JSON.stringify(payload),
   });
+}
+
+export async function scanStrategies(payload: {
+  strategies?: string[];
+  timeframe?: string;
+  session_date?: string;
+  data_provider?: string;
+  symbols?: string[];
+  matches_only?: boolean;
+}): Promise<ScanResponse> {
+  return request("/strategy/scan", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function fetchNewsBriefing(
+  sessionDate?: string,
+): Promise<NewsBriefing> {
+  const qs = sessionDate
+    ? `?session_date=${encodeURIComponent(sessionDate)}`
+    : "";
+  return request(`/news/briefing${qs}`);
 }

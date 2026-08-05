@@ -83,6 +83,41 @@ class StrategyBacktestResponse(BaseModel):
     signals: list[SignalOut] = Field(default_factory=list)
 
 
+class StrategyScanRequest(BaseModel):
+    """Scan universe for strategy setups (ORB today; more strategies later)."""
+
+    strategies: list[str] = Field(default_factory=list)
+    timeframe: str = "5m"
+    session_date: date | None = None
+    data_provider: str | None = None
+    symbols: list[str] | None = None
+    matches_only: bool = False
+
+
+class StrategyScanHit(BaseModel):
+    symbol: str
+    name: str
+    market_type: str
+    data_provider: str
+    strategy: str
+    status: str
+    matched: bool
+    detail: str
+    last_signal: SignalOut | None = None
+    open_trade: TradeOut | None = None
+    metrics: MetricsOut | None = None
+
+
+class StrategyScanResponse(BaseModel):
+    scanned_at: datetime
+    session_date: date
+    timeframe: str
+    strategies: list[str]
+    hits: list[StrategyScanHit]
+    match_count: int
+    total_checked: int
+
+
 class InstrumentListResponse(BaseModel):
     items: list[InstrumentOut]
 

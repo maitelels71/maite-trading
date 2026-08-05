@@ -144,3 +144,37 @@ def test_evaluate_and_backtest(client: TestClient) -> None:
     bt = backtest.json()
     assert bt["total_trades"] >= 1
     assert bt["run_id"] is not None
+
+
+def test_strategy_scan(client: TestClient) -> None:
+    res = client.post(
+        "/strategy/scan",
+        json={
+            "strategies": ["opening_range_breakout"],
+            "timeframe": "5m",
+            "session_date": "2026-01-05",
+            "data_provider": "schwab",
+            "symbols": ["SPY"],
+        },
+    )
+    assert res.status_code == 200, res.text
+    body = res.json()
+    assert body["total_checked"] == 1
+    assert body["match_count"] >= 1
+    hit = body["hits"][0]
+    assert hit["symbol"] == "SPY"
+    assert hit["matched"] is True
+    assert hit["status"] != "no_data"
+
+    empty = client.post(
+        "/strategy/scan",
+        json={
+            "strategies": ["opening_range_breakout"],
+            "timeframe": "5m",
+            "session_date": "2026-01-06",
+            "symbols": ["SPY"],
+            "data_provider": "schwab",
+        },
+    )
+    assert empty.status_code == 200, empty.text
+    assert empty.json()["hits"][0]["status"] == "no_data"

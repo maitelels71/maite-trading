@@ -69,6 +69,9 @@ class Settings(BaseSettings):
         alias="TRADEADVOCATE_ACCOUNT_ID",
     )
 
+    # Market news / economic calendar (Finnhub free tier)
+    finnhub_api_key: str = Field(default="", alias="FINNHUB_API_KEY")
+
     # Market session defaults
     default_timezone: str = Field(
         default="America/New_York",

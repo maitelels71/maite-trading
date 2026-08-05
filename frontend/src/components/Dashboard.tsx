@@ -256,16 +256,16 @@ export function Dashboard() {
   }
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-zinc-100">
+    <div>
       <header className="border-b border-zinc-800/80">
         <div className="mx-auto flex max-w-6xl flex-col gap-4 px-6 py-5 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <p className="text-xs uppercase tracking-[0.22em] text-emerald-400">
-              Maite Trading
-            </p>
             <h1 className="text-2xl font-semibold tracking-tight">
               Strategy Analyzer
             </h1>
+            <p className="text-sm text-zinc-500">
+              Evaluate and backtest setups per symbol
+            </p>
           </div>
           <p className="text-right text-xs text-zinc-500">
             API

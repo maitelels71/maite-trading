@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from uuid import uuid4
 
@@ -24,6 +24,9 @@ from app.schemas.strategy_api import (
     StrategyEvaluateRequest,
     StrategyEvaluateResponse,
     StrategyListResponse,
+    StrategyScanHit,
+    StrategyScanRequest,
+    StrategyScanResponse,
 )
 from app.services.market_data_service import MarketDataService
 from app.services.strategy_engine import StrategyEngine
@@ -45,6 +48,65 @@ def list_strategies() -> StrategyListResponse:
             )
             for s in registry.list()
         ]
+    )
+
+
+@router.post("/scan", response_model=StrategyScanResponse)
+def scan_strategies(
+    body: StrategyScanRequest,
+    db: Session = Depends(get_db),
+) -> StrategyScanResponse:
+    """Evaluate all (or filtered) instruments against registered strategies for a session day.
+
+    Designed for dashboard Scanner polling. New strategies auto-appear via the registry.
+    """
+    from datetime import datetime as dt
+    from zoneinfo import ZoneInfo
+
+    registry = get_strategy_registry()
+    strategy_names = body.strategies or [s.name for s in registry.list()]
+    for name in strategy_names:
+        try:
+            registry.get(name)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    tz = ZoneInfo("America/New_York")
+    scan_day = body.session_date or dt.now(tz).date()
+    instruments = _list_scan_instruments(
+        db,
+        data_provider=body.data_provider,
+        symbols=body.symbols,
+    )
+
+    hits: list[StrategyScanHit] = []
+    for inst in instruments:
+        for strategy_name in strategy_names:
+            hits.append(
+                _scan_one(
+                    db=db,
+                    symbol=inst["symbol"],
+                    name=inst["name"],
+                    market_type=inst["market_type"],
+                    data_provider=inst["data_provider"],
+                    strategy_name=strategy_name,
+                    timeframe=body.timeframe,
+                    scan_day=scan_day,
+                )
+            )
+
+    if body.matches_only:
+        hits = [h for h in hits if h.matched]
+
+    match_count = sum(1 for h in hits if h.matched)
+    return StrategyScanResponse(
+        scanned_at=dt.now(UTC),
+        session_date=scan_day,
+        timeframe=body.timeframe,
+        strategies=strategy_names,
+        hits=hits,
+        match_count=match_count,
+        total_checked=len(instruments) * len(strategy_names),
     )
 
 
@@ -219,6 +281,222 @@ def _evaluate_dynamo(
         session=SessionType.RTH,
     )
     return StrategyEngine().evaluate(strategy_name, candles, context)
+
+
+def _list_scan_instruments(
+    db: Session,
+    *,
+    data_provider: str | None,
+    symbols: list[str] | None,
+) -> list[dict[str, str]]:
+    if using_dynamo():
+        store = get_dynamo_store()
+        store.seed_defaults()
+        rows = store.list_instruments()
+        items = [
+            {
+                "symbol": r["symbol"],
+                "name": str(r.get("name") or r["symbol"]),
+                "market_type": r["market_type"],
+                "data_provider": r["data_provider"],
+            }
+            for r in rows
+            if r.get("active", True)
+        ]
+    else:
+        q = select(Instrument).where(Instrument.active.is_(True)).order_by(Instrument.symbol)
+        rows = db.scalars(q).all()
+        items = [
+            {
+                "symbol": r.symbol,
+                "name": r.name,
+                "market_type": r.market_type,
+                "data_provider": r.data_provider,
+            }
+            for r in rows
+        ]
+
+    if data_provider:
+        items = [i for i in items if i["data_provider"] == data_provider]
+    if symbols:
+        wanted = {s.upper() for s in symbols}
+        items = [i for i in items if i["symbol"].upper() in wanted]
+    return items
+
+
+def _scan_one(
+    *,
+    db: Session,
+    symbol: str,
+    name: str,
+    market_type: str,
+    data_provider: str,
+    strategy_name: str,
+    timeframe: str,
+    scan_day: date,
+) -> StrategyScanHit:
+    try:
+        candle_count = _session_candle_count(
+            db,
+            symbol=symbol,
+            market_type=market_type,
+            timeframe=timeframe,
+            scan_day=scan_day,
+        )
+        if candle_count == 0:
+            return StrategyScanHit(
+                symbol=symbol,
+                name=name,
+                market_type=market_type,
+                data_provider=data_provider,
+                strategy=strategy_name,
+                status="no_data",
+                matched=False,
+                detail="No candles for this session — sync market data when broker auth is ready.",
+            )
+
+        if using_dynamo():
+            result = _evaluate_dynamo(
+                strategy_name=strategy_name,
+                ticker=symbol,
+                timeframe=timeframe,
+                start=scan_day,
+                end=scan_day,
+                parameters={},
+                market_type=market_type,
+            )
+        else:
+            engine = StrategyEngine(session=db)
+            result = engine.evaluate_symbol(
+                strategy_name=strategy_name,
+                symbol=symbol,
+                timeframe=timeframe,
+                start=scan_day,
+                end=scan_day,
+                parameters={},
+                market_type=market_type,
+            )
+    except Exception as exc:  # noqa: BLE001
+        return StrategyScanHit(
+            symbol=symbol,
+            name=name,
+            market_type=market_type,
+            data_provider=data_provider,
+            strategy=strategy_name,
+            status="error",
+            matched=False,
+            detail=str(exc),
+        )
+
+    status, matched, detail, last_signal, open_trade = _classify_scan_result(result)
+    return StrategyScanHit(
+        symbol=symbol,
+        name=name,
+        market_type=market_type,
+        data_provider=data_provider,
+        strategy=strategy_name,
+        status=status,
+        matched=matched,
+        detail=detail,
+        last_signal=last_signal,
+        open_trade=open_trade,
+        metrics=_metrics_out(result),
+    )
+
+
+def _session_candle_count(
+    db: Session,
+    *,
+    symbol: str,
+    market_type: str,
+    timeframe: str,
+    scan_day: date,
+) -> int:
+    start_dt = datetime.combine(scan_day, datetime.min.time())
+    end_dt = datetime.combine(scan_day, datetime.max.time().replace(microsecond=0))
+    if using_dynamo():
+        store = get_dynamo_store()
+        store.seed_defaults()
+        instrument = store.get_instrument(symbol, market_type=market_type)
+        candles = store.get_candles_by_range(
+            instrument["symbol"],
+            instrument["market_type"],
+            timeframe,
+            start_dt,
+            end_dt,
+        )
+        return len(candles)
+
+    mds = MarketDataService(db)
+    instrument = mds.get_instrument(symbol, market_type=market_type)
+    candles = mds.get_candles_by_range(
+        instrument.id,
+        timeframe,
+        start_dt,
+        end_dt,
+    )
+    return len(candles)
+
+
+def _classify_scan_result(
+    result: StrategyResult,
+) -> tuple[str, bool, str, SignalOut | None, TradeOut | None]:
+    """Map strategy output → scanner status. Extensible as new strategies appear."""
+    open_trades = [t for t in result.trades if t.exit_time is None]
+    last_signal = _signals_out(result)[-1] if result.signals else None
+    open_trade = (
+        TradeOut(
+            side=open_trades[0].side,
+            entry_time=open_trades[0].entry_time,
+            entry_price=open_trades[0].entry_price,
+            signal=open_trades[0].signal,
+            exit_time=open_trades[0].exit_time,
+            exit_price=open_trades[0].exit_price,
+            profit_loss=open_trades[0].profit_loss,
+            notes=open_trades[0].notes,
+        )
+        if open_trades
+        else None
+    )
+
+    if open_trades:
+        side = open_trades[0].side
+        side_val = side.value if isinstance(side, Side) else str(side)
+        return (
+            f"active_{side_val}",
+            True,
+            f"Open {side_val} position from {open_trades[0].signal}",
+            last_signal,
+            open_trade,
+        )
+
+    if result.signals:
+        side = result.signals[-1].side
+        side_val = side.value if isinstance(side, Side) else str(side)
+        return (
+            f"signal_{side_val}",
+            True,
+            result.signals[-1].reason or f"Latest signal: {side_val}",
+            last_signal,
+            None,
+        )
+
+    if result.trades:
+        return (
+            "flat_after_trades",
+            True,
+            f"{len(result.trades)} trade(s) completed this session",
+            last_signal,
+            None,
+        )
+
+    return (
+        "watching",
+        False,
+        "Watching — opening range formed or waiting for breakout",
+        last_signal,
+        None,
+    )
 
 
 def _metrics_out(result: StrategyResult) -> MetricsOut:
