@@ -78,18 +78,45 @@ class NewsBriefingService:
                 aware_items=_static_awareness_checklist(day),
             )
 
+        notes: list[str] = []
+        red_events: list[EconomicEventOut] = []
+        market: list[NewsItemOut] = []
+        watchlist: list[NewsItemOut] = []
+
         try:
             red_events = self._economic_events(day, key)
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code in {401, 403}:
+                notes.append(
+                    "Economic calendar unavailable on this Finnhub plan (403/401) — "
+                    "headlines still load when allowed."
+                )
+            else:
+                notes.append(f"Economic calendar error: {_safe_http_error(exc)}")
+            logger.warning("Finnhub economic calendar failed: %s", _safe_http_error(exc))
+        except Exception as exc:  # noqa: BLE001
+            notes.append(f"Economic calendar error: {_safe_error(exc)}")
+            logger.warning("Finnhub economic calendar failed", exc_info=True)
+
+        try:
             market = self._market_news(key)
+        except Exception as exc:  # noqa: BLE001
+            notes.append(f"Market news error: {_safe_error(exc)}")
+            logger.warning("Finnhub market news failed", exc_info=True)
+
+        try:
             watchlist = self._watchlist_news(day, key)
         except Exception as exc:  # noqa: BLE001
-            logger.exception("News briefing fetch failed")
+            notes.append(f"Watchlist news error: {_safe_error(exc)}")
+            logger.warning("Finnhub watchlist news failed", exc_info=True)
+
+        if not market and not watchlist and not red_events:
             return NewsBriefingResponse(
                 as_of=datetime.now(UTC),
                 session_date=day,
                 provider="finnhub",
                 configured=True,
-                message=f"News provider error: {exc}",
+                message=" ".join(notes) or "Finnhub returned no news for this key/plan.",
                 aware_items=_static_awareness_checklist(day),
             )
 
@@ -103,14 +130,18 @@ class NewsBriefingService:
             seen.add(item.headline)
             aware_unique.append(item)
 
+        message = _summary_message(red_events, aware_unique)
+        if notes:
+            message = f"{message} ({'; '.join(notes)})"
+
         return NewsBriefingResponse(
             as_of=datetime.now(UTC),
             session_date=day,
             provider="finnhub",
             configured=True,
-            message=_summary_message(red_events, aware_unique),
+            message=message,
             red_events=red_events,
-            aware_items=aware_unique[:20],
+            aware_items=aware_unique[:20] or _static_awareness_checklist(day),
             watchlist_items=watchlist[:25],
             market_items=market[:25],
         )
@@ -121,7 +152,7 @@ class NewsBriefingService:
         return httpx.Client(
             base_url=FINNHUB_BASE,
             timeout=25.0,
-            params={"token": token},
+            headers={"X-Finnhub-Token": token},
         )
 
     def _economic_events(self, day: date, token: str) -> list[EconomicEventOut]:
@@ -212,6 +243,15 @@ class NewsBriefingService:
             if owns and self._client is None:
                 client.close()
         return items
+
+
+def _safe_error(exc: Exception) -> str:
+    text = str(exc)
+    return re.sub(r"token=[^&\s]+", "token=***", text)
+
+
+def _safe_http_error(exc: httpx.HTTPStatusError) -> str:
+    return f"HTTP {exc.response.status_code} on {exc.request.url.path}"
 
 
 def _map_finnhub_impact(raw: Any) -> ImpactLevel:
