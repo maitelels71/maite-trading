@@ -194,3 +194,40 @@ class DynamoStore:
             for idx, t in enumerate(trades):
                 batch.put_item(Item={"pk": run_id, "sk": f"{idx:05d}", **t})
         return run_id
+
+    def save_premarket_run(self, payload: dict[str, Any]) -> str:
+        run_id = str(payload.get("run_id") or uuid.uuid4())
+        ddb.put_item(
+            ddb.backtest_runs_table(),
+            {
+                "pk": f"premarket#{run_id}",
+                "kind": "premarket",
+                "run_id": run_id,
+                "payload": payload,
+            },
+        )
+        ddb.put_item(
+            ddb.backtest_runs_table(),
+            {
+                "pk": "premarket#latest",
+                "kind": "premarket_pointer",
+                "run_id": run_id,
+            },
+        )
+        return run_id
+
+    def get_premarket_run(self, *, run_id: str | None = None) -> dict[str, Any] | None:
+        tbl = ddb.backtest_runs_table()
+        if not run_id:
+            pointer = tbl.get_item(Key={"pk": "premarket#latest"}).get("Item")
+            if not pointer:
+                return None
+            run_id = str(pointer.get("run_id") or "")
+            if not run_id:
+                return None
+
+        item = tbl.get_item(Key={"pk": f"premarket#{run_id}"}).get("Item")
+        if not item:
+            return None
+        payload = item.get("payload")
+        return payload if isinstance(payload, dict) else None

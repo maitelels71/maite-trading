@@ -165,6 +165,33 @@ export type NewsBriefing = {
   market_items: NewsItem[];
 };
 
+export type PremarketStrategyGroup = {
+  strategy: string;
+  match_count: number;
+  total: number;
+  tickers: ScanHit[];
+};
+
+export type PremarketResult = {
+  run_id: string;
+  status: string;
+  started_at: string;
+  finished_at: string;
+  session_date: string;
+  timeframe: string;
+  strategies_requested: string[];
+  data_provider?: string | null;
+  summary: {
+    total_checked: number;
+    match_count: number;
+    strategy_count: number;
+    best_count: number;
+  };
+  strategy_groups: PremarketStrategyGroup[];
+  best_results: ScanHit[];
+  hits: ScanHit[];
+};
+
 export const FALLBACK_INSTRUMENTS: Instrument[] = [
   { symbol: "NQ", name: "E-mini Nasdaq-100", market_type: "future", data_provider: "tradeadvocate", active: true },
   { symbol: "ES", name: "E-mini S&P 500", market_type: "future", data_provider: "tradeadvocate", active: true },

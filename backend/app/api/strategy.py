@@ -60,6 +60,14 @@ def scan_strategies(
 
     Designed for dashboard Scanner polling. New strategies auto-appear via the registry.
     """
+    return execute_scan(body, db=db)
+
+
+def execute_scan(
+    body: StrategyScanRequest,
+    *,
+    db: Session | None = None,
+) -> StrategyScanResponse:
     from datetime import datetime as dt
     from zoneinfo import ZoneInfo
 

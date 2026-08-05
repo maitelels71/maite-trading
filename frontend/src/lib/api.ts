@@ -4,6 +4,7 @@ import type {
   EvaluateResponse,
   Instrument,
   NewsBriefing,
+  PremarketResult,
   ScanResponse,
   Strategy,
 } from "./types";
@@ -132,4 +133,24 @@ export async function fetchNewsBriefing(
     ? `?session_date=${encodeURIComponent(sessionDate)}`
     : "";
   return request(`/news/briefing${qs}`);
+}
+
+export async function startPremarketEvaluate(payload?: {
+  session_date?: string;
+  timeframe?: string;
+  data_provider?: string;
+  strategies?: string[];
+  symbols?: string[];
+}): Promise<PremarketResult> {
+  return request("/premarket/evaluate/start", {
+    method: "POST",
+    body: JSON.stringify(payload ?? {}),
+  });
+}
+
+export async function getPremarketResult(
+  runId?: string,
+): Promise<PremarketResult> {
+  const qs = runId ? `?run_id=${encodeURIComponent(runId)}` : "";
+  return request(`/premarket/evaluate/result${qs}`);
 }
