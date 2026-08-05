@@ -35,6 +35,8 @@ Globals:
         APP_SECRETS_ARN: !Ref AppSecrets
         CORS_ORIGINS: !Ref CorsOrigins
         DEFAULT_TIMEZONE: America/New_York
+        # Resolved at deploy from Secrets Manager (required for News on staging)
+        FINNHUB_API_KEY: !Sub "{{resolve:secretsmanager:${AppSecrets}:SecretString:FINNHUB_API_KEY}}"
 
 Resources:
   HttpApi:

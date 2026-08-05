@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import os
 import re
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
@@ -63,7 +64,11 @@ class NewsBriefingService:
     def briefing(self, session_date: date | None = None) -> NewsBriefingResponse:
         tz = ZoneInfo(self._config.default_timezone or "America/New_York")
         day = session_date or datetime.now(tz).date()
-        key = (self._config.finnhub_api_key or "").strip()
+        # Prefer live env (Lambda / secrets loader) over cached Settings singleton.
+        key = (
+            (os.getenv("FINNHUB_API_KEY") or "").strip()
+            or (self._config.finnhub_api_key or "").strip()
+        )
 
         if not key:
             return NewsBriefingResponse(

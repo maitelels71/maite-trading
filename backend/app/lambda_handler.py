@@ -2,6 +2,11 @@
 
 import os
 
+# Must run before importing app (Settings reads env at import time).
+from app.core.secrets_loader import load_app_secrets_into_env
+
+load_app_secrets_into_env()
+
 from mangum import Mangum
 
 from app.main import app
