@@ -109,3 +109,27 @@ def test_premarket_start_and_load_result() -> None:
 
     app.dependency_overrides.clear()
     clear_memory_store()
+
+
+def test_premarket_alarm_check() -> None:
+    with _client_with_spy_candles() as client:
+        res = client.post(
+            "/premarket/alarm/check",
+            json={
+                "symbol": "SPY",
+                "strategy": "opening_range_breakout",
+                "session_date": "2026-01-05",
+                "timeframe": "5m",
+                "data_provider": "schwab",
+            },
+        )
+        assert res.status_code == 200, res.text
+        body = res.json()
+        assert body["symbol"] == "SPY"
+        assert body["strategy"] == "opening_range_breakout"
+        assert "met" in body
+        assert body["status"]
+        assert body["checked_at"]
+
+    app.dependency_overrides.clear()
+    clear_memory_store()

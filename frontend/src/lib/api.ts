@@ -4,6 +4,7 @@ import type {
   EvaluateResponse,
   Instrument,
   NewsBriefing,
+  PremarketAlarmCheck,
   PremarketResult,
   ScanResponse,
   Strategy,
@@ -153,4 +154,17 @@ export async function getPremarketResult(
 ): Promise<PremarketResult> {
   const qs = runId ? `?run_id=${encodeURIComponent(runId)}` : "";
   return request(`/premarket/evaluate/result${qs}`);
+}
+
+export async function checkPremarketAlarm(payload: {
+  symbol: string;
+  strategy: string;
+  timeframe?: string;
+  session_date?: string;
+  data_provider?: string;
+}): Promise<PremarketAlarmCheck> {
+  return request("/premarket/alarm/check", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
 }

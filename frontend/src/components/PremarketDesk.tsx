@@ -9,6 +9,7 @@ import {
   type ScanHit,
   type Venue,
 } from "@/lib/types";
+import { PremarketAlarmPanel } from "@/components/PremarketAlarmPanel";
 
 function todayNyIso(): string {
   return new Intl.DateTimeFormat("en-CA", {
@@ -149,6 +150,12 @@ export function PremarketDesk() {
           </button>
         </div>
       </section>
+
+      <PremarketAlarmPanel
+        sessionDate={date}
+        timeframe={timeframe}
+        dataProvider={venue === "all" ? undefined : venue}
+      />
 
       {error ? (
         <div className="rounded-xl border border-red-900/60 bg-red-950/40 px-4 py-3 text-sm text-red-200">

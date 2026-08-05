@@ -37,3 +37,25 @@ class PremarketResultResponse(BaseModel):
     strategy_groups: list[PremarketStrategyGroup]
     best_results: list[StrategyScanHit]
     hits: list[StrategyScanHit]
+
+
+class PremarketAlarmCheckRequest(BaseModel):
+    """Poll one symbol+strategy until matched (OceanView-style Premarket alarm)."""
+
+    symbol: str
+    strategy: str = "opening_range_breakout"
+    timeframe: str = "5m"
+    session_date: date | None = None
+    data_provider: str | None = None
+
+
+class PremarketAlarmCheckResponse(BaseModel):
+    symbol: str
+    strategy: str
+    timeframe: str
+    session_date: date
+    checked_at: datetime
+    met: bool
+    status: str
+    detail: str
+    hit: StrategyScanHit | None = None

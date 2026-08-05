@@ -6,7 +6,12 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.database.session import get_db
-from app.schemas.premarket_api import PremarketResultResponse, PremarketStartRequest
+from app.schemas.premarket_api import (
+    PremarketAlarmCheckRequest,
+    PremarketAlarmCheckResponse,
+    PremarketResultResponse,
+    PremarketStartRequest,
+)
 from app.services import premarket_service
 
 router = APIRouter(prefix="/premarket", tags=["premarket"])
@@ -40,3 +45,19 @@ def get_premarket_evaluate_result(
             detail="No Premarket result yet. Run Start evaluate first.",
         )
     return result
+
+
+@router.post("/alarm/check", response_model=PremarketAlarmCheckResponse)
+def check_premarket_alarm(
+    body: PremarketAlarmCheckRequest,
+    db: Session = Depends(get_db),
+) -> PremarketAlarmCheckResponse:
+    """Check one symbol+strategy for Premarket alarm watches."""
+    try:
+        return premarket_service.check_alarm(body, db=db)
+    except HTTPException:
+        raise
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=400, detail=str(exc)) from exc

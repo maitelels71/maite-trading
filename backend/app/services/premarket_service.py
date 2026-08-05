@@ -10,6 +10,8 @@ from zoneinfo import ZoneInfo
 
 from app.api.storage import get_dynamo_store, using_dynamo
 from app.schemas.premarket_api import (
+    PremarketAlarmCheckRequest,
+    PremarketAlarmCheckResponse,
     PremarketResultResponse,
     PremarketStartRequest,
     PremarketStrategyGroup,
@@ -69,6 +71,53 @@ def start_premarket(
     )
     _persist(result)
     return result
+
+
+def check_alarm(
+    body: PremarketAlarmCheckRequest,
+    *,
+    db: Any = None,
+) -> PremarketAlarmCheckResponse:
+    """One-symbol strategy check for Premarket alarm watches."""
+    symbol = body.symbol.strip().upper()
+    if not symbol:
+        raise ValueError("symbol is required")
+
+    scan = scan_service.run_scan(
+        StrategyScanRequest(
+            strategies=[body.strategy],
+            timeframe=body.timeframe,
+            session_date=body.session_date,
+            data_provider=body.data_provider,
+            symbols=[symbol],
+            matches_only=False,
+        ),
+        db=db,
+    )
+    hit = next((h for h in scan.hits if h.symbol.upper() == symbol), None)
+    if hit is None:
+        return PremarketAlarmCheckResponse(
+            symbol=symbol,
+            strategy=body.strategy,
+            timeframe=body.timeframe,
+            session_date=scan.session_date,
+            checked_at=datetime.now(UTC),
+            met=False,
+            status="no_data",
+            detail=f"No scan row for {symbol}",
+            hit=None,
+        )
+    return PremarketAlarmCheckResponse(
+        symbol=hit.symbol,
+        strategy=hit.strategy,
+        timeframe=scan.timeframe,
+        session_date=scan.session_date,
+        checked_at=datetime.now(UTC),
+        met=hit.matched,
+        status=hit.status,
+        detail=hit.detail,
+        hit=hit,
+    )
 
 
 def get_premarket_result(run_id: str | None = None) -> PremarketResultResponse | None:

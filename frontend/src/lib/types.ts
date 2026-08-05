@@ -192,6 +192,40 @@ export type PremarketResult = {
   hits: ScanHit[];
 };
 
+export type PremarketAlarmCheck = {
+  symbol: string;
+  strategy: string;
+  timeframe: string;
+  session_date: string;
+  checked_at: string;
+  met: boolean;
+  status: string;
+  detail: string;
+  hit?: ScanHit | null;
+};
+
+export type AlarmWatchStatus =
+  | "idle"
+  | "running"
+  | "checking"
+  | "met"
+  | "stopped"
+  | "error";
+
+export type PremarketAlarmWatch = {
+  id: string;
+  symbol: string;
+  strategy: string;
+  timeframe: string;
+  intervalSec: number;
+  status: AlarmWatchStatus;
+  lastStatus: string | null;
+  lastDetail: string | null;
+  lastCheckedAt: string | null;
+  lastError: string | null;
+  metAt: string | null;
+};
+
 export const FALLBACK_INSTRUMENTS: Instrument[] = [
   { symbol: "NQ", name: "E-mini Nasdaq-100", market_type: "future", data_provider: "tradeadvocate", active: true },
   { symbol: "ES", name: "E-mini S&P 500", market_type: "future", data_provider: "tradeadvocate", active: true },
