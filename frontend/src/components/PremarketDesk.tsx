@@ -84,7 +84,7 @@ export function PremarketDesk() {
         <div>
           <h2 className="text-xl font-semibold text-zinc-100">Premarket</h2>
           <p className="text-sm text-zinc-500">
-            OceanView-style pre-open desk: run all strategies, group by strategy, keep a{" "}
+            Pre-open desk: run all strategies, group by strategy, keep a{" "}
             <code className="text-zinc-400">runId</code> you can reload.
           </p>
         </div>

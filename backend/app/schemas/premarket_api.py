@@ -1,4 +1,4 @@
-"""Premarket evaluate schemas (OceanView-inspired)."""
+"""Premarket evaluate schemas."""
 
 from __future__ import annotations
 
@@ -40,7 +40,7 @@ class PremarketResultResponse(BaseModel):
 
 
 class PremarketAlarmCheckRequest(BaseModel):
-    """Poll one symbol+strategy until matched (OceanView-style Premarket alarm)."""
+    """Poll one symbol+strategy until matched (Premarket alarm watch)."""
 
     symbol: str
     strategy: str = "opening_range_breakout"

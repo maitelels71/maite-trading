@@ -1,6 +1,6 @@
 # Premarket desk
 
-OceanView-inspired pre-open workspace for maite-trading.
+Pre-open workspace for maite-trading.
 
 ## Goal
 
@@ -37,4 +37,4 @@ Response highlights (evaluate): `run_id`, `summary`, `strategy_groups[]`, `best_
 
 ## Relation to Scanner
 
-Scanner = live polling board. Premarket = intentional batch evaluate + saved envelope + focused alarm watches (closer to OceanView Premarket).
+Scanner = live polling board. Premarket = intentional batch evaluate + saved envelope + focused alarm watches.

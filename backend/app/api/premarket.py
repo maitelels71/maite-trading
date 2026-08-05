@@ -1,4 +1,4 @@
-"""Premarket evaluate endpoints — OceanView-inspired pre-open desk."""
+"""Premarket evaluate endpoints — pre-open desk."""
 
 from __future__ import annotations
 

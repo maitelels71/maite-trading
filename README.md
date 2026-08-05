@@ -56,7 +56,7 @@ cd infra/aws
 
 ## AWS deploy
 
-### Recommended (cheap / OceanView-style)
+### Recommended (cheap serverless)
 
 Use **Deploy Cheap (SAM)** — Lambda + DynamoDB + S3/CloudFront.
 

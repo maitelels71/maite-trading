@@ -283,7 +283,7 @@ export function PremarketAlarmPanel({
       <div>
         <h3 className="text-sm font-medium text-emerald-400">Alarm watches</h3>
         <p className="text-xs text-zinc-500">
-          Poll one symbol + strategy until it matches (OceanView Premarket alarm).
+          Poll one symbol + strategy until the setup matches.
         </p>
       </div>
 

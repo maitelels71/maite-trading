@@ -2,8 +2,7 @@
 
 **You do NOT configure CloudFormation manually in the console.**
 
-`sam deploy` / GitHub Actions creates and updates the CloudFormation stack for you
-(same model as [OceanView-API](https://github.com/mlsloynaz/OceanView-API)).
+`sam deploy` / GitHub Actions creates and updates the CloudFormation stack for you.
 
 ## What this stack uses
 

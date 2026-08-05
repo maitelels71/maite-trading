@@ -1,4 +1,4 @@
-"""Premarket evaluate — batch scan + persisted run (OceanView-style)."""
+"""Premarket evaluate — batch scan + persisted run."""
 
 from __future__ import annotations
 
