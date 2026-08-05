@@ -1,6 +1,26 @@
 export type MarketType = "stock" | "etf" | "future";
 export type DataProvider = "schwab" | "tradeadvocate";
+/** Dashboard workspace: one UI, two broker venues. */
+export type Venue = DataProvider;
 export type Side = "long" | "short" | "flat";
+
+export const VENUE_META: Record<
+  Venue,
+  { label: string; shortLabel: string; defaultSymbol: string; hint: string }
+> = {
+  schwab: {
+    label: "Equities / Options",
+    shortLabel: "Schwab",
+    defaultSymbol: "SPY",
+    hint: "SPY · AMZN · TSLA (underlying; options later)",
+  },
+  tradeadvocate: {
+    label: "Futures",
+    shortLabel: "TradeAdvocate",
+    defaultSymbol: "NQ",
+    hint: "NQ · ES · GC · 6E",
+  },
+};
 
 export type Instrument = {
   symbol: string;

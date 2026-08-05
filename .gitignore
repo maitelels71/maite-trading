@@ -5,8 +5,12 @@
 .secrets/
 *.pem
 
-# CloudFormation packaged output (generated)
+# CloudFormation / SAM build artifacts (generated — do not commit)
 infra/aws/packaged.yaml
+.aws-sam/
+infra/sam/.aws-sam/
+infra/sam/lambda-out*.json
+.cursor/
 
 # Python
 __pycache__/

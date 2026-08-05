@@ -15,15 +15,25 @@ import {
 import {
   FALLBACK_INSTRUMENTS,
   TIMEFRAMES,
+  VENUE_META,
   type BacktestResponse,
   type Candle,
   type EvaluateResponse,
   type Instrument,
   type Strategy,
   type Trade,
+  type Venue,
 } from "@/lib/types";
 
 type Mode = "evaluate" | "backtest";
+
+const VENUE_STORAGE_KEY = "maite.venue";
+
+function readStoredVenue(): Venue {
+  if (typeof window === "undefined") return "schwab";
+  const v = window.localStorage.getItem(VENUE_STORAGE_KEY);
+  return v === "tradeadvocate" ? "tradeadvocate" : "schwab";
+}
 
 function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
@@ -52,6 +62,7 @@ function fmtPct(v: number): string {
 export function Dashboard() {
   const [instruments, setInstruments] = useState<Instrument[]>(FALLBACK_INSTRUMENTS);
   const [strategies, setStrategies] = useState<Strategy[]>([]);
+  const [venue, setVenue] = useState<Venue>("schwab");
   const [symbol, setSymbol] = useState("SPY");
   const [strategy, setStrategy] = useState("opening_range_breakout");
   const [timeframe, setTimeframe] = useState("5m");
@@ -73,10 +84,32 @@ export function Dashboard() {
   const [candles, setCandles] = useState<Candle[]>([]);
   const [pending, startTransition] = useTransition();
 
-  const selected = useMemo(
-    () => instruments.find((i) => i.symbol === symbol) ?? null,
-    [instruments, symbol],
+  const venueInstruments = useMemo(
+    () => instruments.filter((i) => i.data_provider === venue && i.active),
+    [instruments, venue],
   );
+
+  const selected = useMemo(
+    () => venueInstruments.find((i) => i.symbol === symbol) ?? null,
+    [venueInstruments, symbol],
+  );
+
+  useEffect(() => {
+    setVenue(readStoredVenue());
+  }, []);
+
+  useEffect(() => {
+    window.localStorage.setItem(VENUE_STORAGE_KEY, venue);
+    const stillValid = venueInstruments.some((i) => i.symbol === symbol);
+    if (!stillValid) {
+      setSymbol(VENUE_META[venue].defaultSymbol);
+      setMetrics(null);
+      setTrades([]);
+      setCandles([]);
+      setStatus(null);
+      setError(null);
+    }
+  }, [venue, venueInstruments, symbol]);
 
   useEffect(() => {
     let cancelled = false;
@@ -217,10 +250,15 @@ export function Dashboard() {
     });
   }
 
+  function switchVenue(next: Venue) {
+    if (next === venue) return;
+    setVenue(next);
+  }
+
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100">
       <header className="border-b border-zinc-800/80">
-        <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-6 py-5">
+        <div className="mx-auto flex max-w-6xl flex-col gap-4 px-6 py-5 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <p className="text-xs uppercase tracking-[0.22em] text-emerald-400">
               Maite Trading
@@ -229,17 +267,40 @@ export function Dashboard() {
               Strategy Analyzer
             </h1>
           </div>
-          <p className="hidden text-right text-xs text-zinc-500 sm:block">
+          <p className="text-right text-xs text-zinc-500">
             API
             <br />
             <code className="text-zinc-400">{getApiBase()}</code>
           </p>
+        </div>
+        <div className="mx-auto flex max-w-6xl gap-2 px-6 pb-4">
+          {(["schwab", "tradeadvocate"] as Venue[]).map((v) => {
+            const active = venue === v;
+            return (
+              <button
+                key={v}
+                type="button"
+                onClick={() => switchVenue(v)}
+                className={`rounded-md px-4 py-2 text-sm font-medium transition ${
+                  active
+                    ? "bg-emerald-500 text-zinc-950"
+                    : "border border-zinc-700 text-zinc-300 hover:border-zinc-500"
+                }`}
+              >
+                {VENUE_META[v].label}
+                <span className="ml-2 text-xs opacity-70">
+                  {VENUE_META[v].shortLabel}
+                </span>
+              </button>
+            );
+          })}
         </div>
       </header>
 
       <main className="mx-auto grid max-w-6xl gap-6 px-6 py-8 lg:grid-cols-[320px_1fr]">
         <section className="space-y-4 rounded-xl border border-zinc-800 bg-zinc-900/40 p-4">
           <h2 className="text-sm font-medium text-zinc-300">Controls</h2>
+          <p className="text-xs text-zinc-500">{VENUE_META[venue].hint}</p>
 
           <label className="block space-y-1 text-sm">
             <span className="text-zinc-400">Instrument</span>
@@ -248,9 +309,9 @@ export function Dashboard() {
               value={symbol}
               onChange={(e) => setSymbol(e.target.value)}
             >
-              {instruments.map((i) => (
+              {venueInstruments.map((i) => (
                 <option key={`${i.symbol}-${i.market_type}`} value={i.symbol}>
-                  {i.symbol} · {i.market_type} · {i.data_provider}
+                  {i.symbol} · {i.market_type}
                 </option>
               ))}
             </select>
