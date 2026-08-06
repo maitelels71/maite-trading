@@ -257,20 +257,20 @@ export function Dashboard() {
 
   return (
     <div>
-      <header className="border-b border-zinc-800/80">
+      <header className="border-b border-[var(--border)]">
         <div className="mx-auto flex max-w-6xl flex-col gap-4 px-6 py-5 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h1 className="text-2xl font-semibold tracking-tight">
               Strategy Analyzer
             </h1>
-            <p className="text-sm text-zinc-500">
+            <p className="text-sm text-[var(--muted)]">
               Evaluate and backtest setups per symbol
             </p>
           </div>
-          <p className="text-right text-xs text-zinc-500">
+          <p className="text-right text-xs text-[var(--muted)]">
             API
             <br />
-            <code className="text-zinc-400">{getApiBase()}</code>
+            <code className="text-[var(--muted)]">{getApiBase()}</code>
           </p>
         </div>
         <div className="mx-auto flex max-w-6xl gap-2 px-6 pb-4">
@@ -283,8 +283,8 @@ export function Dashboard() {
                 onClick={() => switchVenue(v)}
                 className={`rounded-md px-4 py-2 text-sm font-medium transition ${
                   active
-                    ? "bg-emerald-500 text-zinc-950"
-                    : "border border-zinc-700 text-zinc-300 hover:border-zinc-500"
+                    ? "bg-[var(--accent)] text-white"
+                    : "border border-[var(--border-strong)] text-stone-700 hover:border-stone-400"
                 }`}
               >
                 {VENUE_META[v].label}
@@ -298,14 +298,14 @@ export function Dashboard() {
       </header>
 
       <main className="mx-auto grid max-w-6xl gap-6 px-6 py-8 lg:grid-cols-[320px_1fr]">
-        <section className="space-y-4 rounded-xl border border-zinc-800 bg-zinc-900/40 p-4">
-          <h2 className="text-sm font-medium text-zinc-300">Controls</h2>
-          <p className="text-xs text-zinc-500">{VENUE_META[venue].hint}</p>
+        <section className="space-y-4 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4">
+          <h2 className="text-sm font-medium text-stone-700">Controls</h2>
+          <p className="text-xs text-[var(--muted)]">{VENUE_META[venue].hint}</p>
 
           <label className="block space-y-1 text-sm">
-            <span className="text-zinc-400">Instrument</span>
+            <span className="text-[var(--muted)]">Instrument</span>
             <select
-              className="w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2"
+              className="w-full rounded-md border border-[var(--border-strong)] bg-[var(--surface)] px-3 py-2"
               value={symbol}
               onChange={(e) => setSymbol(e.target.value)}
             >
@@ -318,9 +318,9 @@ export function Dashboard() {
           </label>
 
           <label className="block space-y-1 text-sm">
-            <span className="text-zinc-400">Strategy</span>
+            <span className="text-[var(--muted)]">Strategy</span>
             <select
-              className="w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2"
+              className="w-full rounded-md border border-[var(--border-strong)] bg-[var(--surface)] px-3 py-2"
               value={strategy}
               onChange={(e) => setStrategy(e.target.value)}
             >
@@ -336,9 +336,9 @@ export function Dashboard() {
           </label>
 
           <label className="block space-y-1 text-sm">
-            <span className="text-zinc-400">Timeframe</span>
+            <span className="text-[var(--muted)]">Timeframe</span>
             <select
-              className="w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2"
+              className="w-full rounded-md border border-[var(--border-strong)] bg-[var(--surface)] px-3 py-2"
               value={timeframe}
               onChange={(e) => setTimeframe(e.target.value)}
             >
@@ -355,8 +355,8 @@ export function Dashboard() {
               type="button"
               className={`flex-1 rounded-md px-3 py-2 ${
                 mode === "evaluate"
-                  ? "bg-emerald-500 text-zinc-950"
-                  : "border border-zinc-700 text-zinc-300"
+                  ? "bg-[var(--accent)] text-white"
+                  : "border border-[var(--border-strong)] text-stone-700"
               }`}
               onClick={() => setMode("evaluate")}
             >
@@ -366,8 +366,8 @@ export function Dashboard() {
               type="button"
               className={`flex-1 rounded-md px-3 py-2 ${
                 mode === "backtest"
-                  ? "bg-emerald-500 text-zinc-950"
-                  : "border border-zinc-700 text-zinc-300"
+                  ? "bg-[var(--accent)] text-white"
+                  : "border border-[var(--border-strong)] text-stone-700"
               }`}
               onClick={() => setMode("backtest")}
             >
@@ -377,10 +377,10 @@ export function Dashboard() {
 
           {mode === "evaluate" ? (
             <label className="block space-y-1 text-sm">
-              <span className="text-zinc-400">Date</span>
+              <span className="text-[var(--muted)]">Date</span>
               <input
                 type="date"
-                className="w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2"
+                className="w-full rounded-md border border-[var(--border-strong)] bg-[var(--surface)] px-3 py-2"
                 value={date}
                 onChange={(e) => setDate(e.target.value)}
               />
@@ -388,19 +388,19 @@ export function Dashboard() {
           ) : (
             <div className="grid grid-cols-2 gap-2 text-sm">
               <label className="space-y-1">
-                <span className="text-zinc-400">Start</span>
+                <span className="text-[var(--muted)]">Start</span>
                 <input
                   type="date"
-                  className="w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2"
+                  className="w-full rounded-md border border-[var(--border-strong)] bg-[var(--surface)] px-3 py-2"
                   value={startDate}
                   onChange={(e) => setStartDate(e.target.value)}
                 />
               </label>
               <label className="space-y-1">
-                <span className="text-zinc-400">End</span>
+                <span className="text-[var(--muted)]">End</span>
                 <input
                   type="date"
-                  className="w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2"
+                  className="w-full rounded-md border border-[var(--border-strong)] bg-[var(--surface)] px-3 py-2"
                   value={endDate}
                   onChange={(e) => setEndDate(e.target.value)}
                 />
@@ -413,7 +413,7 @@ export function Dashboard() {
               type="button"
               disabled={pending}
               onClick={onRun}
-              className="rounded-md bg-emerald-500 px-3 py-2 text-sm font-medium text-zinc-950 hover:bg-emerald-400 disabled:opacity-60"
+              className="rounded-md bg-[var(--accent)] px-3 py-2 text-sm font-medium text-white hover:bg-[var(--accent-hover)] disabled:opacity-60"
             >
               {pending ? "Running…" : mode === "evaluate" ? "Run evaluate" : "Run backtest"}
             </button>
@@ -421,15 +421,15 @@ export function Dashboard() {
               type="button"
               disabled={pending}
               onClick={onSync}
-              className="rounded-md border border-zinc-700 px-3 py-2 text-sm text-zinc-200 hover:border-zinc-500 disabled:opacity-60"
+              className="rounded-md border border-[var(--border-strong)] px-3 py-2 text-sm text-stone-800 hover:border-stone-400 disabled:opacity-60"
             >
               Sync market data
             </button>
           </div>
 
           {selected ? (
-            <p className="text-xs text-zinc-500">
-              Provider: <span className="text-zinc-300">{selected.data_provider}</span>
+            <p className="text-xs text-[var(--muted)]">
+              Provider: <span className="text-stone-700">{selected.data_provider}</span>
               {" · "}
               {selected.name}
             </p>
@@ -438,12 +438,12 @@ export function Dashboard() {
 
         <section className="space-y-4">
           {error ? (
-            <div className="rounded-xl border border-red-900/60 bg-red-950/40 px-4 py-3 text-sm text-red-200">
+            <div className="rounded-xl border border-red-200 bg-[var(--danger-soft)] px-4 py-3 text-sm text-[var(--danger)]">
               {error}
             </div>
           ) : null}
           {status ? (
-            <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 px-4 py-3 text-sm text-zinc-300">
+            <div className="rounded-xl border border-[var(--border)] bg-[var(--surface-muted)] px-4 py-3 text-sm text-stone-700">
               {status}
             </div>
           ) : null}
@@ -457,25 +457,25 @@ export function Dashboard() {
             ].map(([label, value]) => (
               <div
                 key={label}
-                className="rounded-xl border border-zinc-800 bg-zinc-900/40 px-4 py-3"
+                className="rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3"
               >
-                <p className="text-xs uppercase tracking-wide text-zinc-500">
+                <p className="text-xs uppercase tracking-wide text-[var(--muted)]">
                   {label}
                 </p>
-                <p className="mt-1 text-xl font-semibold text-zinc-100">{value}</p>
+                <p className="mt-1 text-xl font-semibold text-[var(--foreground)]">{value}</p>
               </div>
             ))}
           </div>
 
           <TradeChart candles={candles} trades={trades} />
 
-          <div className="overflow-hidden rounded-xl border border-zinc-800">
-            <div className="border-b border-zinc-800 px-4 py-3 text-sm text-zinc-400">
+          <div className="overflow-hidden rounded-xl border border-[var(--border)]">
+            <div className="border-b border-[var(--border)] px-4 py-3 text-sm text-[var(--muted)]">
               Trades
             </div>
             <div className="overflow-x-auto">
               <table className="min-w-full text-left text-sm">
-                <thead className="bg-zinc-900/80 text-zinc-500">
+                <thead className="bg-[var(--surface-muted)] text-[var(--muted)]">
                   <tr>
                     <th className="px-3 py-2 font-medium">Side</th>
                     <th className="px-3 py-2 font-medium">Entry</th>
@@ -487,32 +487,32 @@ export function Dashboard() {
                 <tbody>
                   {trades.length === 0 ? (
                     <tr>
-                      <td className="px-3 py-4 text-zinc-500" colSpan={5}>
+                      <td className="px-3 py-4 text-[var(--muted)]" colSpan={5}>
                         No trades yet. Run evaluate or backtest.
                       </td>
                     </tr>
                   ) : (
                     trades.map((t, idx) => (
-                      <tr key={`${t.entry_time}-${idx}`} className="border-t border-zinc-800/80">
-                        <td className="px-3 py-2 capitalize text-zinc-200">{t.side}</td>
-                        <td className="px-3 py-2 text-zinc-300">
+                      <tr key={`${t.entry_time}-${idx}`} className="border-t border-[var(--border)]">
+                        <td className="px-3 py-2 capitalize text-stone-800">{t.side}</td>
+                        <td className="px-3 py-2 text-stone-700">
                           {fmtNum(t.entry_price)}
-                          <div className="text-xs text-zinc-500">
+                          <div className="text-xs text-[var(--muted)]">
                             {new Date(t.entry_time).toLocaleString()}
                           </div>
                         </td>
-                        <td className="px-3 py-2 text-zinc-300">
+                        <td className="px-3 py-2 text-stone-700">
                           {fmtNum(t.exit_price ?? null)}
-                          <div className="text-xs text-zinc-500">
+                          <div className="text-xs text-[var(--muted)]">
                             {t.exit_time
                               ? new Date(t.exit_time).toLocaleString()
                               : "—"}
                           </div>
                         </td>
-                        <td className="px-3 py-2 text-zinc-200">
+                        <td className="px-3 py-2 text-stone-800">
                           {fmtNum(t.profit_loss ?? null)}
                         </td>
-                        <td className="px-3 py-2 text-zinc-400">{t.signal}</td>
+                        <td className="px-3 py-2 text-[var(--muted)]">{t.signal}</td>
                       </tr>
                     ))
                   )}

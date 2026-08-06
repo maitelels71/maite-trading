@@ -39,23 +39,23 @@ export function TradeChart({ candles, trades }: Props) {
     const chart = createChart(containerRef.current, {
       autoSize: true,
       layout: {
-        background: { type: ColorType.Solid, color: "#09090b" },
-        textColor: "#a1a1aa",
+        background: { type: ColorType.Solid, color: "#ffffff" },
+        textColor: "#57534e",
       },
       grid: {
-        vertLines: { color: "#27272a" },
-        horzLines: { color: "#27272a" },
+        vertLines: { color: "#f0efed" },
+        horzLines: { color: "#f0efed" },
       },
-      rightPriceScale: { borderColor: "#3f3f46" },
-      timeScale: { borderColor: "#3f3f46", timeVisible: true, secondsVisible: false },
+      rightPriceScale: { borderColor: "#e7e5e4" },
+      timeScale: { borderColor: "#e7e5e4", timeVisible: true, secondsVisible: false },
     });
 
     const series = chart.addSeries(CandlestickSeries, {
-      upColor: "#34d399",
-      downColor: "#f87171",
+      upColor: "#0f766e",
+      downColor: "#b91c1c",
       borderVisible: false,
-      wickUpColor: "#34d399",
-      wickDownColor: "#f87171",
+      wickUpColor: "#0f766e",
+      wickDownColor: "#b91c1c",
     });
 
     chartRef.current = chart;
@@ -100,7 +100,7 @@ export function TradeChart({ candles, trades }: Props) {
       markers.push({
         time: toUtcSeconds(trade.entry_time) as Time,
         position: trade.side === "short" ? "aboveBar" : "belowBar",
-        color: trade.side === "long" ? "#34d399" : "#f87171",
+        color: trade.side === "long" ? "#0f766e" : "#b91c1c",
         shape: trade.side === "long" ? "arrowUp" : "arrowDown",
         text: trade.side === "long" ? "L entry" : "S entry",
       });
@@ -108,7 +108,7 @@ export function TradeChart({ candles, trades }: Props) {
         markers.push({
           time: toUtcSeconds(trade.exit_time) as Time,
           position: "aboveBar",
-          color: "#a1a1aa",
+          color: "#78716c",
           shape: "circle",
           text: "exit",
         });
@@ -123,13 +123,13 @@ export function TradeChart({ candles, trades }: Props) {
   }, [candles, trades]);
 
   return (
-    <div className="overflow-hidden rounded-xl border border-zinc-800 bg-zinc-950">
-      <div className="border-b border-zinc-800 px-4 py-3 text-sm text-zinc-400">
+    <div className="overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface)]">
+      <div className="border-b border-[var(--border)] px-4 py-3 text-sm text-[var(--muted)]">
         Candlestick · entries / exits
       </div>
       <div ref={containerRef} className="h-[420px] w-full" />
       {!candles.length ? (
-        <p className="px-4 py-3 text-sm text-zinc-500">
+        <p className="px-4 py-3 text-sm text-[var(--muted)]">
           No candles loaded yet. Sync data or run evaluate/backtest after candles
           exist in the database.
         </p>

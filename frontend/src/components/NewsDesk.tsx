@@ -15,10 +15,10 @@ function todayNyIso(): string {
 }
 
 function impactClass(impact: string): string {
-  if (impact === "red") return "border-red-800/70 bg-red-950/40 text-red-100";
-  if (impact === "orange") return "border-orange-800/60 bg-orange-950/30 text-orange-100";
-  if (impact === "yellow") return "border-amber-800/50 bg-amber-950/25 text-amber-100";
-  return "border-zinc-800 bg-zinc-900/40 text-zinc-300";
+  if (impact === "red") return "border-red-200 bg-[var(--danger-soft)] text-[var(--danger)]";
+  if (impact === "orange") return "border-orange-200 bg-orange-50 text-orange-800";
+  if (impact === "yellow") return "border-amber-200 bg-[var(--warn-soft)] text-[var(--warn)]";
+  return "border-[var(--border)] bg-[var(--surface)] text-stone-700";
 }
 
 export function NewsDesk() {
@@ -47,17 +47,17 @@ export function NewsDesk() {
     <div className="mx-auto max-w-6xl space-y-6 px-6 py-8">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h2 className="text-xl font-semibold text-zinc-100">News Desk</h2>
-          <p className="text-sm text-zinc-500">
+          <h2 className="text-xl font-semibold text-[var(--foreground)]">News Desk</h2>
+          <p className="text-sm text-[var(--muted)]">
             Red-folder economic events and headlines you should respect before ORB size.
           </p>
         </div>
         <div className="flex flex-wrap items-end gap-2">
           <label className="space-y-1 text-sm">
-            <span className="text-zinc-400">Session date (NY)</span>
+            <span className="text-[var(--muted)]">Session date (NY)</span>
             <input
               type="date"
-              className="block rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2"
+              className="block rounded-md border border-[var(--border-strong)] bg-[var(--surface)] px-3 py-2"
               value={date}
               onChange={(e) => setDate(e.target.value)}
             />
@@ -66,19 +66,19 @@ export function NewsDesk() {
             type="button"
             disabled={pending}
             onClick={load}
-            className="rounded-md bg-emerald-500 px-4 py-2 text-sm font-medium text-zinc-950 hover:bg-emerald-400 disabled:opacity-60"
+            className="rounded-md bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--accent-hover)] disabled:opacity-60"
           >
             {pending ? "Loading…" : "Refresh"}
           </button>
         </div>
       </div>
 
-      <p className="text-xs text-zinc-500">
-        API <code className="text-zinc-400">{getApiBase()}</code>
+      <p className="text-xs text-[var(--muted)]">
+        API <code className="text-[var(--muted)]">{getApiBase()}</code>
         {briefing ? (
           <>
             {" · "}
-            provider <code className="text-zinc-400">{briefing.provider}</code>
+            provider <code className="text-[var(--muted)]">{briefing.provider}</code>
             {" · "}
             {briefing.configured ? "live feed" : "checklist mode"}
           </>
@@ -86,7 +86,7 @@ export function NewsDesk() {
       </p>
 
       {error ? (
-        <div className="rounded-xl border border-red-900/60 bg-red-950/40 px-4 py-3 text-sm text-red-200">
+        <div className="rounded-xl border border-red-200 bg-[var(--danger-soft)] px-4 py-3 text-sm text-[var(--danger)]">
           {error}
         </div>
       ) : null}
@@ -95,8 +95,8 @@ export function NewsDesk() {
         <div
           className={`rounded-xl border px-4 py-3 text-sm ${
             briefing.red_events.length
-              ? "border-red-800/60 bg-red-950/30 text-red-100"
-              : "border-zinc-800 bg-zinc-900/50 text-zinc-300"
+              ? "border-red-200 bg-[var(--danger-soft)] text-[var(--danger)]"
+              : "border-[var(--border)] bg-[var(--surface-muted)] text-stone-700"
           }`}
         >
           {briefing.message}
@@ -104,11 +104,11 @@ export function NewsDesk() {
       ) : null}
 
       <section className="space-y-3">
-        <h3 className="text-sm font-medium uppercase tracking-wide text-red-400">
+        <h3 className="text-sm font-medium uppercase tracking-wide text-[var(--danger)]">
           Red folder · high impact today
         </h3>
         {(briefing?.red_events.length ?? 0) === 0 ? (
-          <p className="rounded-xl border border-zinc-800 bg-zinc-900/30 px-4 py-3 text-sm text-zinc-400">
+          <p className="rounded-xl border border-[var(--border)] bg-[var(--surface-muted)] px-4 py-3 text-sm text-[var(--muted)]">
             No red economic events loaded for this date
             {!briefing?.configured
               ? " — set FINNHUB_API_KEY for the live calendar"
@@ -125,7 +125,7 @@ export function NewsDesk() {
       </section>
 
       <section className="space-y-3">
-        <h3 className="text-sm font-medium uppercase tracking-wide text-orange-300">
+        <h3 className="text-sm font-medium uppercase tracking-wide text-orange-700">
           Be aware
         </h3>
         <div className="grid gap-2">
@@ -137,7 +137,7 @@ export function NewsDesk() {
 
       {(briefing?.watchlist_items.length ?? 0) > 0 ? (
         <section className="space-y-3">
-          <h3 className="text-sm font-medium text-zinc-300">Watchlist headlines</h3>
+          <h3 className="text-sm font-medium text-stone-700">Watchlist headlines</h3>
           <div className="grid gap-2 md:grid-cols-2">
             {briefing!.watchlist_items.map((item) => (
               <NewsCard key={`w-${item.id}`} item={item} compact />
@@ -148,7 +148,7 @@ export function NewsDesk() {
 
       {(briefing?.market_items.length ?? 0) > 0 ? (
         <section className="space-y-3">
-          <h3 className="text-sm font-medium text-zinc-300">Market feed</h3>
+          <h3 className="text-sm font-medium text-stone-700">Market feed</h3>
           <div className="grid gap-2 md:grid-cols-2">
             {briefing!.market_items.map((item) => (
               <NewsCard key={`m-${item.id}`} item={item} compact />

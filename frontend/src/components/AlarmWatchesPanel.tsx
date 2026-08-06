@@ -5,7 +5,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { checkPremarketAlarm, fetchStrategies } from "@/lib/api";
 import type { PremarketAlarmWatch, Strategy } from "@/lib/types";
 
-const STORAGE_KEY = "maite.premarket.alarms";
+const STORAGE_KEY = "maite.scanner.alarms";
+const LEGACY_STORAGE_KEY = "maite.premarket.alarms";
 const DEFAULT_INTERVAL_SEC = 30;
 
 type Props = {
@@ -16,7 +17,9 @@ type Props = {
 
 function loadStored(): PremarketAlarmWatch[] {
   try {
-    const raw = sessionStorage.getItem(STORAGE_KEY);
+    const raw =
+      sessionStorage.getItem(STORAGE_KEY) ??
+      sessionStorage.getItem(LEGACY_STORAGE_KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw) as PremarketAlarmWatch[];
     if (!Array.isArray(parsed)) return [];
@@ -44,7 +47,7 @@ function newId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
-export function PremarketAlarmPanel({
+export function AlarmWatchesPanel({
   sessionDate,
   timeframe,
   dataProvider,
@@ -145,13 +148,13 @@ export function PremarketAlarmPanel({
                 : w,
             ),
           );
-          setBanner(`Alarm met: ${watch.symbol} · ${watch.strategy}`);
+          setBanner(`Alert met: ${watch.symbol} · ${watch.strategy}`);
           try {
             if (
               typeof Notification !== "undefined" &&
               Notification.permission === "granted"
             ) {
-              new Notification(`Alarm: ${watch.symbol}`, {
+              new Notification(`Alert: ${watch.symbol}`, {
                 body: res.detail,
                 tag: `maite-alarm-${id}`,
               });
@@ -279,20 +282,20 @@ export function PremarketAlarmPanel({
   }
 
   return (
-    <section className="space-y-4 rounded-xl border border-zinc-800 bg-zinc-900/40 p-4">
+    <section className="space-y-4 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4">
       <div>
-        <h3 className="text-sm font-medium text-emerald-400">Alarm watches</h3>
-        <p className="text-xs text-zinc-500">
-          Poll one symbol + strategy until the setup matches.
+        <h3 className="text-sm font-medium text-[var(--accent)]">Alert me</h3>
+        <p className="text-xs text-[var(--muted)]">
+          Watch one symbol + strategy; we poll until it matches, then stop and notify.
         </p>
       </div>
 
       {banner ? (
-        <div className="rounded-md border border-emerald-700/50 bg-emerald-950/40 px-3 py-2 text-sm text-emerald-100">
+        <div className="rounded-md border border-emerald-200 bg-[var(--ok-soft)] px-3 py-2 text-sm text-[var(--accent-fg)]">
           {banner}
           <button
             type="button"
-            className="ml-3 text-xs text-emerald-300 underline"
+            className="ml-3 text-xs text-[var(--accent-fg)] underline"
             onClick={() => setBanner(null)}
           >
             dismiss
@@ -302,17 +305,17 @@ export function PremarketAlarmPanel({
 
       <div className="grid gap-3 sm:grid-cols-4">
         <label className="space-y-1 text-sm">
-          <span className="text-zinc-400">Symbol</span>
+          <span className="text-[var(--muted)]">Symbol</span>
           <input
-            className="w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2"
+            className="w-full rounded-md border border-[var(--border-strong)] bg-[var(--surface)] px-3 py-2"
             value={symbol}
             onChange={(e) => setSymbol(e.target.value.toUpperCase())}
           />
         </label>
         <label className="space-y-1 text-sm">
-          <span className="text-zinc-400">Strategy</span>
+          <span className="text-[var(--muted)]">Strategy</span>
           <select
-            className="w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2"
+            className="w-full rounded-md border border-[var(--border-strong)] bg-[var(--surface)] px-3 py-2"
             value={strategy}
             onChange={(e) => setStrategy(e.target.value)}
           >
@@ -327,11 +330,11 @@ export function PremarketAlarmPanel({
           </select>
         </label>
         <label className="space-y-1 text-sm">
-          <span className="text-zinc-400">Interval (sec)</span>
+          <span className="text-[var(--muted)]">Interval (sec)</span>
           <input
             type="number"
             min={5}
-            className="w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2"
+            className="w-full rounded-md border border-[var(--border-strong)] bg-[var(--surface)] px-3 py-2"
             value={intervalSec}
             onChange={(e) => setIntervalSec(Number(e.target.value) || DEFAULT_INTERVAL_SEC)}
           />
@@ -340,29 +343,29 @@ export function PremarketAlarmPanel({
           <button
             type="button"
             onClick={onAdd}
-            className="w-full rounded-md bg-emerald-500 px-4 py-2 text-sm font-medium text-zinc-950 hover:bg-emerald-400"
+            className="w-full rounded-md bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--accent-hover)]"
           >
             Add watch
           </button>
         </div>
       </div>
-      {formError ? <p className="text-sm text-red-300">{formError}</p> : null}
+      {formError ? <p className="text-sm text-[var(--danger)]">{formError}</p> : null}
 
       {watches.length === 0 ? (
-        <p className="text-sm text-zinc-500">No watches yet.</p>
+        <p className="text-sm text-[var(--muted)]">No watches yet.</p>
       ) : (
-        <ul className="divide-y divide-zinc-800 overflow-hidden rounded-lg border border-zinc-800">
+        <ul className="divide-y divide-[var(--border)] overflow-hidden rounded-lg border border-[var(--border)]">
           {watches.map((w) => (
             <li
               key={w.id}
               className="flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
             >
               <div>
-                <p className="font-medium text-zinc-100">
+                <p className="font-medium text-[var(--foreground)]">
                   {w.symbol}{" "}
-                  <span className="text-xs font-normal text-zinc-500">{w.strategy}</span>
+                  <span className="text-xs font-normal text-[var(--muted)]">{w.strategy}</span>
                 </p>
-                <p className="text-xs text-zinc-500">
+                <p className="text-xs text-[var(--muted)]">
                   every {w.intervalSec}s · {w.status}
                   {w.lastStatus ? ` · last ${w.lastStatus}` : ""}
                   {w.lastCheckedAt
@@ -370,13 +373,13 @@ export function PremarketAlarmPanel({
                     : ""}
                 </p>
                 {w.lastDetail ? (
-                  <p className="mt-1 text-sm text-zinc-400">{w.lastDetail}</p>
+                  <p className="mt-1 text-sm text-[var(--muted)]">{w.lastDetail}</p>
                 ) : null}
                 {w.lastError ? (
-                  <p className="mt-1 text-sm text-red-300">{w.lastError}</p>
+                  <p className="mt-1 text-sm text-[var(--danger)]">{w.lastError}</p>
                 ) : null}
                 {w.metAt ? (
-                  <p className="mt-1 text-sm text-emerald-300">
+                  <p className="mt-1 text-sm text-[var(--accent-fg)]">
                     Met at {new Date(w.metAt).toLocaleTimeString()}
                   </p>
                 ) : null}
@@ -386,7 +389,7 @@ export function PremarketAlarmPanel({
                   <button
                     type="button"
                     onClick={() => stopWatch(w.id)}
-                    className="rounded-md border border-zinc-700 px-3 py-1.5 text-xs text-zinc-200 hover:border-zinc-500"
+                    className="rounded-md border border-[var(--border-strong)] px-3 py-1.5 text-xs text-stone-800 hover:border-stone-400"
                   >
                     Stop
                   </button>
@@ -394,7 +397,7 @@ export function PremarketAlarmPanel({
                   <button
                     type="button"
                     onClick={() => startWatch(w.id)}
-                    className="rounded-md border border-emerald-700/60 px-3 py-1.5 text-xs text-emerald-200 hover:border-emerald-500"
+                    className="rounded-md border border-emerald-300 px-3 py-1.5 text-xs text-[var(--accent-fg)] hover:border-emerald-500"
                   >
                     Start
                   </button>
@@ -402,7 +405,7 @@ export function PremarketAlarmPanel({
                 <button
                   type="button"
                   onClick={() => removeWatch(w.id)}
-                  className="rounded-md border border-zinc-700 px-3 py-1.5 text-xs text-zinc-400 hover:border-zinc-500"
+                  className="rounded-md border border-[var(--border-strong)] px-3 py-1.5 text-xs text-[var(--muted)] hover:border-stone-400"
                 >
                   Remove
                 </button>

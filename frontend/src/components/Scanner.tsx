@@ -2,10 +2,18 @@
 
 import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
 
-import { fetchStrategies, getApiBase, scanStrategies } from "@/lib/api";
+import { AlarmWatchesPanel } from "@/components/AlarmWatchesPanel";
+import {
+  fetchStrategies,
+  getApiBase,
+  getPremarketResult,
+  scanStrategies,
+  startPremarketEvaluate,
+} from "@/lib/api";
 import {
   TIMEFRAMES,
   VENUE_META,
+  type PremarketResult,
   type ScanHit,
   type ScanResponse,
   type Strategy,
@@ -25,15 +33,15 @@ function todayNyIso(): string {
 
 function statusStyle(status: string): string {
   if (status.startsWith("active_") || status.startsWith("signal_")) {
-    return "border-emerald-700/60 bg-emerald-950/40 text-emerald-200";
+    return "border-emerald-200 bg-[var(--ok-soft)] text-[var(--ok)]";
   }
   if (status === "flat_after_trades") {
-    return "border-sky-800/60 bg-sky-950/30 text-sky-200";
+    return "border-sky-200 bg-[var(--info-soft)] text-[var(--info)]";
   }
   if (status === "no_data" || status === "error") {
-    return "border-amber-900/50 bg-amber-950/30 text-amber-100";
+    return "border-amber-200 bg-[var(--warn-soft)] text-[var(--warn)]";
   }
-  return "border-zinc-800 bg-zinc-900/40 text-zinc-300";
+  return "border-[var(--border)] bg-[var(--surface)] text-stone-700";
 }
 
 export function Scanner() {
@@ -45,8 +53,11 @@ export function Scanner() {
   const [matchesOnly, setMatchesOnly] = useState(false);
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [result, setResult] = useState<ScanResponse | null>(null);
+  const [savedRun, setSavedRun] = useState<PremarketResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [status, setStatus] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  const [saving, startSave] = useTransition();
 
   useEffect(() => {
     let cancelled = false;
@@ -102,6 +113,42 @@ export function Scanner() {
     return () => window.clearInterval(id);
   }, [autoRefresh, runScan]);
 
+  const loadSavedRun = useCallback(() => {
+    setError(null);
+    startSave(async () => {
+      try {
+        const res = await getPremarketResult();
+        setSavedRun(res);
+        setStatus(`Loaded saved run ${res.run_id.slice(0, 8)}…`);
+      } catch (err) {
+        setSavedRun(null);
+        setStatus(null);
+        setError(err instanceof Error ? err.message : "No saved run yet");
+      }
+    });
+  }, []);
+
+  function saveRun() {
+    setError(null);
+    setStatus(null);
+    startSave(async () => {
+      try {
+        const res = await startPremarketEvaluate({
+          session_date: date,
+          timeframe,
+          data_provider: venue === "all" ? undefined : venue,
+          strategies: selectedStrategies.length ? selectedStrategies : undefined,
+        });
+        setSavedRun(res);
+        setStatus(
+          `Run saved · ${res.summary.match_count} matches / ${res.summary.total_checked} checked`,
+        );
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Save run failed");
+      }
+    });
+  }
+
   const hits = result?.hits ?? [];
   const matched = useMemo(() => hits.filter((h) => h.matched), [hits]);
 
@@ -115,23 +162,23 @@ export function Scanner() {
     <div className="mx-auto max-w-6xl space-y-6 px-6 py-8">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h2 className="text-xl font-semibold text-zinc-100">Market Scanner</h2>
-          <p className="text-sm text-zinc-500">
-            Polls your universe against available strategies (ORB now; more later).
-            Refresh every {POLL_MS / 1000}s when live.
+          <h2 className="text-xl font-semibold text-[var(--foreground)]">Market Scanner</h2>
+          <p className="text-sm text-[var(--muted)]">
+            Live board of your universe vs strategies. Optionally save a snapshot run
+            and watch symbols until they match.
           </p>
         </div>
-        <p className="text-xs text-zinc-500">
-          API <code className="text-zinc-400">{getApiBase()}</code>
+        <p className="text-xs text-[var(--muted)]">
+          API <code className="text-[var(--muted)]">{getApiBase()}</code>
         </p>
       </div>
 
-      <section className="grid gap-4 rounded-xl border border-zinc-800 bg-zinc-900/40 p-4 lg:grid-cols-[1fr_auto]">
+      <section className="grid gap-4 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4 lg:grid-cols-[1fr_auto]">
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <label className="space-y-1 text-sm">
-            <span className="text-zinc-400">Venue</span>
+            <span className="text-[var(--muted)]">Venue</span>
             <select
-              className="w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2"
+              className="w-full rounded-md border border-[var(--border-strong)] bg-[var(--surface)] px-3 py-2"
               value={venue}
               onChange={(e) => setVenue(e.target.value as Venue | "all")}
             >
@@ -141,9 +188,9 @@ export function Scanner() {
             </select>
           </label>
           <label className="space-y-1 text-sm">
-            <span className="text-zinc-400">Timeframe</span>
+            <span className="text-[var(--muted)]">Timeframe</span>
             <select
-              className="w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2"
+              className="w-full rounded-md border border-[var(--border-strong)] bg-[var(--surface)] px-3 py-2"
               value={timeframe}
               onChange={(e) => setTimeframe(e.target.value)}
             >
@@ -155,16 +202,16 @@ export function Scanner() {
             </select>
           </label>
           <label className="space-y-1 text-sm">
-            <span className="text-zinc-400">Session date (NY)</span>
+            <span className="text-[var(--muted)]">Session date (NY)</span>
             <input
               type="date"
-              className="w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2"
+              className="w-full rounded-md border border-[var(--border-strong)] bg-[var(--surface)] px-3 py-2"
               value={date}
               onChange={(e) => setDate(e.target.value)}
             />
           </label>
           <div className="flex flex-col justify-end gap-2 text-sm">
-            <label className="flex items-center gap-2 text-zinc-300">
+            <label className="flex items-center gap-2 text-stone-700">
               <input
                 type="checkbox"
                 checked={matchesOnly}
@@ -172,19 +219,19 @@ export function Scanner() {
               />
               Matches only
             </label>
-            <label className="flex items-center gap-2 text-zinc-300">
+            <label className="flex items-center gap-2 text-stone-700">
               <input
                 type="checkbox"
                 checked={autoRefresh}
                 onChange={(e) => setAutoRefresh(e.target.checked)}
               />
-              Auto-refresh
+              Auto-refresh ({POLL_MS / 1000}s)
             </label>
           </div>
         </div>
 
         <div className="flex flex-col gap-2">
-          <p className="text-xs uppercase tracking-wide text-zinc-500">Strategies</p>
+          <p className="text-xs uppercase tracking-wide text-[var(--muted)]">Strategies</p>
           <div className="flex flex-wrap gap-2">
             {(strategies.length
               ? strategies
@@ -198,8 +245,8 @@ export function Scanner() {
                   onClick={() => toggleStrategy(s.name)}
                   className={`rounded-md px-3 py-1.5 text-xs ${
                     on
-                      ? "bg-emerald-500 text-zinc-950"
-                      : "border border-zinc-700 text-zinc-300"
+                      ? "bg-[var(--accent)] text-white"
+                      : "border border-[var(--border-strong)] text-stone-700"
                   }`}
                 >
                   {s.name}
@@ -207,20 +254,45 @@ export function Scanner() {
               );
             })}
           </div>
-          <button
-            type="button"
-            disabled={pending}
-            onClick={runScan}
-            className="mt-auto rounded-md bg-emerald-500 px-4 py-2 text-sm font-medium text-zinc-950 hover:bg-emerald-400 disabled:opacity-60"
-          >
-            {pending ? "Scanning…" : "Scan now"}
-          </button>
+          <div className="mt-auto flex flex-col gap-2 sm:flex-row lg:flex-col">
+            <button
+              type="button"
+              disabled={pending}
+              onClick={runScan}
+              className="rounded-md bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--accent-hover)] disabled:opacity-60"
+            >
+              {pending ? "Scanning…" : "Scan now"}
+            </button>
+            <button
+              type="button"
+              disabled={saving}
+              onClick={saveRun}
+              className="rounded-md border border-[var(--border-strong)] px-4 py-2 text-sm text-stone-800 hover:border-stone-400 disabled:opacity-60"
+              title="Persist this scan snapshot with a run id you can reload later"
+            >
+              {saving ? "Saving…" : "Save run"}
+            </button>
+            <button
+              type="button"
+              disabled={saving}
+              onClick={loadSavedRun}
+              className="rounded-md border border-[var(--border-strong)] px-4 py-2 text-sm text-stone-800 hover:border-stone-400 disabled:opacity-60"
+              title="Reload the last saved run snapshot"
+            >
+              Load last run
+            </button>
+          </div>
         </div>
       </section>
 
       {error ? (
-        <div className="rounded-xl border border-red-900/60 bg-red-950/40 px-4 py-3 text-sm text-red-200">
+        <div className="rounded-xl border border-red-200 bg-[var(--danger-soft)] px-4 py-3 text-sm text-[var(--danger)]">
           {error}
+        </div>
+      ) : null}
+      {status ? (
+        <div className="rounded-xl border border-[var(--border)] bg-[var(--surface-muted)] px-4 py-3 text-sm text-stone-700">
+          {status}
         </div>
       ) : null}
 
@@ -235,17 +307,35 @@ export function Scanner() {
         ].map(([label, value]) => (
           <div
             key={label}
-            className="rounded-xl border border-zinc-800 bg-zinc-900/40 px-4 py-3"
+            className="rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3"
           >
-            <p className="text-xs uppercase tracking-wide text-zinc-500">{label}</p>
-            <p className="mt-1 text-xl font-semibold text-zinc-100">{value}</p>
+            <p className="text-xs uppercase tracking-wide text-[var(--muted)]">{label}</p>
+            <p className="mt-1 text-xl font-semibold text-[var(--foreground)]">{value}</p>
           </div>
         ))}
       </div>
 
+      {savedRun ? (
+        <section className="rounded-xl border border-[var(--border)] bg-[var(--surface-muted)] px-4 py-3 text-sm text-stone-700">
+          <p>
+            Saved run{" "}
+            <code className="text-[var(--foreground)]">{savedRun.run_id.slice(0, 8)}</code>
+            {" · "}
+            {savedRun.summary.match_count} matches / {savedRun.summary.total_checked}{" "}
+            checked · {new Date(savedRun.finished_at).toLocaleString()}
+          </p>
+        </section>
+      ) : null}
+
+      <AlarmWatchesPanel
+        sessionDate={date}
+        timeframe={timeframe}
+        dataProvider={venue === "all" ? undefined : venue}
+      />
+
       {matched.length > 0 ? (
         <section className="space-y-2">
-          <h3 className="text-sm font-medium text-emerald-400">Active matches</h3>
+          <h3 className="text-sm font-medium text-[var(--accent)]">Active matches</h3>
           <div className="grid gap-2 md:grid-cols-2">
             {matched.map((hit) => (
               <HitCard key={`${hit.symbol}-${hit.strategy}-m`} hit={hit} highlight />
@@ -253,19 +343,19 @@ export function Scanner() {
           </div>
         </section>
       ) : (
-        <p className="rounded-xl border border-zinc-800 bg-zinc-900/30 px-4 py-3 text-sm text-zinc-400">
+        <p className="rounded-xl border border-[var(--border)] bg-[var(--surface-muted)] px-4 py-3 text-sm text-[var(--muted)]">
           No strategy matches yet. Until Schwab / TradeAdvocate data is synced, most
-          rows will show <code className="text-zinc-300">no_data</code>.
+          rows will show <code className="text-stone-700">no_data</code>.
         </p>
       )}
 
-      <section className="overflow-hidden rounded-xl border border-zinc-800">
-        <div className="border-b border-zinc-800 px-4 py-3 text-sm text-zinc-400">
+      <section className="overflow-hidden rounded-xl border border-[var(--border)]">
+        <div className="border-b border-[var(--border)] px-4 py-3 text-sm text-[var(--muted)]">
           Full scan board
         </div>
         <div className="overflow-x-auto">
           <table className="min-w-full text-left text-sm">
-            <thead className="bg-zinc-900/80 text-zinc-500">
+            <thead className="bg-[var(--surface-muted)] text-[var(--muted)]">
               <tr>
                 <th className="px-3 py-2 font-medium">Symbol</th>
                 <th className="px-3 py-2 font-medium">Venue</th>
@@ -277,7 +367,7 @@ export function Scanner() {
             <tbody>
               {hits.length === 0 ? (
                 <tr>
-                  <td className="px-3 py-4 text-zinc-500" colSpan={5}>
+                  <td className="px-3 py-4 text-[var(--muted)]" colSpan={5}>
                     Run a scan to populate results.
                   </td>
                 </tr>
@@ -285,14 +375,14 @@ export function Scanner() {
                 hits.map((hit) => (
                   <tr
                     key={`${hit.symbol}-${hit.strategy}`}
-                    className="border-t border-zinc-800/80"
+                    className="border-t border-[var(--border)]"
                   >
-                    <td className="px-3 py-2 text-zinc-100">
+                    <td className="px-3 py-2 text-[var(--foreground)]">
                       {hit.symbol}
-                      <div className="text-xs text-zinc-500">{hit.name}</div>
+                      <div className="text-xs text-[var(--muted)]">{hit.name}</div>
                     </td>
-                    <td className="px-3 py-2 text-zinc-400">{hit.data_provider}</td>
-                    <td className="px-3 py-2 text-zinc-300">{hit.strategy}</td>
+                    <td className="px-3 py-2 text-[var(--muted)]">{hit.data_provider}</td>
+                    <td className="px-3 py-2 text-stone-700">{hit.strategy}</td>
                     <td className="px-3 py-2">
                       <span
                         className={`inline-block rounded px-2 py-0.5 text-xs ${statusStyle(hit.status)}`}
@@ -300,7 +390,7 @@ export function Scanner() {
                         {hit.status}
                       </span>
                     </td>
-                    <td className="px-3 py-2 text-zinc-400">{hit.detail}</td>
+                    <td className="px-3 py-2 text-[var(--muted)]">{hit.detail}</td>
                   </tr>
                 ))
               )}
@@ -317,20 +407,20 @@ function HitCard({ hit, highlight }: { hit: ScanHit; highlight?: boolean }) {
     <div
       className={`rounded-xl border px-4 py-3 ${
         highlight
-          ? "border-emerald-700/50 bg-emerald-950/20"
-          : "border-zinc-800 bg-zinc-900/40"
+          ? "border-emerald-200 bg-[var(--ok-soft)]"
+          : "border-[var(--border)] bg-[var(--surface)]"
       }`}
     >
       <div className="flex items-center justify-between gap-2">
-        <p className="text-lg font-semibold text-zinc-100">{hit.symbol}</p>
+        <p className="text-lg font-semibold text-[var(--foreground)]">{hit.symbol}</p>
         <span className={`rounded px-2 py-0.5 text-xs ${statusStyle(hit.status)}`}>
           {hit.status}
         </span>
       </div>
-      <p className="mt-1 text-xs text-zinc-500">
+      <p className="mt-1 text-xs text-[var(--muted)]">
         {hit.strategy} · {hit.data_provider}
       </p>
-      <p className="mt-2 text-sm text-zinc-300">{hit.detail}</p>
+      <p className="mt-2 text-sm text-stone-700">{hit.detail}</p>
     </div>
   );
 }

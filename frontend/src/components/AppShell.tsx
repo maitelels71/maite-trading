@@ -4,26 +4,24 @@ import { useState } from "react";
 
 import { Dashboard } from "@/components/Dashboard";
 import { NewsDesk } from "@/components/NewsDesk";
-import { PremarketDesk } from "@/components/PremarketDesk";
 import { Scanner } from "@/components/Scanner";
 
-type AppView = "analyzer" | "scanner" | "premarket" | "news";
+type AppView = "analyzer" | "scanner" | "news";
 
 export function AppShell() {
   const [view, setView] = useState<AppView>("analyzer");
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-zinc-100">
-      <nav className="border-b border-zinc-800/80">
-        <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-2 px-6 py-3">
-          <p className="mr-4 text-xs uppercase tracking-[0.22em] text-emerald-400">
+    <div className="min-h-screen text-[var(--foreground)]">
+      <nav className="border-b border-[var(--border)] bg-[var(--surface)]/90 backdrop-blur-sm">
+        <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-1 px-6 py-3">
+          <p className="mr-5 text-[11px] font-semibold uppercase tracking-[0.2em] text-[var(--accent)]">
             Maite Trading
           </p>
           {(
             [
               ["analyzer", "Analyzer"],
               ["scanner", "Scanner"],
-              ["premarket", "Premarket"],
               ["news", "News"],
             ] as const
           ).map(([id, label]) => {
@@ -33,10 +31,10 @@ export function AppShell() {
                 key={id}
                 type="button"
                 onClick={() => setView(id)}
-                className={`rounded-md px-3 py-1.5 text-sm ${
+                className={`rounded-md px-3 py-1.5 text-sm font-medium transition ${
                   active
-                    ? "bg-emerald-500 text-zinc-950"
-                    : "text-zinc-400 hover:text-zinc-200"
+                    ? "bg-[var(--accent)] text-white"
+                    : "text-[var(--muted)] hover:bg-stone-100 hover:text-[var(--foreground)]"
                 }`}
               >
                 {label}
@@ -49,8 +47,6 @@ export function AppShell() {
         <Dashboard />
       ) : view === "scanner" ? (
         <Scanner />
-      ) : view === "premarket" ? (
-        <PremarketDesk />
       ) : (
         <NewsDesk />
       )}
