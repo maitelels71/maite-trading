@@ -2,14 +2,15 @@
 
 import { useState } from "react";
 
+import { DailyReview } from "@/components/DailyReview";
 import { Dashboard } from "@/components/Dashboard";
 import { NewsDesk } from "@/components/NewsDesk";
-import { Scanner } from "@/components/Scanner";
+import { StrategiesDesk } from "@/components/StrategiesDesk";
 
-type AppView = "analyzer" | "scanner" | "news";
+type AppView = "analyzer" | "strategies" | "daily" | "news";
 
 export function AppShell() {
-  const [view, setView] = useState<AppView>("analyzer");
+  const [view, setView] = useState<AppView>("daily");
 
   return (
     <div className="min-h-screen text-[var(--foreground)]">
@@ -20,8 +21,9 @@ export function AppShell() {
           </p>
           {(
             [
+              ["daily", "Daily"],
+              ["strategies", "Strategies"],
               ["analyzer", "Analyzer"],
-              ["scanner", "Scanner"],
               ["news", "News"],
             ] as const
           ).map(([id, label]) => {
@@ -43,10 +45,12 @@ export function AppShell() {
           })}
         </div>
       </nav>
-      {view === "analyzer" ? (
+      {view === "daily" ? (
+        <DailyReview />
+      ) : view === "strategies" ? (
+        <StrategiesDesk />
+      ) : view === "analyzer" ? (
         <Dashboard />
-      ) : view === "scanner" ? (
-        <Scanner />
       ) : (
         <NewsDesk />
       )}

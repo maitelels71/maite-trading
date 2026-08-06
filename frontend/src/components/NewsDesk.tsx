@@ -49,7 +49,7 @@ export function NewsDesk() {
         <div>
           <h2 className="text-xl font-semibold text-[var(--foreground)]">News Desk</h2>
           <p className="text-sm text-[var(--muted)]">
-            Red-folder economic events and headlines you should respect before ORB size.
+            Red-folder events and session headlines before you size risk.
           </p>
         </div>
         <div className="flex flex-wrap items-end gap-2">
@@ -126,7 +126,7 @@ export function NewsDesk() {
 
       <section className="space-y-3">
         <h3 className="text-sm font-medium uppercase tracking-wide text-orange-700">
-          Be aware
+          Session headlines
         </h3>
         <div className="grid gap-2">
           {(briefing?.aware_items ?? []).map((item) => (
