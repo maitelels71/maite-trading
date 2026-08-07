@@ -5,6 +5,7 @@
 | Tab | Purpose |
 |-----|---------|
 | **Daily** | Professional pre-open / session / post checklist + bias + notes (local) |
+| **Mind** | Psychotrading: ritual A–E, life/trading mantras, quotes |
 | **Strategies** | Playbooks (rules by timeframe, entry/exit) + live scan for that strategy |
 | **Analyzer** | Deep-dive one symbol: evaluate / backtest / chart |
 | **News** | Red folder calendar + session headlines |

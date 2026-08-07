@@ -4,10 +4,11 @@ import { useState } from "react";
 
 import { DailyReview } from "@/components/DailyReview";
 import { Dashboard } from "@/components/Dashboard";
+import { MindDesk } from "@/components/MindDesk";
 import { NewsDesk } from "@/components/NewsDesk";
 import { StrategiesDesk } from "@/components/StrategiesDesk";
 
-type AppView = "analyzer" | "strategies" | "daily" | "news";
+type AppView = "analyzer" | "strategies" | "daily" | "mind" | "news";
 
 export function AppShell() {
   const [view, setView] = useState<AppView>("daily");
@@ -22,6 +23,7 @@ export function AppShell() {
           {(
             [
               ["daily", "Daily"],
+              ["mind", "Mind"],
               ["strategies", "Strategies"],
               ["analyzer", "Analyzer"],
               ["news", "News"],
@@ -47,6 +49,8 @@ export function AppShell() {
       </nav>
       {view === "daily" ? (
         <DailyReview />
+      ) : view === "mind" ? (
+        <MindDesk />
       ) : view === "strategies" ? (
         <StrategiesDesk />
       ) : view === "analyzer" ? (
