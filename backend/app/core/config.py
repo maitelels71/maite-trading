@@ -59,6 +59,8 @@ class Settings(BaseSettings):
         default=".secrets/schwab_token.json",
         alias="SCHWAB_TOKEN_PATH",
     )
+    # Optional JSON blob (Secrets Manager / Lambda). Same shape as the token file.
+    schwab_token_json: str = Field(default="", alias="SCHWAB_TOKEN_JSON")
 
     # TradeAdvocate (futures)
     tradeadvocate_api_key: str = Field(default="", alias="TRADEADVOCATE_API_KEY")

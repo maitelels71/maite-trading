@@ -18,7 +18,7 @@ function impactClass(impact: string): string {
   if (impact === "red") return "border-red-200 bg-[var(--danger-soft)] text-[var(--danger)]";
   if (impact === "orange") return "border-orange-200 bg-orange-50 text-orange-800";
   if (impact === "yellow") return "border-amber-200 bg-[var(--warn-soft)] text-[var(--warn)]";
-  return "border-[var(--border)] bg-[var(--surface)] text-stone-700";
+  return "border-[var(--border)] bg-[var(--surface)] text-[var(--muted)]";
 }
 
 export function NewsDesk() {
@@ -96,7 +96,7 @@ export function NewsDesk() {
           className={`rounded-xl border px-4 py-3 text-sm ${
             briefing.red_events.length
               ? "border-red-200 bg-[var(--danger-soft)] text-[var(--danger)]"
-              : "border-[var(--border)] bg-[var(--surface-muted)] text-stone-700"
+              : "border-[var(--border)] bg-[var(--surface-muted)] text-[var(--muted)]"
           }`}
         >
           {briefing.message}
@@ -137,7 +137,7 @@ export function NewsDesk() {
 
       {(briefing?.watchlist_items.length ?? 0) > 0 ? (
         <section className="space-y-3">
-          <h3 className="text-sm font-medium text-stone-700">Watchlist headlines</h3>
+          <h3 className="text-sm font-medium text-[var(--muted)]">Watchlist headlines</h3>
           <div className="grid gap-2 md:grid-cols-2">
             {briefing!.watchlist_items.map((item) => (
               <NewsCard key={`w-${item.id}`} item={item} compact />
@@ -148,7 +148,7 @@ export function NewsDesk() {
 
       {(briefing?.market_items.length ?? 0) > 0 ? (
         <section className="space-y-3">
-          <h3 className="text-sm font-medium text-stone-700">Market feed</h3>
+          <h3 className="text-sm font-medium text-[var(--muted)]">Market feed</h3>
           <div className="grid gap-2 md:grid-cols-2">
             {briefing!.market_items.map((item) => (
               <NewsCard key={`m-${item.id}`} item={item} compact />

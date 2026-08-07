@@ -1,12 +1,14 @@
 @import "tailwindcss";
 
 :root {
+  color-scheme: light;
   --background: #f4f5f3;
   --background-accent: #eef1ec;
   --foreground: #1c1917;
   --muted: #57534e;
   --surface: #ffffff;
   --surface-muted: #fafaf9;
+  --hover: #f5f5f4;
   --border: #e7e5e4;
   --border-strong: #d6d3d1;
   --accent: #0f766e;
@@ -21,6 +23,44 @@
   --ok-soft: #ecfdf5;
   --info: #0369a1;
   --info-soft: #f0f9ff;
+  --chart-bg: #ffffff;
+  --chart-text: #57534e;
+  --chart-grid: #f0efed;
+  --chart-border: #e7e5e4;
+  --chart-up: #0f766e;
+  --chart-down: #b91c1c;
+}
+
+/* Trading-desk dark (watchlist / chart reference) */
+html[data-theme="dark"] {
+  color-scheme: dark;
+  --background: #000000;
+  --background-accent: #0c0c0c;
+  --foreground: #e8e8e8;
+  --muted: #8b8b8b;
+  --surface: #121212;
+  --surface-muted: #1a1a1a;
+  --hover: #222222;
+  --border: #2a2a2a;
+  --border-strong: #3a3a3a;
+  --accent: #2dd4bf;
+  --accent-hover: #5eead4;
+  --accent-soft: #042f2e;
+  --accent-fg: #99f6e4;
+  --danger: #f87171;
+  --danger-soft: #3f1212;
+  --warn: #fbbf24;
+  --warn-soft: #3b2f0b;
+  --ok: #4ade80;
+  --ok-soft: #052e16;
+  --info: #60a5fa;
+  --info-soft: #0c1a2e;
+  --chart-bg: #000000;
+  --chart-text: #9ca3af;
+  --chart-grid: #1a1a1a;
+  --chart-border: #2a2a2a;
+  --chart-up: #22c55e;
+  --chart-down: #ef4444;
 }
 
 @theme inline {
@@ -33,13 +73,20 @@
 body {
   background:
     radial-gradient(1200px 500px at 10% -10%, var(--background-accent), transparent 55%),
-    radial-gradient(900px 400px at 100% 0%, #e8eeea, transparent 50%),
+    radial-gradient(900px 400px at 100% 0%, color-mix(in srgb, var(--accent) 8%, transparent), transparent 50%),
     var(--background);
   color: var(--foreground);
   font-family: var(--font-source-sans), ui-sans-serif, system-ui, sans-serif;
   font-size: 15px;
   line-height: 1.55;
   -webkit-font-smoothing: antialiased;
+}
+
+html[data-theme="dark"] body {
+  background:
+    radial-gradient(900px 420px at 0% 0%, #0a1628, transparent 55%),
+    radial-gradient(700px 360px at 100% 0%, #071a16, transparent 50%),
+    var(--background);
 }
 
 select,
@@ -52,14 +99,16 @@ textarea {
 select,
 input[type="date"],
 input[type="text"],
-input[type="number"] {
+input[type="number"],
+textarea {
   background: var(--surface);
   color: var(--foreground);
   border-color: var(--border-strong);
 }
 
 select:focus,
-input:focus {
+input:focus,
+textarea:focus {
   border-color: var(--accent);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent);
 }

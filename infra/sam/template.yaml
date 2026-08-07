@@ -78,6 +78,7 @@ Resources:
             - Effect: Allow
               Action:
                 - secretsmanager:GetSecretValue
+                - secretsmanager:PutSecretValue
               Resource: !Ref AppSecrets
       Events:
         ProxyApi:
@@ -165,22 +166,19 @@ Resources:
 
   AppSecrets:
     Type: AWS::SecretsManager::Secret
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Properties:
       Name: !Sub "${ProjectName}/${EnvironmentName}/app"
-      Description: Schwab + TradeAdvocate credentials
-      SecretString: !Sub |
-        {
-          "SCHWAB_CLIENT_ID": "",
-          "SCHWAB_CLIENT_SECRET": "",
-          "SCHWAB_REDIRECT_URI": "https://127.0.0.1:8182",
-          "TRADEADVOCATE_API_KEY": "",
-          "TRADEADVOCATE_API_SECRET": "",
-          "TRADEADVOCATE_BASE_URL": "",
-          "TRADEADVOCATE_ACCOUNT_ID": "",
-          "FINNHUB_API_KEY": "",
-          "DEFAULT_TIMEZONE": "America/New_York",
-          "CORS_ORIGINS": "${CorsOrigins}"
-        }
+      Description: >
+        Broker credentials (Schwab / TradeAdvocate / Finnhub).
+        Values are managed out-of-band (Admin Publish / restore_staging_secrets).
+        Do not put placeholder SecretString here — CloudFormation would overwrite live secrets on deploy.
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref EnvironmentName
 
   WebBucket:
     Type: AWS::S3::Bucket

@@ -13,6 +13,7 @@ import {
   type UTCTimestamp,
 } from "lightweight-charts";
 
+import { useTheme } from "@/components/ThemeProvider";
 import type { Candle, Trade } from "@/lib/types";
 
 type Props = {
@@ -28,7 +29,16 @@ function num(v: string | number): number {
   return typeof v === "number" ? v : Number(v);
 }
 
+function cssVar(name: string, fallback: string): string {
+  if (typeof window === "undefined") return fallback;
+  const value = getComputedStyle(document.documentElement)
+    .getPropertyValue(name)
+    .trim();
+  return value || fallback;
+}
+
 export function TradeChart({ candles, trades }: Props) {
+  const { theme } = useTheme();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const seriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
@@ -39,23 +49,32 @@ export function TradeChart({ candles, trades }: Props) {
     const chart = createChart(containerRef.current, {
       autoSize: true,
       layout: {
-        background: { type: ColorType.Solid, color: "#ffffff" },
-        textColor: "#57534e",
+        background: {
+          type: ColorType.Solid,
+          color: cssVar("--chart-bg", "#ffffff"),
+        },
+        textColor: cssVar("--chart-text", "#57534e"),
       },
       grid: {
-        vertLines: { color: "#f0efed" },
-        horzLines: { color: "#f0efed" },
+        vertLines: { color: cssVar("--chart-grid", "#f0efed") },
+        horzLines: { color: cssVar("--chart-grid", "#f0efed") },
       },
-      rightPriceScale: { borderColor: "#e7e5e4" },
-      timeScale: { borderColor: "#e7e5e4", timeVisible: true, secondsVisible: false },
+      rightPriceScale: { borderColor: cssVar("--chart-border", "#e7e5e4") },
+      timeScale: {
+        borderColor: cssVar("--chart-border", "#e7e5e4"),
+        timeVisible: true,
+        secondsVisible: false,
+      },
     });
 
+    const up = cssVar("--chart-up", "#0f766e");
+    const down = cssVar("--chart-down", "#b91c1c");
     const series = chart.addSeries(CandlestickSeries, {
-      upColor: "#0f766e",
-      downColor: "#b91c1c",
+      upColor: up,
+      downColor: down,
       borderVisible: false,
-      wickUpColor: "#0f766e",
-      wickDownColor: "#b91c1c",
+      wickUpColor: up,
+      wickDownColor: down,
     });
 
     chartRef.current = chart;
@@ -76,7 +95,7 @@ export function TradeChart({ candles, trades }: Props) {
       chartRef.current = null;
       seriesRef.current = null;
     };
-  }, []);
+  }, [theme]);
 
   useEffect(() => {
     const series = seriesRef.current;
@@ -95,12 +114,16 @@ export function TradeChart({ candles, trades }: Props) {
 
     series.setData(data);
 
+    const up = cssVar("--chart-up", "#0f766e");
+    const down = cssVar("--chart-down", "#b91c1c");
+    const exit = cssVar("--muted", "#78716c");
+
     const markers: SeriesMarker<Time>[] = [];
     for (const trade of trades) {
       markers.push({
         time: toUtcSeconds(trade.entry_time) as Time,
         position: trade.side === "short" ? "aboveBar" : "belowBar",
-        color: trade.side === "long" ? "#0f766e" : "#b91c1c",
+        color: trade.side === "long" ? up : down,
         shape: trade.side === "long" ? "arrowUp" : "arrowDown",
         text: trade.side === "long" ? "L entry" : "S entry",
       });
@@ -108,7 +131,7 @@ export function TradeChart({ candles, trades }: Props) {
         markers.push({
           time: toUtcSeconds(trade.exit_time) as Time,
           position: "aboveBar",
-          color: "#78716c",
+          color: exit,
           shape: "circle",
           text: "exit",
         });
@@ -120,7 +143,7 @@ export function TradeChart({ candles, trades }: Props) {
     if (data.length) {
       chart.timeScale().fitContent();
     }
-  }, [candles, trades]);
+  }, [candles, trades, theme]);
 
   return (
     <div className="overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface)]">

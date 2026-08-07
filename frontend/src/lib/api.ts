@@ -1,4 +1,5 @@
 import type {
+  AdminOverview,
   BacktestResponse,
   Candle,
   EvaluateResponse,
@@ -7,6 +8,7 @@ import type {
   PremarketAlarmCheck,
   PremarketResult,
   ScanResponse,
+  SchwabTokenStatus,
   Strategy,
 } from "./types";
 
@@ -166,5 +168,43 @@ export async function checkPremarketAlarm(payload: {
   return request("/premarket/alarm/check", {
     method: "POST",
     body: JSON.stringify(payload),
+  });
+}
+
+export async function fetchAdminOverview(): Promise<AdminOverview> {
+  return request("/admin/overview");
+}
+
+export async function fetchSchwabStatus(): Promise<SchwabTokenStatus> {
+  return request("/admin/schwab/status");
+}
+
+export async function refreshSchwabToken(): Promise<SchwabTokenStatus> {
+  return request("/admin/schwab/refresh", { method: "POST" });
+}
+
+export async function publishSchwabToken(): Promise<SchwabTokenStatus> {
+  return request("/admin/schwab/publish", { method: "POST" });
+}
+
+export async function fetchSchwabLoginLink(): Promise<{
+  authorize_url: string;
+  redirect_uri: string;
+  callback_path: string;
+  portal_hint: string;
+}> {
+  return request("/admin/schwab/login-link");
+}
+
+export async function upsertSchwabToken(payload: {
+  token_json: string;
+  publish?: boolean;
+}): Promise<SchwabTokenStatus> {
+  return request("/admin/schwab/token", {
+    method: "POST",
+    body: JSON.stringify({
+      token_json: payload.token_json,
+      publish: payload.publish ?? true,
+    }),
   });
 }

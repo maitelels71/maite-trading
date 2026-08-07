@@ -9,6 +9,9 @@
 | **Strategies** | Playbooks (rules by timeframe, entry/exit) + live scan for that strategy |
 | **Analyzer** | Deep-dive one symbol: evaluate / backtest / chart |
 | **News** | Red folder calendar + session headlines |
+| **Admin** | Schwab token expiry, Refresh, Publish to Secrets Manager (staging) |
+
+Theme: **Light / Dark** toggle in the top nav (persisted in `localStorage` as `maite.theme`). Dark follows a trading-desk palette (near-black surfaces, bright candles).
 
 Scanner as a separate tab was removed: strategy-first scanning lives under **Strategies**.
 

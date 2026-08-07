@@ -226,6 +226,38 @@ export type PremarketAlarmWatch = {
   metAt: string | null;
 };
 
+export type SchwabTokenStatus = {
+  configured: boolean;
+  has_access_token: boolean;
+  has_refresh_token: boolean;
+  expires_at?: number | null;
+  expires_at_iso?: string | null;
+  expires_in_seconds?: number | null;
+  expired: boolean;
+  source: string;
+  publish_available: boolean;
+  token_path?: string | null;
+  published?: boolean | null;
+  secret_arn_set?: boolean | null;
+};
+
+export type SchwabLoginLink = {
+  authorize_url: string;
+  redirect_uri: string;
+  callback_path: string;
+  portal_hint: string;
+};
+
+export type AdminOverview = {
+  environment: string;
+  storage_backend: string;
+  using_dynamo: boolean;
+  api_secrets_arn_set: boolean;
+  schwab: SchwabTokenStatus;
+  schwab_login?: SchwabLoginLink | null;
+  notes: string[];
+};
+
 export const FALLBACK_INSTRUMENTS: Instrument[] = [
   { symbol: "NQ", name: "E-mini Nasdaq-100", market_type: "future", data_provider: "tradeadvocate", active: true },
   { symbol: "ES", name: "E-mini S&P 500", market_type: "future", data_provider: "tradeadvocate", active: true },

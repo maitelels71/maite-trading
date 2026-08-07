@@ -14,6 +14,7 @@ from app.domain.enums import DataProviderName
 from app.providers.exceptions import ProviderNotConfiguredError
 from app.providers.http_utils import raise_for_provider_response
 from app.providers.normalize import normalize_candles
+from app.providers.schwab_oauth import get_valid_access_token
 
 logger = get_logger(__name__)
 
@@ -48,12 +49,12 @@ class SchwabProvider:
         if self._access_token:
             self._authenticated = True
             return
-        # Full OAuth2 authorization-code + refresh flow is environment-specific.
-        # For now require a bearer token via access_token ctor arg or future token store.
-        raise ProviderNotConfiguredError(
-            "Schwab OAuth token not available. Complete OAuth once and supply "
-            "access_token / SCHWAB_TOKEN_PATH refresh handling before live calls."
-        )
+        self._access_token = get_valid_access_token(self._config)
+        self._authenticated = True
+        # Reset client so Authorization header picks up fresh token
+        if self._client is not None:
+            self._client.close()
+            self._client = None
 
     def ensure_authenticated(self) -> None:
         if not self._authenticated:
@@ -62,6 +63,8 @@ class SchwabProvider:
     def _get_client(self) -> httpx.Client:
         if self._client is not None:
             return self._client
+        if not self._access_token:
+            self.authenticate()
         self._client = httpx.Client(
             base_url=SCHWAB_API_BASE,
             timeout=30.0,
@@ -77,34 +80,36 @@ class SchwabProvider:
         end: datetime,
     ) -> list[Candle]:
         self.ensure_authenticated()
-        params = {
+        freq_type, frequency = _schwab_frequency_params(timeframe)
+        params: dict[str, Any] = {
             "symbol": symbol,
             "periodType": "day",
-            "frequencyType": _schwab_frequency(timeframe),
+            "frequencyType": freq_type,
+            "frequency": frequency,
             "startDate": int(start.timestamp() * 1000),
             "endDate": int(end.timestamp() * 1000),
             "needExtendedHoursData": "false",
         }
         client = self._get_client()
-        response = client.get(f"/pricehistory", params=params)
+        response = client.get("/pricehistory", params=params)
         raise_for_provider_response(response, provider="schwab")
         payload = response.json()
         rows = _extract_schwab_candles(payload)
         return normalize_candles(rows, ticker=symbol, timeframe=timeframe)
 
 
-def _schwab_frequency(timeframe: str) -> str:
-    mapping = {
-        "1m": "minute",
-        "5m": "minute",
-        "15m": "minute",
-        "30m": "minute",
-        "1h": "minute",
-        "4h": "daily",
-        "1d": "daily",
-        "Daily": "daily",
+def _schwab_frequency_params(timeframe: str) -> tuple[str, int]:
+    mapping: dict[str, tuple[str, int]] = {
+        "1m": ("minute", 1),
+        "5m": ("minute", 5),
+        "15m": ("minute", 15),
+        "30m": ("minute", 30),
+        "1h": ("minute", 30),
+        "4h": ("daily", 1),
+        "1d": ("daily", 1),
+        "Daily": ("daily", 1),
     }
-    return mapping.get(timeframe, "minute")
+    return mapping.get(timeframe, ("minute", 5))
 
 
 def _extract_schwab_candles(payload: dict[str, Any]) -> list[dict[str, Any]]:

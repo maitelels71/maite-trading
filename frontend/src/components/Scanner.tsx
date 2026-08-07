@@ -41,7 +41,7 @@ function statusStyle(status: string): string {
   if (status === "no_data" || status === "error") {
     return "border-amber-200 bg-[var(--warn-soft)] text-[var(--warn)]";
   }
-  return "border-[var(--border)] bg-[var(--surface)] text-stone-700";
+  return "border-[var(--border)] bg-[var(--surface)] text-[var(--muted)]";
 }
 
 export function Scanner() {
@@ -211,7 +211,7 @@ export function Scanner() {
             />
           </label>
           <div className="flex flex-col justify-end gap-2 text-sm">
-            <label className="flex items-center gap-2 text-stone-700">
+            <label className="flex items-center gap-2 text-[var(--muted)]">
               <input
                 type="checkbox"
                 checked={matchesOnly}
@@ -219,7 +219,7 @@ export function Scanner() {
               />
               Matches only
             </label>
-            <label className="flex items-center gap-2 text-stone-700">
+            <label className="flex items-center gap-2 text-[var(--muted)]">
               <input
                 type="checkbox"
                 checked={autoRefresh}
@@ -246,7 +246,7 @@ export function Scanner() {
                   className={`rounded-md px-3 py-1.5 text-xs ${
                     on
                       ? "bg-[var(--accent)] text-white"
-                      : "border border-[var(--border-strong)] text-stone-700"
+                      : "border border-[var(--border-strong)] text-[var(--muted)]"
                   }`}
                 >
                   {s.name}
@@ -267,7 +267,7 @@ export function Scanner() {
               type="button"
               disabled={saving}
               onClick={saveRun}
-              className="rounded-md border border-[var(--border-strong)] px-4 py-2 text-sm text-stone-800 hover:border-stone-400 disabled:opacity-60"
+              className="rounded-md border border-[var(--border-strong)] px-4 py-2 text-sm text-[var(--foreground)] hover:border-[var(--border-strong)] disabled:opacity-60"
               title="Persist this scan snapshot with a run id you can reload later"
             >
               {saving ? "Saving…" : "Save run"}
@@ -276,7 +276,7 @@ export function Scanner() {
               type="button"
               disabled={saving}
               onClick={loadSavedRun}
-              className="rounded-md border border-[var(--border-strong)] px-4 py-2 text-sm text-stone-800 hover:border-stone-400 disabled:opacity-60"
+              className="rounded-md border border-[var(--border-strong)] px-4 py-2 text-sm text-[var(--foreground)] hover:border-[var(--border-strong)] disabled:opacity-60"
               title="Reload the last saved run snapshot"
             >
               Load last run
@@ -291,7 +291,7 @@ export function Scanner() {
         </div>
       ) : null}
       {status ? (
-        <div className="rounded-xl border border-[var(--border)] bg-[var(--surface-muted)] px-4 py-3 text-sm text-stone-700">
+        <div className="rounded-xl border border-[var(--border)] bg-[var(--surface-muted)] px-4 py-3 text-sm text-[var(--muted)]">
           {status}
         </div>
       ) : null}
@@ -316,7 +316,7 @@ export function Scanner() {
       </div>
 
       {savedRun ? (
-        <section className="rounded-xl border border-[var(--border)] bg-[var(--surface-muted)] px-4 py-3 text-sm text-stone-700">
+        <section className="rounded-xl border border-[var(--border)] bg-[var(--surface-muted)] px-4 py-3 text-sm text-[var(--muted)]">
           <p>
             Saved run{" "}
             <code className="text-[var(--foreground)]">{savedRun.run_id.slice(0, 8)}</code>
@@ -345,7 +345,7 @@ export function Scanner() {
       ) : (
         <p className="rounded-xl border border-[var(--border)] bg-[var(--surface-muted)] px-4 py-3 text-sm text-[var(--muted)]">
           No strategy matches yet. Until Schwab / TradeAdvocate data is synced, most
-          rows will show <code className="text-stone-700">no_data</code>.
+          rows will show <code className="text-[var(--muted)]">no_data</code>.
         </p>
       )}
 
@@ -382,7 +382,7 @@ export function Scanner() {
                       <div className="text-xs text-[var(--muted)]">{hit.name}</div>
                     </td>
                     <td className="px-3 py-2 text-[var(--muted)]">{hit.data_provider}</td>
-                    <td className="px-3 py-2 text-stone-700">{hit.strategy}</td>
+                    <td className="px-3 py-2 text-[var(--muted)]">{hit.strategy}</td>
                     <td className="px-3 py-2">
                       <span
                         className={`inline-block rounded px-2 py-0.5 text-xs ${statusStyle(hit.status)}`}
@@ -420,7 +420,7 @@ function HitCard({ hit, highlight }: { hit: ScanHit; highlight?: boolean }) {
       <p className="mt-1 text-xs text-[var(--muted)]">
         {hit.strategy} · {hit.data_provider}
       </p>
-      <p className="mt-2 text-sm text-stone-700">{hit.detail}</p>
+      <p className="mt-2 text-sm text-[var(--muted)]">{hit.detail}</p>
     </div>
   );
 }

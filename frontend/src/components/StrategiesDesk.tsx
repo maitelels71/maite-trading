@@ -28,7 +28,7 @@ function statusStyle(status: string): string {
   if (status === "no_data" || status === "error") {
     return "border-amber-200 bg-[var(--warn-soft)] text-[var(--warn)]";
   }
-  return "border-[var(--border)] bg-[var(--surface-muted)] text-stone-700";
+  return "border-[var(--border)] bg-[var(--surface-muted)] text-[var(--muted)]";
 }
 
 export function StrategiesDesk() {
@@ -110,7 +110,7 @@ export function StrategiesDesk() {
                 className={`w-full rounded-md px-3 py-2 text-left text-sm transition ${
                   active
                     ? "bg-[var(--accent)] text-white"
-                    : "text-stone-700 hover:bg-stone-100"
+                    : "text-[var(--muted)] hover:bg-[var(--hover)]"
                 }`}
               >
                 <span className="block font-medium">{p.shortName}</span>
@@ -347,7 +347,7 @@ function PlaybookRules({
 
       <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4">
         <h4 className="text-sm font-medium">Risk notes</h4>
-        <ul className="mt-2 list-disc space-y-1 pl-4 text-sm text-stone-700">
+        <ul className="mt-2 list-disc space-y-1 pl-4 text-sm text-[var(--muted)]">
           {playbook.riskNotes.map((n) => (
             <li key={n}>{n}</li>
           ))}
@@ -355,7 +355,7 @@ function PlaybookRules({
       </div>
       <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4">
         <h4 className="text-sm font-medium">Invalidation</h4>
-        <ul className="mt-2 list-disc space-y-1 pl-4 text-sm text-stone-700">
+        <ul className="mt-2 list-disc space-y-1 pl-4 text-sm text-[var(--muted)]">
           {playbook.invalidation.map((n) => (
             <li key={n}>{n}</li>
           ))}
@@ -419,7 +419,7 @@ function HitCard({ hit }: { hit: ScanHit }) {
       <p className="mt-1 text-xs text-[var(--muted)]">
         {hit.name} · {hit.data_provider}
       </p>
-      <p className="mt-2 text-sm text-stone-700">{hit.detail}</p>
+      <p className="mt-2 text-sm text-[var(--muted)]">{hit.detail}</p>
     </div>
   );
 }

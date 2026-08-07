@@ -107,7 +107,7 @@ export function DailyReview() {
           <button
             type="button"
             onClick={clearDay}
-            className="rounded-md border border-[var(--border-strong)] px-3 py-2 text-sm text-stone-700 hover:border-stone-400"
+            className="rounded-md border border-[var(--border-strong)] px-3 py-2 text-sm text-[var(--muted)] hover:border-[var(--border-strong)]"
           >
             Reset day
           </button>

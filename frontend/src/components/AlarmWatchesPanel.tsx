@@ -389,7 +389,7 @@ export function AlarmWatchesPanel({
                   <button
                     type="button"
                     onClick={() => stopWatch(w.id)}
-                    className="rounded-md border border-[var(--border-strong)] px-3 py-1.5 text-xs text-stone-800 hover:border-stone-400"
+                    className="rounded-md border border-[var(--border-strong)] px-3 py-1.5 text-xs text-[var(--foreground)] hover:border-[var(--border-strong)]"
                   >
                     Stop
                   </button>
@@ -405,7 +405,7 @@ export function AlarmWatchesPanel({
                 <button
                   type="button"
                   onClick={() => removeWatch(w.id)}
-                  className="rounded-md border border-[var(--border-strong)] px-3 py-1.5 text-xs text-[var(--muted)] hover:border-stone-400"
+                  className="rounded-md border border-[var(--border-strong)] px-3 py-1.5 text-xs text-[var(--muted)] hover:border-[var(--border-strong)]"
                 >
                   Remove
                 </button>

@@ -284,7 +284,7 @@ export function Dashboard() {
                 className={`rounded-md px-4 py-2 text-sm font-medium transition ${
                   active
                     ? "bg-[var(--accent)] text-white"
-                    : "border border-[var(--border-strong)] text-stone-700 hover:border-stone-400"
+                    : "border border-[var(--border-strong)] text-[var(--muted)] hover:border-[var(--border-strong)]"
                 }`}
               >
                 {VENUE_META[v].label}
@@ -299,7 +299,7 @@ export function Dashboard() {
 
       <main className="mx-auto grid max-w-6xl gap-6 px-6 py-8 lg:grid-cols-[320px_1fr]">
         <section className="space-y-4 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4">
-          <h2 className="text-sm font-medium text-stone-700">Controls</h2>
+          <h2 className="text-sm font-medium text-[var(--muted)]">Controls</h2>
           <p className="text-xs text-[var(--muted)]">{VENUE_META[venue].hint}</p>
 
           <label className="block space-y-1 text-sm">
@@ -356,7 +356,7 @@ export function Dashboard() {
               className={`flex-1 rounded-md px-3 py-2 ${
                 mode === "evaluate"
                   ? "bg-[var(--accent)] text-white"
-                  : "border border-[var(--border-strong)] text-stone-700"
+                  : "border border-[var(--border-strong)] text-[var(--muted)]"
               }`}
               onClick={() => setMode("evaluate")}
             >
@@ -367,7 +367,7 @@ export function Dashboard() {
               className={`flex-1 rounded-md px-3 py-2 ${
                 mode === "backtest"
                   ? "bg-[var(--accent)] text-white"
-                  : "border border-[var(--border-strong)] text-stone-700"
+                  : "border border-[var(--border-strong)] text-[var(--muted)]"
               }`}
               onClick={() => setMode("backtest")}
             >
@@ -421,7 +421,7 @@ export function Dashboard() {
               type="button"
               disabled={pending}
               onClick={onSync}
-              className="rounded-md border border-[var(--border-strong)] px-3 py-2 text-sm text-stone-800 hover:border-stone-400 disabled:opacity-60"
+              className="rounded-md border border-[var(--border-strong)] px-3 py-2 text-sm text-[var(--foreground)] hover:border-[var(--border-strong)] disabled:opacity-60"
             >
               Sync market data
             </button>
@@ -429,7 +429,7 @@ export function Dashboard() {
 
           {selected ? (
             <p className="text-xs text-[var(--muted)]">
-              Provider: <span className="text-stone-700">{selected.data_provider}</span>
+              Provider: <span className="text-[var(--muted)]">{selected.data_provider}</span>
               {" · "}
               {selected.name}
             </p>
@@ -443,7 +443,7 @@ export function Dashboard() {
             </div>
           ) : null}
           {status ? (
-            <div className="rounded-xl border border-[var(--border)] bg-[var(--surface-muted)] px-4 py-3 text-sm text-stone-700">
+            <div className="rounded-xl border border-[var(--border)] bg-[var(--surface-muted)] px-4 py-3 text-sm text-[var(--muted)]">
               {status}
             </div>
           ) : null}
@@ -494,14 +494,14 @@ export function Dashboard() {
                   ) : (
                     trades.map((t, idx) => (
                       <tr key={`${t.entry_time}-${idx}`} className="border-t border-[var(--border)]">
-                        <td className="px-3 py-2 capitalize text-stone-800">{t.side}</td>
-                        <td className="px-3 py-2 text-stone-700">
+                        <td className="px-3 py-2 capitalize text-[var(--foreground)]">{t.side}</td>
+                        <td className="px-3 py-2 text-[var(--muted)]">
                           {fmtNum(t.entry_price)}
                           <div className="text-xs text-[var(--muted)]">
                             {new Date(t.entry_time).toLocaleString()}
                           </div>
                         </td>
-                        <td className="px-3 py-2 text-stone-700">
+                        <td className="px-3 py-2 text-[var(--muted)]">
                           {fmtNum(t.exit_price ?? null)}
                           <div className="text-xs text-[var(--muted)]">
                             {t.exit_time
@@ -509,7 +509,7 @@ export function Dashboard() {
                               : "—"}
                           </div>
                         </td>
-                        <td className="px-3 py-2 text-stone-800">
+                        <td className="px-3 py-2 text-[var(--foreground)]">
                           {fmtNum(t.profit_loss ?? null)}
                         </td>
                         <td className="px-3 py-2 text-[var(--muted)]">{t.signal}</td>

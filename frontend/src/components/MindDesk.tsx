@@ -101,7 +101,7 @@ export function MindDesk() {
             <button
               type="button"
               onClick={clearRitual}
-              className="rounded-md border border-[var(--border-strong)] px-3 py-2 text-sm text-stone-700 hover:border-stone-400"
+              className="rounded-md border border-[var(--border-strong)] px-3 py-2 text-sm text-[var(--muted)] hover:border-[var(--border-strong)]"
             >
               Reset ritual
             </button>
@@ -126,7 +126,7 @@ export function MindDesk() {
               className={`rounded-md px-3 py-1.5 text-sm font-medium transition ${
                 active
                   ? "bg-[var(--accent)] text-white"
-                  : "text-[var(--muted)] hover:bg-stone-100 hover:text-[var(--foreground)]"
+                  : "text-[var(--muted)] hover:bg-[var(--hover)] hover:text-[var(--foreground)]"
               }`}
             >
               {label}
@@ -210,7 +210,7 @@ export function MindDesk() {
               {TRADING_MANTRA_LINES.map((line) => (
                 <li
                   key={line}
-                  className="border-l-2 border-[var(--accent)] pl-3 text-sm leading-relaxed text-stone-800"
+                  className="border-l-2 border-[var(--accent)] pl-3 text-sm leading-relaxed text-[var(--foreground)]"
                 >
                   {line}
                 </li>
@@ -279,7 +279,7 @@ export function MindDesk() {
                 onClick={() =>
                   setQuoteIndex((i) => (i - 1 + TRADING_QUOTES.length) % TRADING_QUOTES.length)
                 }
-                className="rounded-md border border-[var(--border-strong)] px-4 py-2 text-sm hover:border-stone-400"
+                className="rounded-md border border-[var(--border-strong)] px-4 py-2 text-sm hover:border-[var(--border-strong)]"
               >
                 Anterior
               </button>
@@ -305,7 +305,7 @@ export function MindDesk() {
                 className={`rounded-xl border px-4 py-3 text-left text-sm transition ${
                   idx === quoteIndex
                     ? "border-[var(--accent)] bg-[var(--ok-soft)]"
-                    : "border-[var(--border)] bg-[var(--surface)] hover:border-stone-300"
+                    : "border-[var(--border)] bg-[var(--surface)] hover:border-[var(--border-strong)]"
                 }`}
               >
                 {q.text}

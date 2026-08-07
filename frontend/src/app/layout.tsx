@@ -1,5 +1,8 @@
 import type { Metadata } from "next";
 import { IBM_Plex_Mono, Source_Sans_3 } from "next/font/google";
+
+import { THEME_BOOT_SCRIPT } from "@/lib/theme";
+
 import "./globals.css";
 
 const sourceSans = Source_Sans_3({
@@ -24,7 +27,11 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
     <html
       lang="en"
       className={`${sourceSans.variable} ${ibmPlexMono.variable} h-full antialiased`}
+      suppressHydrationWarning
     >
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: THEME_BOOT_SCRIPT }} />
+      </head>
       <body className="min-h-full flex flex-col">{children}</body>
     </html>
   );
