@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 
+import { useLocale } from "@/components/LocaleProvider";
 import { DAILY_REVIEW_SECTIONS } from "@/lib/daily-review";
 
 function todayNyIso(): string {
@@ -38,11 +39,39 @@ function loadDay(date: string): Stored {
   }
 }
 
+function buildNotionMarkdown(payload: {
+  date: string;
+  bias: string;
+  notes: string;
+  checked: Record<string, boolean>;
+}): string {
+  const lines: string[] = [
+    `## Daily review — ${payload.date}`,
+    "",
+    `**Bias:** ${payload.bias || "—"}`,
+    "",
+  ];
+  for (const section of DAILY_REVIEW_SECTIONS) {
+    lines.push(`### ${section.title}`);
+    for (const item of section.items) {
+      const mark = payload.checked[item.id] ? "x" : " ";
+      lines.push(`- [${mark}] ${item.label}`);
+    }
+    lines.push("");
+  }
+  lines.push("### Notes");
+  lines.push(payload.notes || "—");
+  lines.push("");
+  return lines.join("\n");
+}
+
 export function DailyReview() {
+  const { t } = useLocale();
   const [date, setDate] = useState(todayNyIso);
   const [checked, setChecked] = useState<Record<string, boolean>>({});
   const [notes, setNotes] = useState("");
   const [bias, setBias] = useState("");
+  const [saveFlash, setSaveFlash] = useState<string | null>(null);
 
   useEffect(() => {
     const data = loadDay(date);
@@ -65,10 +94,11 @@ export function DailyReview() {
     [],
   );
   const done = useMemo(
-    () => DAILY_REVIEW_SECTIONS.reduce(
-      (n, s) => n + s.items.filter((i) => checked[i.id]).length,
-      0,
-    ),
+    () =>
+      DAILY_REVIEW_SECTIONS.reduce(
+        (n, s) => n + s.items.filter((i) => checked[i.id]).length,
+        0,
+      ),
     [checked],
   );
 
@@ -82,21 +112,42 @@ export function DailyReview() {
     setBias("");
   }
 
+  function saveNow() {
+    const payload: Stored = { checked, notes, bias };
+    try {
+      localStorage.setItem(storageKey(date), JSON.stringify(payload));
+      setSaveFlash(t("daily.saved"));
+      window.setTimeout(() => setSaveFlash(null), 1600);
+    } catch {
+      setSaveFlash("Save failed");
+    }
+  }
+
+  async function copyForNotion() {
+    const md = buildNotionMarkdown({ date, bias, notes, checked });
+    try {
+      await navigator.clipboard.writeText(md);
+      setSaveFlash(t("daily.copiedNotion"));
+      window.setTimeout(() => setSaveFlash(null), 2000);
+    } catch {
+      setSaveFlash("Copy failed");
+    }
+  }
+
   return (
     <div className="mx-auto max-w-6xl space-y-6 px-6 py-8">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h2 className="text-xl font-semibold text-[var(--foreground)]">
-            Daily review
+            {t("daily.title")}
           </h2>
-          <p className="text-sm text-[var(--muted)]">
-            Professional process checklist — pre-open, session, and post. Saved
-            locally per NY session date.
-          </p>
+          <p className="text-sm text-[var(--muted)]">{t("daily.subtitle")}</p>
+          <p className="mt-1 text-xs text-[var(--muted)]">{t("daily.saveHint")}</p>
+          <p className="mt-1 text-xs text-[var(--muted)]">{t("daily.notionNote")}</p>
         </div>
         <div className="flex flex-wrap items-end gap-2">
           <label className="space-y-1 text-sm">
-            <span className="text-[var(--muted)]">Session date (NY)</span>
+            <span className="text-[var(--muted)]">{t("daily.sessionDate")}</span>
             <input
               type="date"
               className="block rounded-md border border-[var(--border-strong)] bg-[var(--surface)] px-3 py-2"
@@ -106,18 +157,38 @@ export function DailyReview() {
           </label>
           <button
             type="button"
+            onClick={saveNow}
+            className="rounded-md bg-[var(--accent)] px-3 py-2 text-sm font-medium text-[var(--on-accent)] hover:bg-[var(--accent-hover)]"
+          >
+            {t("daily.save")}
+          </button>
+          <button
+            type="button"
+            onClick={copyForNotion}
+            className="rounded-md border border-[var(--border-strong)] px-3 py-2 text-sm text-[var(--foreground)] hover:bg-[var(--hover)]"
+          >
+            {t("daily.copyNotion")}
+          </button>
+          <button
+            type="button"
             onClick={clearDay}
             className="rounded-md border border-[var(--border-strong)] px-3 py-2 text-sm text-[var(--muted)] hover:border-[var(--border-strong)]"
           >
-            Reset day
+            {t("daily.reset")}
           </button>
         </div>
       </div>
 
+      {saveFlash ? (
+        <p className="rounded-md border border-[var(--ok)]/30 bg-[var(--ok-soft)] px-3 py-2 text-sm text-[var(--ok)]">
+          {saveFlash}
+        </p>
+      ) : null}
+
       <div className="grid gap-3 sm:grid-cols-3">
         <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3">
           <p className="text-xs uppercase tracking-wide text-[var(--muted)]">
-            Progress
+            {t("daily.progress")}
           </p>
           <p className="mt-1 text-xl font-semibold">
             {done} / {total}
@@ -125,7 +196,7 @@ export function DailyReview() {
         </div>
         <div className="sm:col-span-2 rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3">
           <label className="block space-y-1 text-sm">
-            <span className="text-[var(--muted)]">Daily bias (one line)</span>
+            <span className="text-[var(--muted)]">{t("daily.bias")}</span>
             <input
               type="text"
               className="w-full rounded-md border border-[var(--border-strong)] bg-[var(--surface)] px-3 py-2"
@@ -195,7 +266,7 @@ export function DailyReview() {
       <section className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4">
         <label className="block space-y-1 text-sm">
           <span className="font-medium text-[var(--foreground)]">
-            End-of-day notes
+            {t("daily.notes")}
           </span>
           <textarea
             className="min-h-[120px] w-full rounded-md border border-[var(--border-strong)] bg-[var(--surface)] px-3 py-2"

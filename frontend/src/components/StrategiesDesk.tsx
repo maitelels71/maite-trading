@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
 
 import { scanStrategies } from "@/lib/api";
+import { useLocale } from "@/components/LocaleProvider";
 import { STRATEGY_PLAYBOOKS, type StrategyPlaybook } from "@/lib/playbooks";
 import {
   TIMEFRAMES,
@@ -32,6 +33,7 @@ function statusStyle(status: string): string {
 }
 
 export function StrategiesDesk() {
+  const { t } = useLocale();
   const [selectedId, setSelectedId] = useState("sbc");
   const [venue, setVenue] = useState<Venue | "all">("all");
   const [timeframe, setTimeframe] = useState("5m");
@@ -54,7 +56,7 @@ export function StrategiesDesk() {
 
   const runScan = useCallback(() => {
     if (!playbook?.strategyKey) {
-      setError("This playbook is a draft — not wired to the live scan engine yet.");
+      setError(t("strategies.draftError"));
       setScan(null);
       return;
     }
@@ -74,7 +76,7 @@ export function StrategiesDesk() {
         setScan(null);
       }
     });
-  }, [playbook, timeframe, date, venue]);
+  }, [playbook, timeframe, date, venue, t]);
 
   const matches = useMemo(
     () => (scan?.hits ?? []).filter((h) => h.matched),
@@ -91,10 +93,12 @@ export function StrategiesDesk() {
   return (
     <div className="mx-auto max-w-6xl space-y-6 px-6 py-8">
       <div>
-        <h2 className="text-xl font-semibold text-[var(--foreground)]">Strategies</h2>
-        <p className="text-sm text-[var(--muted)]">
-          Playbooks with entry rules by timeframe, then a live scan of which
-          symbols currently meet that strategy.
+        <h2 className="text-xl font-semibold text-[var(--foreground)]">
+          {t("strategies.title")}
+        </h2>
+        <p className="text-sm text-[var(--muted)]">{t("strategies.subtitle")}</p>
+        <p className="mt-2 text-sm font-medium text-[var(--brand)]">
+          {t("strategies.liveScanTitle")}
         </p>
       </div>
 
@@ -109,13 +113,13 @@ export function StrategiesDesk() {
                 onClick={() => setSelectedId(p.id)}
                 className={`w-full rounded-md px-3 py-2 text-left text-sm transition ${
                   active
-                    ? "bg-[var(--accent)] text-white"
+                    ? "bg-[var(--accent)] text-[var(--on-accent)]"
                     : "text-[var(--muted)] hover:bg-[var(--hover)]"
                 }`}
               >
                 <span className="block font-medium">{p.shortName}</span>
                 <span
-                  className={`block text-xs ${active ? "text-white/80" : "text-[var(--muted)]"}`}
+                  className={`block text-xs ${active ? "text-[var(--on-accent)]/85" : "text-[var(--muted)]"}`}
                 >
                   {p.name}
                 </span>
@@ -133,15 +137,22 @@ export function StrategiesDesk() {
                 <p className="mt-2 text-xs text-[var(--muted)]">
                   {playbook.markets} · {playbook.sessionWindow}
                 </p>
+                {!playbook.strategyKey ? (
+                  <p className="mt-2 text-xs text-[var(--warn)]">
+                    {t("strategies.draftHint")}
+                  </p>
+                ) : null}
               </div>
               <span
-                className={`rounded px-2 py-1 text-xs ${
+                className={`rounded px-2 py-1 text-xs font-medium ${
                   playbook.strategyKey
                     ? "bg-[var(--ok-soft)] text-[var(--ok)]"
                     : "bg-[var(--warn-soft)] text-[var(--warn)]"
                 }`}
               >
-                {playbook.strategyKey ? "Scan ready" : "Draft playbook"}
+                {playbook.strategyKey
+                  ? t("strategies.scanReady")
+                  : t("strategies.draft")}
               </span>
             </div>
           </header>
@@ -152,32 +163,31 @@ export function StrategiesDesk() {
             <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
               <div>
                 <h4 className="font-medium text-[var(--foreground)]">
-                  Live scan · this strategy
+                  {t("strategies.liveScanTitle")}
                 </h4>
                 <p className="text-xs text-[var(--muted)]">
-                  Which tickers currently match when you review — organized by
-                  this playbook only.
+                  {t("strategies.liveScanHint")}
                 </p>
               </div>
               <button
                 type="button"
                 disabled={pending || !playbook.strategyKey}
                 onClick={runScan}
-                className="rounded-md bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--accent-hover)] disabled:opacity-50"
+                className="rounded-md bg-[var(--accent)] px-4 py-2 text-sm font-medium text-[var(--on-accent)] hover:bg-[var(--accent-hover)] disabled:opacity-50"
               >
-                {pending ? "Scanning…" : "Scan now"}
+                {pending ? t("strategies.scanning") : t("strategies.scanNow")}
               </button>
             </div>
 
             <div className="grid gap-3 sm:grid-cols-3">
               <label className="space-y-1 text-sm">
-                <span className="text-[var(--muted)]">Venue</span>
+                <span className="text-[var(--muted)]">{t("strategies.venue")}</span>
                 <select
                   className="w-full rounded-md border border-[var(--border-strong)] bg-[var(--surface)] px-3 py-2"
                   value={venue}
                   onChange={(e) => setVenue(e.target.value as Venue | "all")}
                 >
-                  <option value="all">All venues</option>
+                  <option value="all">{t("strategies.allVenues")}</option>
                   <option value="schwab">{VENUE_META.schwab.label}</option>
                   <option value="tradeadvocate">
                     {VENUE_META.tradeadvocate.label}
@@ -185,7 +195,7 @@ export function StrategiesDesk() {
                 </select>
               </label>
               <label className="space-y-1 text-sm">
-                <span className="text-[var(--muted)]">Timeframe</span>
+                <span className="text-[var(--muted)]">{t("strategies.timeframe")}</span>
                 <select
                   className="w-full rounded-md border border-[var(--border-strong)] bg-[var(--surface)] px-3 py-2"
                   value={timeframe}
@@ -199,7 +209,7 @@ export function StrategiesDesk() {
                 </select>
               </label>
               <label className="space-y-1 text-sm">
-                <span className="text-[var(--muted)]">Session date (NY)</span>
+                <span className="text-[var(--muted)]">{t("strategies.sessionDate")}</span>
                 <input
                   type="date"
                   className="w-full rounded-md border border-[var(--border-strong)] bg-[var(--surface)] px-3 py-2"

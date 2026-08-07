@@ -1,35 +1,33 @@
 "use client";
 
 import { useLocale } from "@/components/LocaleProvider";
-import { useTheme } from "@/components/ThemeProvider";
-import type { ThemeMode } from "@/lib/theme";
+import type { Locale } from "@/lib/i18n";
 
-const OPTIONS: ThemeMode[] = ["light", "dark"];
+const OPTIONS: Locale[] = ["en", "es"];
 
-export function ThemeToggle() {
-  const { theme, setTheme } = useTheme();
-  const { t } = useLocale();
+export function LanguageToggle() {
+  const { locale, setLocale, t } = useLocale();
 
   return (
     <div
       className="flex items-center gap-1 rounded-md border border-[var(--border)] bg-[var(--surface-muted)] p-0.5"
       role="group"
-      aria-label="Theme"
+      aria-label="Language"
     >
       {OPTIONS.map((id) => {
-        const active = theme === id;
+        const active = locale === id;
         return (
           <button
             key={id}
             type="button"
-            onClick={() => setTheme(id)}
+            onClick={() => setLocale(id)}
             className={`rounded px-2.5 py-1 text-xs font-medium transition ${
               active
                 ? "bg-[var(--accent)] text-[var(--on-accent)]"
                 : "text-[var(--muted)] hover:bg-[var(--hover)] hover:text-[var(--foreground)]"
             }`}
           >
-            {t(`theme.${id}`)}
+            {t(`lang.${id}`)}
           </button>
         );
       })}
