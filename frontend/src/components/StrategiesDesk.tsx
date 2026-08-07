@@ -32,7 +32,7 @@ function statusStyle(status: string): string {
 }
 
 export function StrategiesDesk() {
-  const [selectedId, setSelectedId] = useState(STRATEGY_PLAYBOOKS[0]?.id ?? "");
+  const [selectedId, setSelectedId] = useState("sbc");
   const [venue, setVenue] = useState<Venue | "all">("all");
   const [timeframe, setTimeframe] = useState("5m");
   const [date, setDate] = useState(todayNyIso);

@@ -18,3 +18,7 @@ Checklist inspired by discretionary process: calendar, bias, levels, risk limits
 ## Strategies
 
 Playbooks in `frontend/src/lib/playbooks.ts`. Each book has entry steps, exits, risk, invalidation, and timeframe checklists. **Scan now** calls `POST /strategy/scan` filtered to that strategy’s registry key. Draft books (no `strategyKey`) show rules only until an engine exists.
+
+### Structure Bias Continuation (SBC)
+
+Discretionary playbook from your live NQ process: **1H ChoCh/BOS bias → 15m OB/Breaker/FVG zone → 1m/3m confirm**. Not auto-scanned yet (needs structure detection); use as checklist while trading.

@@ -30,6 +30,147 @@ export type StrategyPlaybook = {
 
 export const STRATEGY_PLAYBOOKS: StrategyPlaybook[] = [
   {
+    id: "sbc",
+    strategyKey: null,
+    name: "Structure Bias Continuation",
+    shortName: "SBC",
+    markets: "NQ / MNQ · ES (futures) — discretionary; chart + BoS/ChoCh indicator",
+    summary:
+      "Trade only with the 1H structural bias (last ChoCh/BOS). Wait for a 15m Order Block, Breaker, or FVG in that direction, then take a 1m/3m confirmation inside the zone — never chase mid-range.",
+    sessionWindow: "NY kill zone preferred · stand down if any checklist item is missing",
+    riskNotes: [
+      "Golden rule: 1H bearish → ignore blue/bullish OBs for entries; 1H bullish → ignore red/bearish OBs",
+      "15m ChoCh against 1H is usually pullback noise — it does not flip HTF bias",
+      "Operate the first valid zone (Zone A); Zone B only if A fails",
+      "Do not predict ‘liquidity higher’ — wait for price in a real red/blue box",
+      "R:R ≥ 1:2; SL beyond zone/sweep extreme",
+      "If one checklist item is missing → NO TRADE",
+    ],
+    invalidation: [
+      "1H prints opposite ChoCh/BOS → bias flips; cancel open thesis",
+      "Price breaks through Zone A against your side without trigger → zone dead",
+      "Entered mid-impulse away from zone (chase) → not a valid SBC trade",
+      "Strong close back through the 15m zone after entry → flatten / cancel",
+    ],
+    entrySteps: [
+      {
+        id: "sbc-e1",
+        label: "Confirm 1H bias from the latest ChoCh or BOS only",
+        detail:
+          "Last label to the right: red → short only; green → long only; none/range → no trade. Older opposite labels do not count.",
+      },
+      {
+        id: "sbc-e2",
+        label: "On 15m, mark valid zones with the bias (not against it)",
+        detail:
+          "Short bias: red OB / Breaker / bearish FVG. Long bias: blue OB / Breaker / bullish FVG. Nearest to price = Zone A.",
+      },
+      {
+        id: "sbc-e3",
+        label: "Wait for price to reach Zone A — no mid-range entries",
+        detail:
+          "If price is between zones with no box → stand by. Prefer a liquidity sweep of a recent high (shorts) or low (longs) into the zone.",
+      },
+      {
+        id: "sbc-e4",
+        label: "Price must be inside the zone (real box / FVG)",
+        detail:
+          "A wick-touch of the wrong level (e.g. ChoCh line without OB) is not an entry. Partial touch of a weak edge is low quality.",
+      },
+      {
+        id: "sbc-e5",
+        label: "1m/3m confirmation in bias direction",
+        detail:
+          "Short: ChoCh/BOS red in zone (ideal after local sweep). Long: ChoCh/BOS green. Enter on break candle close or first micro-retrace to 1–3m OB/FVG — not after the move already ran.",
+      },
+      {
+        id: "sbc-e6",
+        label: "Place stop and targets from the plan",
+        detail:
+          "SL beyond zone/sweep extreme. First target toward opposite structure / prior swing. Kill zone NY preferred.",
+      },
+    ],
+    exitSteps: [
+      {
+        id: "sbc-x1",
+        label: "Hard stop beyond zone or sweep — never widen",
+      },
+      {
+        id: "sbc-x2",
+        label: "Scale or trail only after +1R / clear structure",
+      },
+      {
+        id: "sbc-x3",
+        label: "If 1H bias flips against you, flatten discretionary risk",
+      },
+      {
+        id: "sbc-x4",
+        label: "No revenge second entry if Zone A invalidated without fill",
+      },
+    ],
+    byTimeframe: [
+      {
+        timeframe: "1H",
+        focus: "Bias filter only — ChoCh / BOS, not OB for bias",
+        steps: [
+          {
+            id: "sbc-1h1",
+            label: "Find the latest ChoCh or BOS on 1H",
+          },
+          {
+            id: "sbc-1h2",
+            label: "Red = bearish (shorts only) · Green = bullish (longs only)",
+          },
+          {
+            id: "sbc-1h3",
+            label: "Bias stays until an opposite 1H ChoCh/BOS prints",
+            detail: "A 15m opposite ChoCh does not flip this.",
+          },
+        ],
+      },
+      {
+        timeframe: "15m",
+        focus: "Zones + continuation — never redefine HTF bias",
+        steps: [
+          {
+            id: "sbc-15-1",
+            label: "Filter chart: ignore opposite-color OBs for entries",
+          },
+          {
+            id: "sbc-15-2",
+            label: "Mark Zone A (nearest valid box/FVG) and optional Zone B",
+          },
+          {
+            id: "sbc-15-3",
+            label: "Wait for pullback into Zone A; stand by if mid-range",
+          },
+          {
+            id: "sbc-15-4",
+            label: "Quality bonus: liquidity sweep into the zone",
+          },
+        ],
+      },
+      {
+        timeframe: "1m / 3m",
+        focus: "Trigger only — after price is in the 15m zone",
+        steps: [
+          {
+            id: "sbc-1m1",
+            label: "Confirm ChoCh/BOS in bias direction inside the zone",
+          },
+          {
+            id: "sbc-1m2",
+            label: "Enter on confirm close or micro-retrace — never chase the impulse",
+          },
+          {
+            id: "sbc-1m3",
+            label: "If confirm already ran far from zone → wait next cycle, do not FOMO",
+          },
+        ],
+      },
+    ],
+  },
+  {
     id: "orb",
     strategyKey: "opening_range_breakout",
     name: "Opening Range Breakout",
@@ -154,51 +295,6 @@ export const STRATEGY_PLAYBOOKS: StrategyPlaybook[] = [
         steps: [
           { id: "orf-5-1", label: "OR box clear on chart" },
           { id: "orf-5-2", label: "Break hold — no FOMO mid-bar" },
-        ],
-      },
-    ],
-  },
-  {
-    id: "pullback",
-    strategyKey: null,
-    name: "Trend pullback (playbook draft)",
-    shortName: "PULL",
-    markets: "Any liquid symbol with clear HTF trend",
-    summary:
-      "Draft playbook — not wired to the scan engine yet. Trade with-trend pullbacks to VWAP / prior structure after a confirmed trend day.",
-    sessionWindow: "After first hour once trend is established",
-    riskNotes: [
-      "Only with HTF trend + higher lows / lower highs",
-      "No countertrend 'hero' fades in this playbook",
-    ],
-    invalidation: [
-      "Break of trend structure",
-      "News flip of bias",
-    ],
-    entrySteps: [
-      { id: "pb-e1", label: "HTF trend confirmed" },
-      { id: "pb-e2", label: "Pullback to VWAP or last breakout level" },
-      { id: "pb-e3", label: "Trigger candle in trend direction" },
-    ],
-    exitSteps: [
-      { id: "pb-x1", label: "Stop beyond pullback extreme" },
-      { id: "pb-x2", label: "Trail under/over higher lows / lower highs" },
-    ],
-    byTimeframe: [
-      {
-        timeframe: "1h / 15m",
-        focus: "Trend definition",
-        steps: [
-          { id: "pb-htf1", label: "Series of HH/HL or LH/LL" },
-          { id: "pb-htf2", label: "Location vs value (VWAP)" },
-        ],
-      },
-      {
-        timeframe: "5m",
-        focus: "Pullback entry",
-        steps: [
-          { id: "pb-5m1", label: "Wait for pullback to complete" },
-          { id: "pb-5m2", label: "Enter on reclaim / continuation print" },
         ],
       },
     ],
