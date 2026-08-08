@@ -5,6 +5,7 @@ import { useState } from "react";
 import { AdminDesk } from "@/components/AdminDesk";
 import { DailyReview } from "@/components/DailyReview";
 import { Dashboard } from "@/components/Dashboard";
+import { JournalDesk } from "@/components/JournalDesk";
 import { LanguageToggle } from "@/components/LanguageToggle";
 import { LocaleProvider, useLocale } from "@/components/LocaleProvider";
 import { MindDesk } from "@/components/MindDesk";
@@ -17,6 +18,7 @@ type AppView =
   | "analyzer"
   | "strategies"
   | "daily"
+  | "journal"
   | "mind"
   | "news"
   | "admin";
@@ -35,6 +37,7 @@ function AppShellInner() {
           {(
             [
               ["daily", "nav.daily"],
+              ["journal", "nav.journal"],
               ["mind", "nav.mind"],
               ["strategies", "nav.strategies"],
               ["analyzer", "nav.analyzer"],
@@ -66,6 +69,8 @@ function AppShellInner() {
       </nav>
       {view === "daily" ? (
         <DailyReview />
+      ) : view === "journal" ? (
+        <JournalDesk />
       ) : view === "mind" ? (
         <MindDesk />
       ) : view === "strategies" ? (

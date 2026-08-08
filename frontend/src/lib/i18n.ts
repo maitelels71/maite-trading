@@ -20,6 +20,7 @@ type Dict = Record<string, string>;
 
 const en: Dict = {
   "nav.daily": "Daily",
+  "nav.journal": "Journal",
   "nav.mind": "Mind",
   "nav.strategies": "Strategies",
   "nav.analyzer": "Analyzer",
@@ -68,10 +69,45 @@ const en: Dict = {
   "daily.notes": "Notes / journal",
   "daily.notionNote":
     "Save to Notion writes this day’s checklist into your Daily Review database (one page per NY date).",
+
+  "journal.title": "Trade journal",
+  "journal.subtitle":
+    "One trade per save — plan, levels, result, and screenshots → Notion Trade Journal Desk.",
+  "journal.hint":
+    "Before: 1H + 15m + entry TF. After: entry TF (+ optional 15m). Max 3 before / 2 after.",
+  "journal.saveNotion": "Save to Notion",
+  "journal.saving": "Saving to Notion…",
+  "journal.saved": "Saved to Notion",
+  "journal.openNotion": "Open in Notion",
+  "journal.reset": "New trade",
+  "journal.date": "Session date (NY)",
+  "journal.activo": "Activo",
+  "journal.side": "Side",
+  "journal.session": "Session",
+  "journal.playbook": "Playbook",
+  "journal.tf": "TF setup",
+  "journal.status": "Status",
+  "journal.stuck": "Stuck to plan?",
+  "journal.entry": "Entry",
+  "journal.sl": "SL",
+  "journal.tp": "TP",
+  "journal.be": "BE",
+  "journal.rPlanned": "R planned",
+  "journal.rReal": "R real",
+  "journal.pnl": "PnL USD",
+  "journal.thesis": "Thesis (before)",
+  "journal.what": "What happened",
+  "journal.lesson": "Lesson",
+  "journal.beforeShots": "Screenshots — before",
+  "journal.beforeHint": "Context → zone → trigger (1H / 15m / entry).",
+  "journal.afterShots": "Screenshots — after",
+  "journal.afterHint": "Same entry TF (+ optional 15m) with exit / BE marked.",
+  "journal.clearShot": "Clear",
 };
 
 const es: Dict = {
   "nav.daily": "Diario",
+  "nav.journal": "Journal",
   "nav.mind": "Mente",
   "nav.strategies": "Estrategias",
   "nav.analyzer": "Analizador",
@@ -121,6 +157,40 @@ const es: Dict = {
   "daily.notes": "Notas / diario",
   "daily.notionNote":
     "Guardar en Notion escribe el checklist de este día en tu DB Daily Review (una página por fecha NY).",
+
+  "journal.title": "Trade journal",
+  "journal.subtitle":
+    "Un trade por guardado — plan, niveles, resultado y screenshots → Notion Trade Journal Desk.",
+  "journal.hint":
+    "Antes: 1H + 15m + TF de entrada. Después: TF de entrada (+ 15m opcional). Máx 3 antes / 2 después.",
+  "journal.saveNotion": "Guardar en Notion",
+  "journal.saving": "Guardando en Notion…",
+  "journal.saved": "Guardado en Notion",
+  "journal.openNotion": "Abrir en Notion",
+  "journal.reset": "Nuevo trade",
+  "journal.date": "Fecha de sesión (NY)",
+  "journal.activo": "Activo",
+  "journal.side": "Lado",
+  "journal.session": "Sesión",
+  "journal.playbook": "Playbook",
+  "journal.tf": "TF setup",
+  "journal.status": "Status",
+  "journal.stuck": "¿Seguí el plan?",
+  "journal.entry": "Entry",
+  "journal.sl": "SL",
+  "journal.tp": "TP",
+  "journal.be": "BE",
+  "journal.rPlanned": "R planeado",
+  "journal.rReal": "R real",
+  "journal.pnl": "PnL USD",
+  "journal.thesis": "Tesis (antes)",
+  "journal.what": "Qué pasó",
+  "journal.lesson": "Lección",
+  "journal.beforeShots": "Screenshots — antes",
+  "journal.beforeHint": "Contexto → zona → trigger (1H / 15m / entrada).",
+  "journal.afterShots": "Screenshots — después",
+  "journal.afterHint": "Mismo TF de entrada (+ 15m opcional) con salida / BE.",
+  "journal.clearShot": "Quitar",
 };
 
 const TABLES: Record<Locale, Dict> = { en, es };

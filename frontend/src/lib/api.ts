@@ -232,3 +232,46 @@ export async function saveDailyToNotion(payload: {
     body: JSON.stringify(payload),
   });
 }
+
+export type JournalScreenshot = {
+  label: string;
+  filename: string;
+  content_type: string;
+  data_base64: string;
+};
+
+export async function saveTradeToNotion(payload: {
+  date: string;
+  title?: string;
+  activo: string;
+  side: "Compra" | "Venta";
+  session: string;
+  playbook: string;
+  tf_setup: string;
+  status: string;
+  stuck_to_plan: string;
+  entry?: number | null;
+  sl?: number | null;
+  tp?: number | null;
+  be?: number | null;
+  r_planned?: number | null;
+  r_real?: number | null;
+  pnl_usd?: number | null;
+  thesis?: string;
+  what_happened?: string;
+  lesson?: string;
+  screenshots_before?: JournalScreenshot[];
+  screenshots_after?: JournalScreenshot[];
+}): Promise<{
+  action: string;
+  page_id: string;
+  url: string;
+  date: string;
+  images_uploaded: number;
+  images_failed: number;
+}> {
+  return request("/journal/notion", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
