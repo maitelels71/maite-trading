@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { useLocale } from "@/components/LocaleProvider";
+import { saveDailyToNotion } from "@/lib/api";
 import { DAILY_REVIEW_SECTIONS } from "@/lib/daily-review";
 
 function todayNyIso(): string {
@@ -72,12 +73,15 @@ export function DailyReview() {
   const [notes, setNotes] = useState("");
   const [bias, setBias] = useState("");
   const [saveFlash, setSaveFlash] = useState<string | null>(null);
+  const [notionBusy, setNotionBusy] = useState(false);
+  const [notionUrl, setNotionUrl] = useState<string | null>(null);
 
   useEffect(() => {
     const data = loadDay(date);
     setChecked(data.checked);
     setNotes(data.notes);
     setBias(data.bias);
+    setNotionUrl(null);
   }, [date]);
 
   useEffect(() => {
@@ -134,6 +138,33 @@ export function DailyReview() {
     }
   }
 
+  async function saveToNotion() {
+    setNotionBusy(true);
+    setSaveFlash(t("daily.savingNotion"));
+    try {
+      const result = await saveDailyToNotion({
+        date,
+        bias,
+        notes,
+        checked,
+        sections: DAILY_REVIEW_SECTIONS.map((s) => ({
+          id: s.id,
+          title: s.title,
+          items: s.items.map((i) => ({ id: i.id, label: i.label })),
+        })),
+      });
+      setNotionUrl(result.url || null);
+      setSaveFlash(
+        `${t("daily.savedNotion")} (${result.action}) · ${result.done}/${result.total}`,
+      );
+      window.setTimeout(() => setSaveFlash(null), 4000);
+    } catch (err) {
+      setSaveFlash(err instanceof Error ? err.message : "Notion save failed");
+    } finally {
+      setNotionBusy(false);
+    }
+  }
+
   return (
     <div className="mx-auto max-w-6xl space-y-6 px-6 py-8">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
@@ -164,6 +195,14 @@ export function DailyReview() {
           </button>
           <button
             type="button"
+            onClick={saveToNotion}
+            disabled={notionBusy}
+            className="rounded-md border border-[var(--border-strong)] px-3 py-2 text-sm text-[var(--foreground)] hover:bg-[var(--hover)] disabled:opacity-50"
+          >
+            {notionBusy ? t("daily.savingNotion") : t("daily.saveNotion")}
+          </button>
+          <button
+            type="button"
             onClick={copyForNotion}
             className="rounded-md border border-[var(--border-strong)] px-3 py-2 text-sm text-[var(--foreground)] hover:bg-[var(--hover)]"
           >
@@ -182,6 +221,19 @@ export function DailyReview() {
       {saveFlash ? (
         <p className="rounded-md border border-[var(--ok)]/30 bg-[var(--ok-soft)] px-3 py-2 text-sm text-[var(--ok)]">
           {saveFlash}
+          {notionUrl ? (
+            <>
+              {" · "}
+              <a
+                href={notionUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="underline"
+              >
+                {t("daily.openNotion")}
+              </a>
+            </>
+          ) : null}
         </p>
       ) : null}
 

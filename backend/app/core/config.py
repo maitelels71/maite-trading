@@ -80,6 +80,10 @@ class Settings(BaseSettings):
     # Market news / economic calendar (Finnhub free tier)
     finnhub_api_key: str = Field(default="", alias="FINNHUB_API_KEY")
 
+    # Notion daily journal sync
+    notion_api_key: str = Field(default="", alias="NOTION_API_KEY")
+    notion_database_id: str = Field(default="", alias="NOTION_DATABASE_ID")
+
     # Market session defaults
     default_timezone: str = Field(
         default="America/New_York",

@@ -59,11 +59,15 @@ const en: Dict = {
   "daily.saveHint": "Saved in this browser (localStorage key maite.daily-review.YYYY-MM-DD).",
   "daily.copyNotion": "Copy for Notion",
   "daily.copiedNotion": "Copied — paste into Notion",
+  "daily.saveNotion": "Save to Notion",
+  "daily.savingNotion": "Saving to Notion…",
+  "daily.savedNotion": "Saved to Notion",
+  "daily.openNotion": "Open in Notion",
   "daily.progress": "Progress",
   "daily.bias": "Daily bias (one line)",
   "daily.notes": "Notes / journal",
   "daily.notionNote":
-    "Notion sync (API) is not connected yet. Copy creates a Notion-ready markdown block for your journal DB.",
+    "Save to Notion writes this day’s checklist into your Daily Review database (one page per NY date).",
 };
 
 const es: Dict = {
@@ -108,11 +112,15 @@ const es: Dict = {
     "Se guarda en este navegador (localStorage: maite.daily-review.YYYY-MM-DD).",
   "daily.copyNotion": "Copiar para Notion",
   "daily.copiedNotion": "Copiado — pega en Notion",
+  "daily.saveNotion": "Guardar en Notion",
+  "daily.savingNotion": "Guardando en Notion…",
+  "daily.savedNotion": "Guardado en Notion",
+  "daily.openNotion": "Abrir en Notion",
   "daily.progress": "Progreso",
   "daily.bias": "Bias del día (una línea)",
   "daily.notes": "Notas / diario",
   "daily.notionNote":
-    "La sync con Notion (API) aún no está conectada. Copiar crea un bloque markdown listo para tu base de journal.",
+    "Guardar en Notion escribe el checklist de este día en tu DB Daily Review (una página por fecha NY).",
 };
 
 const TABLES: Record<Locale, Dict> = { en, es };

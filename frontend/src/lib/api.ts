@@ -208,3 +208,27 @@ export async function upsertSchwabToken(payload: {
     }),
   });
 }
+
+export async function saveDailyToNotion(payload: {
+  date: string;
+  bias: string;
+  notes: string;
+  checked: Record<string, boolean>;
+  sections: Array<{
+    id: string;
+    title: string;
+    items: Array<{ id: string; label: string }>;
+  }>;
+}): Promise<{
+  action: string;
+  page_id: string;
+  url: string;
+  date: string;
+  done: number;
+  total: number;
+}> {
+  return request("/daily/notion", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}

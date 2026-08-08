@@ -19,6 +19,8 @@ Scanner as a separate tab was removed: strategy-first scanning lives under **Str
 
 Checklist inspired by discretionary process: calendar, bias, levels, risk limits, no revenge, journal. Persisted in `localStorage` per NY date (`maite.daily-review.YYYY-MM-DD`).
 
+**Save to Notion** calls `POST /daily/notion` and upserts one page per NY date into the Notion **Daily Review** database (`NOTION_API_KEY` + `NOTION_DATABASE_ID` in Secrets Manager). Re-saving the same date updates that page.
+
 ## Strategies
 
 Playbooks in `frontend/src/lib/playbooks.ts`. Each book has entry steps, exits, risk, invalidation, and timeframe checklists. **Scan now** calls `POST /strategy/scan` filtered to that strategy’s registry key. Draft books (no `strategyKey`) show rules only until an engine exists.
