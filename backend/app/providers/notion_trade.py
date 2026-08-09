@@ -203,6 +203,18 @@ def _build_trade_children(
     return blocks[:90]
 
 
+def _notion_date_start(raw: str) -> dict[str, Any]:
+    """Notion date value; include time + America/New_York when time is present."""
+    value = (raw or "").strip()
+    if "T" in value:
+        # datetime-local / ISO without zone → attach NY timezone for Notion
+        start = value if len(value) > 16 else f"{value}:00"
+        if start.endswith("Z") or "+" in start[10:] or start.count("-") > 2:
+            return {"date": {"start": start}}
+        return {"date": {"start": start, "time_zone": "America/New_York"}}
+    return {"date": {"start": value}}
+
+
 def _trade_properties(payload: dict[str, Any]) -> dict[str, Any]:
     """Build Notion props. Title = Activo only (short table rows)."""
     date = str(payload.get("date") or "")
@@ -213,7 +225,7 @@ def _trade_properties(payload: dict[str, Any]) -> dict[str, Any]:
     # Priority fields first: Activo(title), Date, Result, PnL, Side, …
     props: dict[str, Any] = {
         "Name": {"title": [{"type": "text", "text": {"content": title[:80]}}]},
-        "Date": {"date": {"start": date}},
+        "Date": _notion_date_start(date),
     }
     mapping = [
         ("Result", _select(_derive_result(payload), allowed=RESULT_OPTS)),

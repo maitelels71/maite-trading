@@ -22,7 +22,9 @@ class ScreenshotIn(BaseModel):
 
 
 class TradeJournalIn(BaseModel):
-    date: str = Field(description="NY session date YYYY-MM-DD")
+    date: str = Field(
+        description="NY session datetime YYYY-MM-DD or YYYY-MM-DDTHH:mm[:ss]"
+    )
     title: str = ""
     activo: str = "NQ"
     side: Literal["Compra", "Venta"] = "Compra"

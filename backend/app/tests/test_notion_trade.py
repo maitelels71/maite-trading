@@ -3,16 +3,31 @@
 from __future__ import annotations
 
 import base64
+import json
 
 import httpx
 
 from app.core.config import Settings
 from app.providers import notion_trade as trade_mod
+from app.providers.notion_trade import _notion_date_start
+
+
+def test_notion_date_start_includes_ny_timezone() -> None:
+    assert _notion_date_start("2026-08-09") == {"date": {"start": "2026-08-09"}}
+    assert _notion_date_start("2026-08-09T10:30") == {
+        "date": {
+            "start": "2026-08-09T10:30:00",
+            "time_zone": "America/New_York",
+        }
+    }
 
 
 def test_create_trade_journal_entry_without_images() -> None:
+    captured: dict = {}
+
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/v1/pages" and request.method == "POST":
+            captured["body"] = json.loads(request.content.decode())
             return httpx.Response(
                 200,
                 json={
@@ -40,7 +55,7 @@ def test_create_trade_journal_entry_without_images() -> None:
     try:
         result = trade_mod.create_trade_journal_entry(
             {
-                "date": "2026-08-08",
+                "date": "2026-08-08T09:45",
                 "activo": "NQ",
                 "side": "Compra",
                 "session": "NY AM",
@@ -63,7 +78,9 @@ def test_create_trade_journal_entry_without_images() -> None:
     assert result["action"] == "created"
     assert result["page_id"] == "trade-page"
     assert result["images_uploaded"] == 0
-
+    date_prop = captured["body"]["properties"]["Date"]["date"]
+    assert date_prop["start"] == "2026-08-08T09:45:00"
+    assert date_prop["time_zone"] == "America/New_York"
 
 def test_create_trade_journal_uploads_image() -> None:
     calls: list[str] = []

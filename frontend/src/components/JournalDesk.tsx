@@ -29,13 +29,19 @@ const AFTER_SLOTS = [
 
 type ShotMap = Record<string, JournalScreenshot | null>;
 
-function todayNyIso(): string {
-  return new Intl.DateTimeFormat("en-CA", {
+function nowNyDateTimeLocal(): string {
+  const parts = new Intl.DateTimeFormat("en-US", {
     timeZone: "America/New_York",
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
-  }).format(new Date());
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(new Date());
+  const get = (type: string) =>
+    parts.find((p) => p.type === type)?.value ?? "00";
+  return `${get("year")}-${get("month")}-${get("day")}T${get("hour")}:${get("minute")}`;
 }
 
 function parseNum(raw: string): number | null {
@@ -154,7 +160,7 @@ export function JournalDesk() {
     [],
   );
 
-  const [date, setDate] = useState(todayNyIso);
+  const [date, setDate] = useState(nowNyDateTimeLocal);
   const [activo, setActivo] = useState<string>("NQ");
   const [side, setSide] = useState<"Compra" | "Venta">("Compra");
   const [session, setSession] = useState<string>("NY AM");
@@ -341,7 +347,7 @@ export function JournalDesk() {
         <label className="space-y-1 text-sm">
           <span className="text-[var(--muted)]">{t("journal.date")}</span>
           <input
-            type="date"
+            type="datetime-local"
             className={field}
             value={date}
             onChange={(e) => setDate(e.target.value)}
