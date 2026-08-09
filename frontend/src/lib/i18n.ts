@@ -34,13 +34,17 @@ const en: Dict = {
   "strategies.title": "Strategies",
   "strategies.subtitle":
     "Playbooks with entry rules by timeframe, then a live scan of which symbols currently meet that strategy.",
+  "strategies.howToUse":
+    "1) Pick playbook · 2) Scan now (if Scan ready) · 3) Check entry steps before you click · 4) Journal the trade",
   "strategies.liveScanTitle": "Live scan · this strategy",
   "strategies.liveScanHint":
-    "Which tickers currently match when you review — organized by this playbook only.",
+    "Checks symbols for the selected playbook only (venue + TF + NY date).",
   "strategies.scanNow": "Scan now",
   "strategies.scanning": "Scanning…",
   "strategies.draft": "Draft playbook",
   "strategies.scanReady": "Scan ready",
+  "strategies.scanReadyHint":
+    "This playbook is wired to the scan engine. Use Scan now — the green badge is status, not a button.",
   "strategies.draftHint":
     "Checklist only — not connected to the live scan engine yet. Use the rules while you trade; ORB books can Scan now.",
   "strategies.draftError":
@@ -123,13 +127,17 @@ const es: Dict = {
   "strategies.title": "Estrategias",
   "strategies.subtitle":
     "Playbooks con reglas de entrada por timeframe y un scan en vivo de qué símbolos cumplen esa estrategia.",
+  "strategies.howToUse":
+    "1) Elige playbook · 2) Scan now (si dice Scan ready) · 3) Checklist de entry · 4) Journal del trade",
   "strategies.liveScanTitle": "Live scan · esta estrategia",
   "strategies.liveScanHint":
-    "Qué tickers coinciden ahora al revisar — solo para este playbook.",
+    "Revisa símbolos solo de este playbook (venue + TF + fecha NY).",
   "strategies.scanNow": "Escanear ahora",
   "strategies.scanning": "Escaneando…",
   "strategies.draft": "Playbook borrador",
   "strategies.scanReady": "Listo para scan",
+  "strategies.scanReadyHint":
+    "Este playbook está conectado al motor de scan. Usa Escanear ahora — el badge verde es estado, no un botón.",
   "strategies.draftHint":
     "Solo checklist — aún no está conectado al motor de scan. Usa las reglas al operar; los libros ORB sí pueden Escanear ahora.",
   "strategies.draftError":
