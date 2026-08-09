@@ -235,6 +235,7 @@ export function JournalDesk() {
     try {
       const result = await saveTradeToNotion({
         date,
+        title: activo,
         activo,
         side,
         session,
@@ -324,15 +325,6 @@ export function JournalDesk() {
 
       <section className="grid gap-3 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4 sm:grid-cols-2 lg:grid-cols-4">
         <label className="space-y-1 text-sm">
-          <span className="text-[var(--muted)]">{t("journal.date")}</span>
-          <input
-            type="date"
-            className={field}
-            value={date}
-            onChange={(e) => setDate(e.target.value)}
-          />
-        </label>
-        <label className="space-y-1 text-sm">
           <span className="text-[var(--muted)]">{t("journal.activo")}</span>
           <select
             className={field}
@@ -347,6 +339,15 @@ export function JournalDesk() {
           </select>
         </label>
         <label className="space-y-1 text-sm">
+          <span className="text-[var(--muted)]">{t("journal.date")}</span>
+          <input
+            type="date"
+            className={field}
+            value={date}
+            onChange={(e) => setDate(e.target.value)}
+          />
+        </label>
+        <label className="space-y-1 text-sm">
           <span className="text-[var(--muted)]">{t("journal.side")}</span>
           <select
             className={field}
@@ -356,6 +357,16 @@ export function JournalDesk() {
             <option value="Compra">Compra</option>
             <option value="Venta">Venta</option>
           </select>
+        </label>
+        <label className="space-y-1 text-sm">
+          <span className="text-[var(--muted)]">{t("journal.pnl")}</span>
+          <input
+            type="number"
+            step="any"
+            className={field}
+            value={pnl}
+            onChange={(e) => setPnl(e.target.value)}
+          />
         </label>
         <label className="space-y-1 text-sm">
           <span className="text-[var(--muted)]">{t("journal.session")}</span>
@@ -438,7 +449,6 @@ export function JournalDesk() {
             [t("journal.be"), be, setBe],
             [t("journal.rPlanned"), rPlanned, setRPlanned],
             [t("journal.rReal"), rReal, setRReal],
-            [t("journal.pnl"), pnl, setPnl],
           ] as const
         ).map(([label, value, setter]) => (
           <label key={label} className="space-y-1 text-sm">

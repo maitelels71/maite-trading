@@ -73,6 +73,27 @@ PLAYBOOK_OPTS = {"SBC", "ORB", "ORB FUT", "Other"}
 TF_OPTS = {"1H", "15m", "5m", "3m", "1m"}
 STATUS_OPTS = {"Open", "Closed", "Scratched"}
 STUCK_OPTS = {"Yes", "No", "Partial"}
+RESULT_OPTS = {"Win", "Loss", "BE", "Open", "Scratch"}
+
+
+def _derive_result(payload: dict[str, Any]) -> str:
+    status = str(payload.get("status") or "").strip()
+    if status == "Open":
+        return "Open"
+    if status == "Scratched":
+        return "Scratch"
+    pnl = payload.get("pnl_usd")
+    if pnl is None:
+        return "BE"
+    try:
+        value = float(pnl)
+    except (TypeError, ValueError):
+        return "BE"
+    if value > 0:
+        return "Win"
+    if value < 0:
+        return "Loss"
+    return "BE"
 
 
 def _safe_filename(name: str) -> str:
@@ -183,32 +204,34 @@ def _build_trade_children(
 
 
 def _trade_properties(payload: dict[str, Any]) -> dict[str, Any]:
+    """Build Notion props. Title = Activo only (short table rows)."""
     date = str(payload.get("date") or "")
     activo = str(payload.get("activo") or "").strip() or "Other"
-    side = str(payload.get("side") or "").strip() or "Compra"
-    title = str(payload.get("title") or "").strip()
-    if not title:
-        title = f"{date} · {activo} · {side}"
+    title = str(payload.get("title") or "").strip() or activo
 
+    # Order here is write order only; Notion table column order is set in the UI.
+    # Priority fields first: Activo(title), Date, Result, PnL, Side, …
     props: dict[str, Any] = {
-        "Name": {"title": [{"type": "text", "text": {"content": title[:200]}}]},
+        "Name": {"title": [{"type": "text", "text": {"content": title[:80]}}]},
         "Date": {"date": {"start": date}},
     }
     mapping = [
-        ("Activo", _select(payload.get("activo"), allowed=ACTIVO_OPTS)),
+        ("Result", _select(_derive_result(payload), allowed=RESULT_OPTS)),
+        ("PnL", _number(payload.get("pnl_usd"))),
         ("Side", _select(payload.get("side"), allowed=SIDE_OPTS)),
         ("Session", _select(payload.get("session"), allowed=SESSION_OPTS)),
         ("Playbook", _select(payload.get("playbook"), allowed=PLAYBOOK_OPTS)),
-        ("TF setup", _select(payload.get("tf_setup"), allowed=TF_OPTS)),
-        ("Status", _select(payload.get("status"), allowed=STATUS_OPTS)),
-        ("Stuck to plan?", _select(payload.get("stuck_to_plan"), allowed=STUCK_OPTS)),
+        ("TF", _select(payload.get("tf_setup"), allowed=TF_OPTS)),
+        ("R", _number(payload.get("r_real"))),
+        ("R plan", _number(payload.get("r_planned"))),
         ("Entry", _number(payload.get("entry"))),
         ("SL", _number(payload.get("sl"))),
         ("TP", _number(payload.get("tp"))),
         ("BE", _number(payload.get("be"))),
-        ("R planned", _number(payload.get("r_planned"))),
-        ("R real", _number(payload.get("r_real"))),
-        ("PnL USD", _number(payload.get("pnl_usd"))),
+        ("Plan", _select(payload.get("stuck_to_plan"), allowed=STUCK_OPTS)),
+        ("Status", _select(payload.get("status"), allowed=STATUS_OPTS)),
+        # Keep Activo select for filters (title is also Activo text)
+        ("Activo", _select(activo, allowed=ACTIVO_OPTS)),
     ]
     for key, value in mapping:
         if value is not None:
