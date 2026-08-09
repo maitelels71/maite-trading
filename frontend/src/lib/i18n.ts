@@ -99,10 +99,12 @@ const en: Dict = {
   "journal.what": "What happened",
   "journal.lesson": "Lesson",
   "journal.beforeShots": "Screenshots — before",
-  "journal.beforeHint": "Context → zone → trigger (1H / 15m / entry).",
+  "journal.beforeHint": "Context → zone → trigger (1H / 15m / entry). Click a box → Ctrl+V from TradingView.",
   "journal.afterShots": "Screenshots — after",
-  "journal.afterHint": "Same entry TF (+ optional 15m) with exit / BE marked.",
+  "journal.afterHint": "Same entry TF (+ optional 15m) with exit / BE marked. Click → Ctrl+V.",
   "journal.clearShot": "Clear",
+  "journal.pasteHint": "Click here, then Ctrl+V (paste from TradingView)",
+  "journal.orFile": "Or choose a file…",
 };
 
 const es: Dict = {
@@ -187,10 +189,14 @@ const es: Dict = {
   "journal.what": "Qué pasó",
   "journal.lesson": "Lección",
   "journal.beforeShots": "Screenshots — antes",
-  "journal.beforeHint": "Contexto → zona → trigger (1H / 15m / entrada).",
+  "journal.beforeHint":
+    "Contexto → zona → trigger (1H / 15m / entrada). Click en la caja → Ctrl+V desde TradingView.",
   "journal.afterShots": "Screenshots — después",
-  "journal.afterHint": "Mismo TF de entrada (+ 15m opcional) con salida / BE.",
+  "journal.afterHint":
+    "Mismo TF de entrada (+ 15m opcional) con salida / BE. Click → Ctrl+V.",
   "journal.clearShot": "Quitar",
+  "journal.pasteHint": "Click aquí, luego Ctrl+V (pegar desde TradingView)",
+  "journal.orFile": "O elige un archivo…",
 };
 
 const TABLES: Record<Locale, Dict> = { en, es };

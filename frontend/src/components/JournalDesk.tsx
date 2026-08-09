@@ -1,10 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { useLocale } from "@/components/LocaleProvider";
 import { saveTradeToNotion, type JournalScreenshot } from "@/lib/api";
-import { compressImageFile } from "@/lib/image-compress";
+import {
+  compressImageFile,
+  imageFromDataTransfer,
+} from "@/lib/image-compress";
 import { STRATEGY_PLAYBOOKS } from "@/lib/playbooks";
 
 const ACTIVOS = ["NQ", "MNQ", "ES", "MES", "YM", "RTY", "GC", "CL", "Other"] as const;
@@ -40,6 +43,105 @@ function parseNum(raw: string): number | null {
   if (!t) return null;
   const n = Number(t);
   return Number.isFinite(n) ? n : null;
+}
+
+function ShotPasteSlot({
+  label,
+  shot,
+  pasteHint,
+  fileHint,
+  clearLabel,
+  onImage,
+  onClear,
+}: {
+  label: string;
+  shot: JournalScreenshot | null | undefined;
+  pasteHint: string;
+  fileHint: string;
+  clearLabel: string;
+  onImage: (file: File | Blob) => void;
+  onClear: () => void;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [active, setActive] = useState(false);
+  const [dragOver, setDragOver] = useState(false);
+
+  return (
+    <div
+      ref={ref}
+      tabIndex={0}
+      role="button"
+      onClick={() => ref.current?.focus()}
+      onFocus={() => setActive(true)}
+      onBlur={() => setActive(false)}
+      onPaste={(e) => {
+        const img = imageFromDataTransfer(e.clipboardData);
+        if (!img) return;
+        e.preventDefault();
+        onImage(img);
+      }}
+      onDragOver={(e) => {
+        e.preventDefault();
+        setDragOver(true);
+      }}
+      onDragLeave={() => setDragOver(false)}
+      onDrop={(e) => {
+        e.preventDefault();
+        setDragOver(false);
+        const img = imageFromDataTransfer(e.dataTransfer);
+        if (img) onImage(img);
+      }}
+      className={`rounded-lg border p-3 outline-none transition ${
+        active || dragOver
+          ? "border-[var(--accent)] bg-[var(--hover)]"
+          : "border-[var(--border)]"
+      }`}
+    >
+      <p className="text-sm font-medium">{label}</p>
+      {shot ? (
+        <div className="mt-2 space-y-2">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={`data:${shot.content_type};base64,${shot.data_base64}`}
+            alt={label}
+            className="max-h-28 w-full rounded-md object-contain bg-[var(--surface-muted)]"
+          />
+          <button
+            type="button"
+            className="text-xs text-[var(--muted)] underline"
+            onClick={(e) => {
+              e.stopPropagation();
+              onClear();
+            }}
+          >
+            {clearLabel}
+          </button>
+        </div>
+      ) : (
+        <div className="mt-2 space-y-2">
+          <p className="rounded-md border border-dashed border-[var(--border-strong)] px-2 py-4 text-center text-xs text-[var(--muted)]">
+            {pasteHint}
+          </p>
+          <label
+            className="block cursor-pointer text-xs text-[var(--muted)] underline"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {fileHint}
+            <input
+              type="file"
+              accept="image/*"
+              className="sr-only"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) onImage(file);
+                e.target.value = "";
+              }}
+            />
+          </label>
+        </div>
+      )}
+    </div>
+  );
 }
 
 export function JournalDesk() {
@@ -80,15 +182,16 @@ export function JournalDesk() {
     setNotionUrl(null);
   }, [date]);
 
-  async function onPick(
+  async function setShotFromBlob(
     slotId: string,
     label: string,
-    file: File | undefined,
+    blob: File | Blob,
     which: "before" | "after",
   ) {
-    if (!file) return;
     try {
-      const shot = await compressImageFile(file, label);
+      const shot = await compressImageFile(blob, label, {
+        filename: blob instanceof File ? blob.name : `${slotId}-paste.png`,
+      });
       if (which === "before") {
         setBeforeShots((prev) => ({ ...prev, [slotId]: shot }));
       } else {
@@ -387,39 +490,20 @@ export function JournalDesk() {
           <p className="text-xs text-[var(--muted)]">{t("journal.beforeHint")}</p>
         </div>
         <div className="grid gap-3 sm:grid-cols-3">
-          {BEFORE_SLOTS.map((slot) => {
-            const shot = beforeShots[slot.id];
-            return (
-              <div
-                key={slot.id}
-                className="rounded-lg border border-[var(--border)] p-3"
-              >
-                <p className="text-sm font-medium">{slot.label}</p>
-                <input
-                  type="file"
-                  accept="image/*"
-                  className="mt-2 block w-full text-xs"
-                  onChange={(e) =>
-                    void onPick(
-                      slot.id,
-                      slot.label,
-                      e.target.files?.[0],
-                      "before",
-                    )
-                  }
-                />
-                {shot ? (
-                  <button
-                    type="button"
-                    className="mt-2 text-xs text-[var(--muted)] underline"
-                    onClick={() => clearShot(slot.id, "before")}
-                  >
-                    {t("journal.clearShot")}
-                  </button>
-                ) : null}
-              </div>
-            );
-          })}
+          {BEFORE_SLOTS.map((slot) => (
+            <ShotPasteSlot
+              key={slot.id}
+              label={slot.label}
+              shot={beforeShots[slot.id]}
+              pasteHint={t("journal.pasteHint")}
+              fileHint={t("journal.orFile")}
+              clearLabel={t("journal.clearShot")}
+              onImage={(blob) =>
+                void setShotFromBlob(slot.id, slot.label, blob, "before")
+              }
+              onClear={() => clearShot(slot.id, "before")}
+            />
+          ))}
         </div>
       </section>
 
@@ -429,39 +513,20 @@ export function JournalDesk() {
           <p className="text-xs text-[var(--muted)]">{t("journal.afterHint")}</p>
         </div>
         <div className="grid gap-3 sm:grid-cols-2">
-          {AFTER_SLOTS.map((slot) => {
-            const shot = afterShots[slot.id];
-            return (
-              <div
-                key={slot.id}
-                className="rounded-lg border border-[var(--border)] p-3"
-              >
-                <p className="text-sm font-medium">{slot.label}</p>
-                <input
-                  type="file"
-                  accept="image/*"
-                  className="mt-2 block w-full text-xs"
-                  onChange={(e) =>
-                    void onPick(
-                      slot.id,
-                      slot.label,
-                      e.target.files?.[0],
-                      "after",
-                    )
-                  }
-                />
-                {shot ? (
-                  <button
-                    type="button"
-                    className="mt-2 text-xs text-[var(--muted)] underline"
-                    onClick={() => clearShot(slot.id, "after")}
-                  >
-                    {t("journal.clearShot")}
-                  </button>
-                ) : null}
-              </div>
-            );
-          })}
+          {AFTER_SLOTS.map((slot) => (
+            <ShotPasteSlot
+              key={slot.id}
+              label={slot.label}
+              shot={afterShots[slot.id]}
+              pasteHint={t("journal.pasteHint")}
+              fileHint={t("journal.orFile")}
+              clearLabel={t("journal.clearShot")}
+              onImage={(blob) =>
+                void setShotFromBlob(slot.id, slot.label, blob, "after")
+              }
+              onClear={() => clearShot(slot.id, "after")}
+            />
+          ))}
         </div>
       </section>
     </div>

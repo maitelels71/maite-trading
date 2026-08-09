@@ -1,4 +1,4 @@
-/** Compress an image file to JPEG base64 for Notion upload. */
+/** Compress an image file/blob to JPEG base64 for Notion upload. */
 
 export type CompressedShot = {
   label: string;
@@ -8,9 +8,9 @@ export type CompressedShot = {
 };
 
 export async function compressImageFile(
-  file: File,
+  file: File | Blob,
   label: string,
-  opts?: { maxWidth?: number; quality?: number },
+  opts?: { maxWidth?: number; quality?: number; filename?: string },
 ): Promise<CompressedShot> {
   const maxWidth = opts?.maxWidth ?? 1600;
   const quality = opts?.quality ?? 0.72;
@@ -41,11 +41,31 @@ export async function compressImageFile(
     binary += String.fromCharCode(bytes[i]!);
   }
   const data_base64 = btoa(binary);
-  const base = file.name.replace(/\.[^.]+$/, "") || "shot";
+  const rawName =
+    opts?.filename ||
+    (file instanceof File ? file.name : "") ||
+    "paste";
+  const base = rawName.replace(/\.[^.]+$/, "") || "shot";
   return {
     label,
     filename: `${base}.jpg`,
     content_type: "image/jpeg",
     data_base64,
   };
+}
+
+/** First image File/Blob from a paste or drop Clipboard/DataTransfer. */
+export function imageFromDataTransfer(
+  data: DataTransfer | null,
+): File | Blob | null {
+  if (!data) return null;
+  for (const item of Array.from(data.items || [])) {
+    if (item.kind === "file" && item.type.startsWith("image/")) {
+      return item.getAsFile();
+    }
+  }
+  for (const file of Array.from(data.files || [])) {
+    if (file.type.startsWith("image/")) return file;
+  }
+  return null;
 }

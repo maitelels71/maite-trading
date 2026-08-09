@@ -4,7 +4,10 @@ import { useEffect, useMemo, useState } from "react";
 
 import { useLocale } from "@/components/LocaleProvider";
 import { saveDailyToNotion } from "@/lib/api";
-import { DAILY_REVIEW_SECTIONS } from "@/lib/daily-review";
+import {
+  DAILY_REVIEW_SECTIONS,
+  type ChecklistSection,
+} from "@/lib/daily-review";
 
 function todayNyIso(): string {
   return new Intl.DateTimeFormat("en-CA", {
@@ -64,6 +67,68 @@ function buildNotionMarkdown(payload: {
   lines.push(payload.notes || "—");
   lines.push("");
   return lines.join("\n");
+}
+
+function SectionCard({
+  section,
+  checked,
+  onToggle,
+}: {
+  section: ChecklistSection;
+  checked: Record<string, boolean>;
+  onToggle: (id: string) => void;
+}) {
+  const sectionDone = section.items.filter((i) => checked[i.id]).length;
+  return (
+    <section className="flex min-h-0 flex-col overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface)]">
+      <div className="flex items-start justify-between gap-2 border-b border-[var(--border)] px-3 py-2">
+        <div className="min-w-0">
+          <h3 className="text-sm font-semibold text-[var(--foreground)]">
+            {section.title}
+          </h3>
+          <p className="text-[11px] leading-snug text-[var(--muted)]">
+            {section.subtitle}
+          </p>
+        </div>
+        <p className="shrink-0 pt-0.5 text-[11px] tabular-nums text-[var(--muted)]">
+          {sectionDone}/{section.items.length}
+        </p>
+      </div>
+      <ul className="divide-y divide-[var(--border)]">
+        {section.items.map((item) => {
+          const on = Boolean(checked[item.id]);
+          return (
+            <li key={item.id}>
+              <label className="flex cursor-pointer gap-2 px-3 py-1.5 hover:bg-[var(--surface-muted)]">
+                <input
+                  type="checkbox"
+                  className="mt-0.5 shrink-0"
+                  checked={on}
+                  onChange={() => onToggle(item.id)}
+                />
+                <span className="min-w-0">
+                  <span
+                    className={`block text-[13px] leading-snug ${
+                      on
+                        ? "text-[var(--muted)] line-through"
+                        : "text-[var(--foreground)]"
+                    }`}
+                  >
+                    {item.label}
+                  </span>
+                  {item.hint ? (
+                    <span className="mt-0.5 block text-[11px] leading-snug text-[var(--muted)]">
+                      {item.hint}
+                    </span>
+                  ) : null}
+                </span>
+              </label>
+            </li>
+          );
+        })}
+      </ul>
+    </section>
+  );
 }
 
 export function DailyReview() {
@@ -165,61 +230,55 @@ export function DailyReview() {
     }
   }
 
+  const btn =
+    "rounded-md border border-[var(--border-strong)] px-2.5 py-1.5 text-xs text-[var(--foreground)] hover:bg-[var(--hover)]";
+
   return (
-    <div className="mx-auto max-w-6xl space-y-6 px-6 py-8">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <h2 className="text-xl font-semibold text-[var(--foreground)]">
+    <div className="mx-auto max-w-7xl space-y-3 px-4 py-4 sm:px-6">
+      {/* Compact session bar */}
+      <div className="flex flex-wrap items-center gap-2 gap-y-2">
+        <div className="mr-auto min-w-0">
+          <h2 className="text-lg font-semibold leading-tight text-[var(--foreground)]">
             {t("daily.title")}
           </h2>
-          <p className="text-sm text-[var(--muted)]">{t("daily.subtitle")}</p>
-          <p className="mt-1 text-xs text-[var(--muted)]">{t("daily.saveHint")}</p>
-          <p className="mt-1 text-xs text-[var(--muted)]">{t("daily.notionNote")}</p>
+          <p className="text-[11px] text-[var(--muted)]">
+            {done}/{total} · {t("daily.saveHint")}
+          </p>
         </div>
-        <div className="flex flex-wrap items-end gap-2">
-          <label className="space-y-1 text-sm">
-            <span className="text-[var(--muted)]">{t("daily.sessionDate")}</span>
-            <input
-              type="date"
-              className="block rounded-md border border-[var(--border-strong)] bg-[var(--surface)] px-3 py-2"
-              value={date}
-              onChange={(e) => setDate(e.target.value)}
-            />
-          </label>
-          <button
-            type="button"
-            onClick={saveNow}
-            className="rounded-md bg-[var(--accent)] px-3 py-2 text-sm font-medium text-[var(--on-accent)] hover:bg-[var(--accent-hover)]"
-          >
-            {t("daily.save")}
-          </button>
-          <button
-            type="button"
-            onClick={saveToNotion}
-            disabled={notionBusy}
-            className="rounded-md border border-[var(--border-strong)] px-3 py-2 text-sm text-[var(--foreground)] hover:bg-[var(--hover)] disabled:opacity-50"
-          >
-            {notionBusy ? t("daily.savingNotion") : t("daily.saveNotion")}
-          </button>
-          <button
-            type="button"
-            onClick={copyForNotion}
-            className="rounded-md border border-[var(--border-strong)] px-3 py-2 text-sm text-[var(--foreground)] hover:bg-[var(--hover)]"
-          >
-            {t("daily.copyNotion")}
-          </button>
-          <button
-            type="button"
-            onClick={clearDay}
-            className="rounded-md border border-[var(--border-strong)] px-3 py-2 text-sm text-[var(--muted)] hover:border-[var(--border-strong)]"
-          >
-            {t("daily.reset")}
-          </button>
-        </div>
+        <label className="flex items-center gap-1.5 text-xs text-[var(--muted)]">
+          {t("daily.sessionDate")}
+          <input
+            type="date"
+            className="rounded-md border border-[var(--border-strong)] bg-[var(--surface)] px-2 py-1.5 text-xs text-[var(--foreground)]"
+            value={date}
+            onChange={(e) => setDate(e.target.value)}
+          />
+        </label>
+        <button
+          type="button"
+          onClick={saveNow}
+          className="rounded-md bg-[var(--accent)] px-2.5 py-1.5 text-xs font-medium text-[var(--on-accent)] hover:bg-[var(--accent-hover)]"
+        >
+          {t("daily.save")}
+        </button>
+        <button
+          type="button"
+          onClick={saveToNotion}
+          disabled={notionBusy}
+          className={`${btn} disabled:opacity-50`}
+        >
+          {notionBusy ? t("daily.savingNotion") : t("daily.saveNotion")}
+        </button>
+        <button type="button" onClick={copyForNotion} className={btn}>
+          {t("daily.copyNotion")}
+        </button>
+        <button type="button" onClick={clearDay} className={`${btn} text-[var(--muted)]`}>
+          {t("daily.reset")}
+        </button>
       </div>
 
       {saveFlash ? (
-        <p className="rounded-md border border-[var(--ok)]/30 bg-[var(--ok-soft)] px-3 py-2 text-sm text-[var(--ok)]">
+        <p className="rounded-md border border-[var(--ok)]/30 bg-[var(--ok-soft)] px-3 py-1.5 text-xs text-[var(--ok)]">
           {saveFlash}
           {notionUrl ? (
             <>
@@ -237,91 +296,43 @@ export function DailyReview() {
         </p>
       ) : null}
 
-      <div className="grid gap-3 sm:grid-cols-3">
-        <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3">
-          <p className="text-xs uppercase tracking-wide text-[var(--muted)]">
-            {t("daily.progress")}
-          </p>
-          <p className="mt-1 text-xl font-semibold">
-            {done} / {total}
-          </p>
-        </div>
-        <div className="sm:col-span-2 rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3">
-          <label className="block space-y-1 text-sm">
-            <span className="text-[var(--muted)]">{t("daily.bias")}</span>
-            <input
-              type="text"
-              className="w-full rounded-md border border-[var(--border-strong)] bg-[var(--surface)] px-3 py-2"
-              placeholder="e.g. Long bias NQ if OR breaks high; stand down into 10:00 CPI"
-              value={bias}
-              onChange={(e) => setBias(e.target.value)}
-            />
-          </label>
-        </div>
+      {/* Bias strip */}
+      <label className="flex items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm">
+        <span className="shrink-0 text-xs text-[var(--muted)]">
+          {t("daily.bias")}
+        </span>
+        <input
+          type="text"
+          className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-[var(--muted)]"
+          placeholder="Long NQ if OR holds · stand down into CPI…"
+          value={bias}
+          onChange={(e) => setBias(e.target.value)}
+        />
+        <span className="shrink-0 text-xs tabular-nums text-[var(--muted)]">
+          {done}/{total}
+        </span>
+      </label>
+
+      {/* Checklist columns — denser, more visible at once */}
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+        {DAILY_REVIEW_SECTIONS.map((section) => (
+          <SectionCard
+            key={section.id}
+            section={section}
+            checked={checked}
+            onToggle={toggle}
+          />
+        ))}
       </div>
 
-      {DAILY_REVIEW_SECTIONS.map((section) => {
-        const sectionDone = section.items.filter((i) => checked[i.id]).length;
-        return (
-          <section
-            key={section.id}
-            className="overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface)]"
-          >
-            <div className="flex items-start justify-between gap-3 border-b border-[var(--border)] px-4 py-3">
-              <div>
-                <h3 className="font-medium text-[var(--foreground)]">
-                  {section.title}
-                </h3>
-                <p className="text-xs text-[var(--muted)]">{section.subtitle}</p>
-              </div>
-              <p className="shrink-0 text-xs text-[var(--muted)]">
-                {sectionDone}/{section.items.length}
-              </p>
-            </div>
-            <ul className="divide-y divide-[var(--border)]">
-              {section.items.map((item) => {
-                const on = Boolean(checked[item.id]);
-                return (
-                  <li key={item.id}>
-                    <label className="flex cursor-pointer gap-3 px-4 py-3 hover:bg-[var(--surface-muted)]">
-                      <input
-                        type="checkbox"
-                        className="mt-1"
-                        checked={on}
-                        onChange={() => toggle(item.id)}
-                      />
-                      <span>
-                        <span
-                          className={`block text-sm ${
-                            on
-                              ? "text-[var(--muted)] line-through"
-                              : "text-[var(--foreground)]"
-                          }`}
-                        >
-                          {item.label}
-                        </span>
-                        {item.hint ? (
-                          <span className="mt-0.5 block text-xs text-[var(--muted)]">
-                            {item.hint}
-                          </span>
-                        ) : null}
-                      </span>
-                    </label>
-                  </li>
-                );
-              })}
-            </ul>
-          </section>
-        );
-      })}
-
-      <section className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4">
+      {/* Notes — shorter, same viewport */}
+      <section className="rounded-xl border border-[var(--border)] bg-[var(--surface)] px-3 py-2">
         <label className="block space-y-1 text-sm">
-          <span className="font-medium text-[var(--foreground)]">
+          <span className="text-xs font-medium text-[var(--muted)]">
             {t("daily.notes")}
           </span>
           <textarea
-            className="min-h-[120px] w-full rounded-md border border-[var(--border-strong)] bg-[var(--surface)] px-3 py-2"
+            className="min-h-[72px] w-full resize-y rounded-md border border-[var(--border-strong)] bg-[var(--surface)] px-2.5 py-1.5 text-sm"
             placeholder="What worked, what you broke, what you carry tomorrow…"
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
