@@ -204,15 +204,44 @@ def _build_trade_children(
 
 
 def _notion_date_start(raw: str) -> dict[str, Any]:
-    """Notion date value; include time + America/New_York when time is present."""
+    """Notion date value — always with time so the UI shows hour + minute.
+
+    Prefer ISO-8601 with an America/New_York UTC offset (Notion's most reliable
+    form for timed dates). Date-only input gets the current NY clock time.
+    """
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    et = ZoneInfo("America/New_York")
     value = (raw or "").strip()
-    if "T" in value:
-        # datetime-local / ISO without zone → attach NY timezone for Notion
-        start = value if len(value) > 16 else f"{value}:00"
-        if start.endswith("Z") or "+" in start[10:] or start.count("-") > 2:
-            return {"date": {"start": start}}
-        return {"date": {"start": start, "time_zone": "America/New_York"}}
-    return {"date": {"start": value}}
+    now_ny = datetime.now(et)
+
+    if not value:
+        return {"date": {"start": now_ny.isoformat(timespec="seconds")}}
+
+    text = value
+    if "T" not in text:
+        # Date-only → keep the chosen day, stamp with "now" NY time
+        text = f"{text}T{now_ny.strftime('%H:%M:%S')}"
+    elif len(text) == 16:
+        # YYYY-MM-DDTHH:mm from <input type="datetime-local">
+        text = f"{text}:00"
+
+    # Normalize Z / offset / naive
+    if text.endswith("Z"):
+        text = text[:-1] + "+00:00"
+    try:
+        dt = datetime.fromisoformat(text)
+    except ValueError:
+        return {"date": {"start": value}}
+
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=et)
+    else:
+        dt = dt.astimezone(et)
+
+    # Explicit offset, no separate time_zone — Notion displays time consistently
+    return {"date": {"start": dt.isoformat(timespec="seconds")}}
 
 
 def _trade_properties(payload: dict[str, Any]) -> dict[str, Any]:

@@ -21,10 +21,10 @@ export function LanguageToggle() {
             key={id}
             type="button"
             onClick={() => setLocale(id)}
-            className={`rounded px-2.5 py-1 text-xs font-medium transition ${
+            className={`rounded px-2.5 py-1 text-xs font-semibold transition ${
               active
                 ? "bg-[var(--accent)] text-[var(--on-accent)]"
-                : "text-[var(--muted)] hover:bg-[var(--hover)] hover:text-[var(--foreground)]"
+                : "text-[var(--foreground)] hover:bg-[var(--hover)]"
             }`}
           >
             {t(`lang.${id}`)}

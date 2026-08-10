@@ -5,6 +5,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
 
+from app.domain.candles import Candle
 from app.domain.enums import SessionType
 from app.domain.signals import Signal
 from app.domain.trades import Trade
@@ -21,7 +22,8 @@ class StrategyContext:
     parameters: dict[str, Any] = field(default_factory=dict)
     timezone: str = "America/New_York"
     session: SessionType = SessionType.RTH
-
+    """Optional multi-TF series keyed by timeframe string (e.g. \"1h\", \"15m\")."""
+    extra_candles: dict[str, list[Candle]] = field(default_factory=dict)
 
 @dataclass(frozen=True, slots=True)
 class StrategyMetrics:

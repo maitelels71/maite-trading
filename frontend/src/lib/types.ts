@@ -1,6 +1,6 @@
 export type MarketType = "stock" | "etf" | "future";
 export type DataProvider = "schwab" | "tradeadvocate";
-/** Dashboard workspace: one UI, two broker venues. */
+/** Dashboard workspace venue (Schwab equities/options vs TradeAdvocate futures). */
 export type Venue = DataProvider;
 export type Side = "long" | "short" | "flat";
 
@@ -144,6 +144,7 @@ export type NewsItem = {
 export type EconomicEvent = {
   id: string;
   country: string;
+  currency?: string;
   event: string;
   impact: NewsImpact | string;
   scheduled_at?: string | null;
@@ -156,9 +157,12 @@ export type EconomicEvent = {
 export type NewsBriefing = {
   as_of: string;
   session_date: string;
+  week_start?: string | null;
+  week_end?: string | null;
   provider: string;
   configured: boolean;
   message?: string;
+  calendar_events?: EconomicEvent[];
   red_events: EconomicEvent[];
   aware_items: NewsItem[];
   watchlist_items: NewsItem[];
@@ -263,10 +267,15 @@ export const FALLBACK_INSTRUMENTS: Instrument[] = [
   { symbol: "ES", name: "E-mini S&P 500", market_type: "future", data_provider: "tradeadvocate", active: true },
   { symbol: "GC", name: "Gold Futures", market_type: "future", data_provider: "tradeadvocate", active: true },
   { symbol: "6E", name: "Euro FX Futures", market_type: "future", data_provider: "tradeadvocate", active: true },
-  { symbol: "AMZN", name: "Amazon.com Inc", market_type: "stock", data_provider: "schwab", active: true },
-  { symbol: "TSLA", name: "Tesla Inc", market_type: "stock", data_provider: "schwab", active: true },
   { symbol: "SPY", name: "SPDR S&P 500 ETF", market_type: "etf", data_provider: "schwab", active: true },
   { symbol: "QQQ", name: "Invesco QQQ Trust", market_type: "etf", data_provider: "schwab", active: true },
+  { symbol: "AAPL", name: "Apple Inc", market_type: "stock", data_provider: "schwab", active: true },
+  { symbol: "AMZN", name: "Amazon.com Inc", market_type: "stock", data_provider: "schwab", active: true },
+  { symbol: "META", name: "Meta Platforms Inc", market_type: "stock", data_provider: "schwab", active: true },
+  { symbol: "NFLX", name: "Netflix Inc", market_type: "stock", data_provider: "schwab", active: true },
+  { symbol: "TSLA", name: "Tesla Inc", market_type: "stock", data_provider: "schwab", active: true },
+  { symbol: "NVDA", name: "NVIDIA Corp", market_type: "stock", data_provider: "schwab", active: true },
+  { symbol: "BAC", name: "Bank of America", market_type: "stock", data_provider: "schwab", active: true },
 ];
 
 export const TIMEFRAMES = ["1m", "5m", "15m", "30m", "1h", "4h", "1d"] as const;

@@ -1,0 +1,831 @@
+"""Creando Riquezas (CR01–CR11) — scannable heuristics for CALL/PUT setups."""
+
+from __future__ import annotations
+
+from datetime import date, datetime, time
+from decimal import Decimal
+from typing import Any
+from zoneinfo import ZoneInfo
+
+from app.core.constants import (
+    STRATEGY_CR01_MA40,
+    STRATEGY_CR02_DROP,
+    STRATEGY_CR03_CHANNEL,
+    STRATEGY_CR04_GAP_UP,
+    STRATEGY_CR05_GAP_DOWN,
+    STRATEGY_CR06_FLOOR,
+    STRATEGY_CR07_PUT_CH,
+    STRATEGY_CR08_FIRST_RED,
+    STRATEGY_CR09_GAP_FLOOR,
+    STRATEGY_CR10_HANGER,
+    STRATEGY_CR11_EARNINGS,
+)
+from app.domain.candles import Candle
+from app.domain.enums import Side
+from app.domain.signals import Signal
+from app.domain.strategy_types import StrategyContext, StrategyMetrics, StrategyResult
+from app.indicators import sma
+from app.strategies.base import BaseStrategy
+
+RTH_OPEN = time(9, 30)
+RTH_CLOSE = time(16, 0)
+HOUR_11 = time(11, 0)
+
+
+def _local(ts: datetime, tz: ZoneInfo) -> datetime:
+    if ts.tzinfo is None:
+        return ts.replace(tzinfo=tz)
+    return ts.astimezone(tz)
+
+
+def _as_date(value: date | datetime) -> date:
+    if isinstance(value, datetime):
+        return value.date()
+    return value
+
+
+def _rth(candles: list[Candle], tz: ZoneInfo) -> list[Candle]:
+    return [
+        c
+        for c in sorted(candles, key=lambda x: x.timestamp)
+        if RTH_OPEN <= _local(c.timestamp, tz).time() < RTH_CLOSE
+    ]
+
+
+def _signal(
+    *,
+    bar: Candle,
+    side: Side,
+    reason: str,
+    ticker: str,
+) -> StrategyResult:
+    return StrategyResult(
+        signals=[
+            Signal(
+                timestamp=bar.timestamp,
+                side=side,
+                price=bar.close,
+                reason=reason,
+                ticker=ticker,
+            )
+        ],
+        trades=[],
+        metrics=StrategyMetrics(),
+    )
+
+
+def _is_green(c: Candle) -> bool:
+    return c.close > c.open
+
+
+def _is_red(c: Candle) -> bool:
+    return c.close < c.open
+
+
+def _body_pct(c: Candle) -> Decimal:
+    if c.close == 0:
+        return Decimal("0")
+    return abs(c.close - c.open) / c.close
+
+
+def _prior_session_last(
+    h1: list[Candle],
+    tz: ZoneInfo,
+    session_day: date,
+) -> Candle | None:
+    prior = [c for c in h1 if _local(c.timestamp, tz).date() < session_day]
+    return prior[-1] if prior else None
+
+
+def _today(h1: list[Candle], tz: ZoneInfo, session_day: date) -> list[Candle]:
+    return [c for c in h1 if _local(c.timestamp, tz).date() == session_day]
+
+
+def _sma_at(closes: list[Decimal], period: int, idx: int) -> Decimal | None:
+    vals = sma(closes, period=period)
+    if idx < 0 or idx >= len(vals):
+        return None
+    return vals[idx]
+
+
+# ── CR01 ──────────────────────────────────────────────────────────────────────
+
+
+class Cr01Ma40BounceStrategy(BaseStrategy):
+    """MA20>MA40, touch MA40, then bullish break of recent descending highs."""
+
+    @property
+    def name(self) -> str:
+        return STRATEGY_CR01_MA40
+
+    @property
+    def description(self) -> str:
+        return "CR01 MA40 bounce: MA20>MA40, touch MA40, break recent highs (CALL)."
+
+    @property
+    def scan_timeframe(self) -> str | None:
+        return "1h"
+
+    @property
+    def scan_lookback_days(self) -> int:
+        return 15
+
+    @property
+    def default_parameters(self) -> dict[str, Any]:
+        return {
+            "ma_fast": 20,
+            "ma_slow": 40,
+            "touch_pct": 0.006,
+            "min_body_pct": 0.001,
+            "timezone": "America/New_York",
+        }
+
+    def evaluate(self, candles: list[Candle], context: StrategyContext) -> StrategyResult:
+        params = {**self.default_parameters, **(context.parameters or {})}
+        tz = ZoneInfo(str(params.get("timezone") or context.timezone))
+        session_day = _as_date(context.end)
+        h1 = _rth(candles, tz)
+        ma_f, ma_s = int(params["ma_fast"]), int(params["ma_slow"])
+        if len(h1) < ma_s + 5:
+            return StrategyResult()
+
+        closes = [c.close for c in h1]
+        today = _today(h1, tz, session_day)
+        if not today:
+            return StrategyResult()
+
+        # Use last completed prior index for MA context
+        prior_idxs = [i for i, c in enumerate(h1) if _local(c.timestamp, tz).date() < session_day]
+        if len(prior_idxs) < ma_s:
+            return StrategyResult()
+        pi = prior_idxs[-1]
+        fast = _sma_at(closes, ma_f, pi)
+        slow = _sma_at(closes, ma_s, pi)
+        if fast is None or slow is None or fast <= slow:
+            return StrategyResult()
+
+        touch = Decimal(str(params["touch_pct"]))
+        recent = h1[max(0, pi - 12) : pi + 1]
+        touched = any(
+            slow > 0 and abs(c.low - slow) / slow <= touch for c in recent
+        )
+        if not touched:
+            return StrategyResult()
+
+        swing_high = max(c.high for c in recent[-6:])
+        min_body = Decimal(str(params["min_body_pct"]))
+        for bar in today:
+            if (
+                _is_green(bar)
+                and _body_pct(bar) >= min_body
+                and bar.close > swing_high
+                and _local(bar.timestamp, tz).time() >= HOUR_11
+            ):
+                return _signal(
+                    bar=bar,
+                    side=Side.LONG,
+                    reason="CR01 CALL: MA20>MA40 + MA40 touch + break recent highs",
+                    ticker=context.ticker,
+                )
+        return StrategyResult()
+
+
+# ── CR02 ──────────────────────────────────────────────────────────────────────
+
+
+class Cr02DropGreenStrategy(BaseStrategy):
+    """Strong drop through MA40, then solid green hourly candle."""
+
+    @property
+    def name(self) -> str:
+        return STRATEGY_CR02_DROP
+
+    @property
+    def description(self) -> str:
+        return "CR02 Drop+green: deep drop past MA40 then solid green Hora (CALL)."
+
+    @property
+    def scan_timeframe(self) -> str | None:
+        return "1h"
+
+    @property
+    def scan_lookback_days(self) -> int:
+        return 12
+
+    @property
+    def default_parameters(self) -> dict[str, Any]:
+        return {
+            "ma_slow": 40,
+            "min_drop_pct": 0.015,
+            "min_body_pct": 0.002,
+            "timezone": "America/New_York",
+        }
+
+    def evaluate(self, candles: list[Candle], context: StrategyContext) -> StrategyResult:
+        params = {**self.default_parameters, **(context.parameters or {})}
+        tz = ZoneInfo(str(params.get("timezone") or context.timezone))
+        session_day = _as_date(context.end)
+        h1 = _rth(candles, tz)
+        ma_s = int(params["ma_slow"])
+        if len(h1) < ma_s + 8:
+            return StrategyResult()
+
+        closes = [c.close for c in h1]
+        today = _today(h1, tz, session_day)
+        if not today:
+            return StrategyResult()
+
+        prior = [c for c in h1 if _local(c.timestamp, tz).date() < session_day]
+        if len(prior) < 8:
+            return StrategyResult()
+        window = prior[-10:]
+        hi = max(c.high for c in window)
+        lo = min(c.low for c in window)
+        if hi == 0:
+            return StrategyResult()
+        drop = (hi - lo) / hi
+        if drop < Decimal(str(params["min_drop_pct"])):
+            return StrategyResult()
+
+        pi = len(prior) - 1
+        slow = _sma_at(closes, ma_s, pi)
+        if slow is None or prior[-1].close >= slow:
+            return StrategyResult()
+
+        min_body = Decimal(str(params["min_body_pct"]))
+        for bar in today:
+            if _is_green(bar) and _body_pct(bar) >= min_body:
+                return _signal(
+                    bar=bar,
+                    side=Side.LONG,
+                    reason="CR02 CALL: strong drop past MA40 + solid green Hora",
+                    ticker=context.ticker,
+                )
+        return StrategyResult()
+
+
+# ── CR03 ──────────────────────────────────────────────────────────────────────
+
+
+class Cr03ChannelBreakStrategy(BaseStrategy):
+    """Descending highs channel proxy → break above recent ceiling."""
+
+    @property
+    def name(self) -> str:
+        return STRATEGY_CR03_CHANNEL
+
+    @property
+    def description(self) -> str:
+        return "CR03 Channel break: descending highs then close above ceiling (CALL)."
+
+    @property
+    def scan_timeframe(self) -> str | None:
+        return "1h"
+
+    @property
+    def scan_lookback_days(self) -> int:
+        return 12
+
+    @property
+    def default_parameters(self) -> dict[str, Any]:
+        return {"lookback": 10, "min_body_pct": 0.0015, "timezone": "America/New_York"}
+
+    def evaluate(self, candles: list[Candle], context: StrategyContext) -> StrategyResult:
+        params = {**self.default_parameters, **(context.parameters or {})}
+        tz = ZoneInfo(str(params.get("timezone") or context.timezone))
+        session_day = _as_date(context.end)
+        h1 = _rth(candles, tz)
+        look = int(params["lookback"])
+        if len(h1) < look + 3:
+            return StrategyResult()
+
+        prior = [c for c in h1 if _local(c.timestamp, tz).date() < session_day]
+        today = _today(h1, tz, session_day)
+        if len(prior) < look or not today:
+            return StrategyResult()
+
+        win = prior[-look:]
+        # Descending highs: first half max high > second half max high
+        mid = len(win) // 2
+        if max(c.high for c in win[:mid]) <= max(c.high for c in win[mid:]):
+            return StrategyResult()
+        ceiling = max(c.high for c in win[-5:])
+        min_body = Decimal(str(params["min_body_pct"]))
+        for bar in today:
+            if (
+                _is_green(bar)
+                and _body_pct(bar) >= min_body
+                and bar.close > ceiling
+                and _local(bar.timestamp, tz).time() >= HOUR_11
+            ):
+                return _signal(
+                    bar=bar,
+                    side=Side.LONG,
+                    reason="CR03 CALL: break descending-channel ceiling (proxy)",
+                    ticker=context.ticker,
+                )
+        return StrategyResult()
+
+
+# ── CR04 / CR05 ───────────────────────────────────────────────────────────────
+
+
+class Cr04GapUpGreenStrategy(BaseStrategy):
+    """Gap up + first two RTH hourly greens."""
+
+    @property
+    def name(self) -> str:
+        return STRATEGY_CR04_GAP_UP
+
+    @property
+    def description(self) -> str:
+        return "CR04 Gap up: open gap + 2 green Hora candles (CALL)."
+
+    @property
+    def scan_timeframe(self) -> str | None:
+        return "1h"
+
+    @property
+    def scan_lookback_days(self) -> int:
+        return 8
+
+    @property
+    def default_parameters(self) -> dict[str, Any]:
+        return {"min_gap_pct": 0.002, "timezone": "America/New_York"}
+
+    def evaluate(self, candles: list[Candle], context: StrategyContext) -> StrategyResult:
+        return _gap_two_green(
+            candles,
+            context,
+            {**self.default_parameters, **(context.parameters or {})},
+            gap_up=True,
+            reason="CR04 CALL: gap up + verde + verde",
+        )
+
+
+class Cr05GapDownGreenStrategy(BaseStrategy):
+    """Gap down + first two RTH hourly greens (exception CALL)."""
+
+    @property
+    def name(self) -> str:
+        return STRATEGY_CR05_GAP_DOWN
+
+    @property
+    def description(self) -> str:
+        return "CR05 Gap down reverse: open gap down + 2 green Hora (CALL)."
+
+    @property
+    def scan_timeframe(self) -> str | None:
+        return "1h"
+
+    @property
+    def scan_lookback_days(self) -> int:
+        return 8
+
+    @property
+    def default_parameters(self) -> dict[str, Any]:
+        return {"min_gap_pct": 0.002, "timezone": "America/New_York"}
+
+    def evaluate(self, candles: list[Candle], context: StrategyContext) -> StrategyResult:
+        return _gap_two_green(
+            candles,
+            context,
+            {**self.default_parameters, **(context.parameters or {})},
+            gap_up=False,
+            reason="CR05 CALL: gap down + verde + verde",
+        )
+
+
+def _gap_two_green(
+    candles: list[Candle],
+    context: StrategyContext,
+    params: dict[str, Any],
+    *,
+    gap_up: bool,
+    reason: str,
+) -> StrategyResult:
+    tz = ZoneInfo(str(params.get("timezone") or context.timezone))
+    session_day = _as_date(context.end)
+    h1 = _rth(candles, tz)
+    today = _today(h1, tz, session_day)
+    prev = _prior_session_last(h1, tz, session_day)
+    if not today or prev is None or len(today) < 2:
+        return StrategyResult()
+
+    first, second = today[0], today[1]
+    if prev.close == 0:
+        return StrategyResult()
+    gap = (first.open - prev.close) / prev.close
+    min_gap = Decimal(str(params["min_gap_pct"]))
+    if gap_up and gap < min_gap:
+        return StrategyResult()
+    if not gap_up and gap > -min_gap:
+        return StrategyResult()
+    if not (_is_green(first) and _is_green(second)):
+        return StrategyResult()
+    return _signal(bar=second, side=Side.LONG, reason=reason, ticker=context.ticker)
+
+
+# ── CR06 ──────────────────────────────────────────────────────────────────────
+
+
+class Cr06StrongFloorStrategy(BaseStrategy):
+    """Daily near MA100/200 + hourly break of recent high ≥11:00."""
+
+    @property
+    def name(self) -> str:
+        return STRATEGY_CR06_FLOOR
+
+    @property
+    def description(self) -> str:
+        return "CR06 Strong floor: daily MA100/200 touch + Hora break ≥11 (CALL)."
+
+    @property
+    def scan_timeframe(self) -> str | None:
+        return "1h"
+
+    @property
+    def scan_lookback_days(self) -> int:
+        return 140
+
+    @property
+    def scan_extra_timeframes(self) -> tuple[str, ...]:
+        return ("1d",)
+
+    @property
+    def default_parameters(self) -> dict[str, Any]:
+        return {
+            "ma_a": 100,
+            "ma_b": 200,
+            "touch_pct": 0.015,
+            "timezone": "America/New_York",
+        }
+
+    def evaluate(self, candles: list[Candle], context: StrategyContext) -> StrategyResult:
+        params = {**self.default_parameters, **(context.parameters or {})}
+        tz = ZoneInfo(str(params.get("timezone") or context.timezone))
+        session_day = _as_date(context.end)
+        d1 = sorted(context.extra_candles.get("1d", []), key=lambda x: x.timestamp)
+        h1 = _rth(candles, tz)
+        ma_a, ma_b = int(params["ma_a"]), int(params["ma_b"])
+        if len(d1) < ma_b + 2 or len(h1) < 20:
+            return StrategyResult()
+
+        d_prior = [c for c in d1 if _local(c.timestamp, tz).date() < session_day]
+        if len(d_prior) < ma_b:
+            return StrategyResult()
+        d_closes = [c.close for c in d_prior]
+        i = len(d_closes) - 1
+        m100 = _sma_at(d_closes, ma_a, i)
+        m200 = _sma_at(d_closes, ma_b, i)
+        px = d_closes[i]
+        touch = Decimal(str(params["touch_pct"]))
+        near = False
+        for m in (m100, m200):
+            if m and m > 0 and abs(px - m) / m <= touch:
+                near = True
+        if not near:
+            return StrategyResult()
+
+        prior_h = [c for c in h1 if _local(c.timestamp, tz).date() < session_day]
+        today = _today(h1, tz, session_day)
+        if len(prior_h) < 6 or not today:
+            return StrategyResult()
+        ceiling = max(c.high for c in prior_h[-8:])
+        for bar in today:
+            if (
+                _is_green(bar)
+                and bar.close > ceiling
+                and _local(bar.timestamp, tz).time() >= HOUR_11
+            ):
+                return _signal(
+                    bar=bar,
+                    side=Side.LONG,
+                    reason="CR06 CALL: daily MA100/200 floor + Hora ceiling break",
+                    ticker=context.ticker,
+                )
+        return StrategyResult()
+
+
+# ── CR07 ──────────────────────────────────────────────────────────────────────
+
+
+class Cr07PutChannelStrategy(BaseStrategy):
+    """Down-channel proxy near highs + red break of bounce floor ≥11:00."""
+
+    @property
+    def name(self) -> str:
+        return STRATEGY_CR07_PUT_CH
+
+    @property
+    def description(self) -> str:
+        return "CR07 PUT channel: near channel top + red breaks bounce floor ≥11."
+
+    @property
+    def scan_timeframe(self) -> str | None:
+        return "1h"
+
+    @property
+    def scan_lookback_days(self) -> int:
+        return 12
+
+    @property
+    def default_parameters(self) -> dict[str, Any]:
+        return {"lookback": 10, "near_top_pct": 0.01, "timezone": "America/New_York"}
+
+    def evaluate(self, candles: list[Candle], context: StrategyContext) -> StrategyResult:
+        params = {**self.default_parameters, **(context.parameters or {})}
+        tz = ZoneInfo(str(params.get("timezone") or context.timezone))
+        session_day = _as_date(context.end)
+        h1 = _rth(candles, tz)
+        look = int(params["lookback"])
+        prior = [c for c in h1 if _local(c.timestamp, tz).date() < session_day]
+        today = _today(h1, tz, session_day)
+        if len(prior) < look or not today:
+            return StrategyResult()
+
+        win = prior[-look:]
+        mid = len(win) // 2
+        if max(c.high for c in win[:mid]) <= max(c.high for c in win[mid:]):
+            return StrategyResult()
+        top = max(c.high for c in win)
+        bounce = win[-4:]
+        floor = min(c.low for c in bounce)
+        near = Decimal(str(params["near_top_pct"]))
+        for bar in today:
+            if _local(bar.timestamp, tz).time() < HOUR_11:
+                continue
+            if top == 0:
+                continue
+            if abs(bar.high - top) / top > near and bar.open < top * (1 - near):
+                continue
+            if _is_red(bar) and bar.close < floor:
+                return _signal(
+                    bar=bar,
+                    side=Side.SHORT,
+                    reason="CR07 PUT: channel top zone + red breaks bounce floor",
+                    ticker=context.ticker,
+                )
+        return StrategyResult()
+
+
+# ── CR08 ──────────────────────────────────────────────────────────────────────
+
+
+class Cr08FirstRedStrategy(BaseStrategy):
+    """First RTH hour red → PUT at 10:00; skip if daily near MA200."""
+
+    @property
+    def name(self) -> str:
+        return STRATEGY_CR08_FIRST_RED
+
+    @property
+    def description(self) -> str:
+        return "CR08 First red open: 9:30–10:00 red Hora PUT (skip daily MA200 floor)."
+
+    @property
+    def scan_timeframe(self) -> str | None:
+        return "1h"
+
+    @property
+    def scan_lookback_days(self) -> int:
+        return 60
+
+    @property
+    def scan_extra_timeframes(self) -> tuple[str, ...]:
+        return ("1d",)
+
+    @property
+    def default_parameters(self) -> dict[str, Any]:
+        return {"ma_floor": 200, "floor_pct": 0.02, "timezone": "America/New_York"}
+
+    def evaluate(self, candles: list[Candle], context: StrategyContext) -> StrategyResult:
+        params = {**self.default_parameters, **(context.parameters or {})}
+        tz = ZoneInfo(str(params.get("timezone") or context.timezone))
+        session_day = _as_date(context.end)
+        h1 = _rth(candles, tz)
+        today = _today(h1, tz, session_day)
+        if not today:
+            return StrategyResult()
+        first = today[0]
+        if _local(first.timestamp, tz).time() != RTH_OPEN:
+            # Still accept first available RTH bar of the day
+            pass
+        if not _is_red(first):
+            return StrategyResult()
+
+        d1 = sorted(context.extra_candles.get("1d", []), key=lambda x: x.timestamp)
+        d_prior = [c for c in d1 if _local(c.timestamp, tz).date() < session_day]
+        ma_n = int(params["ma_floor"])
+        if len(d_prior) >= ma_n:
+            closes = [c.close for c in d_prior]
+            m200 = _sma_at(closes, ma_n, len(closes) - 1)
+            px = closes[-1]
+            floor_pct = Decimal(str(params["floor_pct"]))
+            if m200 and m200 > 0 and abs(px - m200) / m200 <= floor_pct:
+                return StrategyResult()
+
+        return _signal(
+            bar=first,
+            side=Side.SHORT,
+            reason="CR08 PUT: first RTH Hora red (not near daily MA200)",
+            ticker=context.ticker,
+        )
+
+
+# ── CR09 ──────────────────────────────────────────────────────────────────────
+
+
+class Cr09GapFloorPutStrategy(BaseStrategy):
+    """Gap present; red Hora closes below gap floor ≥11:00."""
+
+    @property
+    def name(self) -> str:
+        return STRATEGY_CR09_GAP_FLOOR
+
+    @property
+    def description(self) -> str:
+        return "CR09 Gap-floor PUT: gap day + red closes below gap low ≥11."
+
+    @property
+    def scan_timeframe(self) -> str | None:
+        return "1h"
+
+    @property
+    def scan_lookback_days(self) -> int:
+        return 8
+
+    @property
+    def default_parameters(self) -> dict[str, Any]:
+        return {"min_gap_pct": 0.002, "timezone": "America/New_York"}
+
+    def evaluate(self, candles: list[Candle], context: StrategyContext) -> StrategyResult:
+        params = {**self.default_parameters, **(context.parameters or {})}
+        tz = ZoneInfo(str(params.get("timezone") or context.timezone))
+        session_day = _as_date(context.end)
+        h1 = _rth(candles, tz)
+        today = _today(h1, tz, session_day)
+        prev = _prior_session_last(h1, tz, session_day)
+        if not today or prev is None:
+            return StrategyResult()
+        first = today[0]
+        if prev.close == 0:
+            return StrategyResult()
+        gap = abs(first.open - prev.close) / prev.close
+        if gap < Decimal(str(params["min_gap_pct"])):
+            return StrategyResult()
+        # Gap floor = min(prior close, open) for up/down gaps
+        gap_floor = min(prev.close, first.open)
+        for bar in today:
+            if _local(bar.timestamp, tz).time() < HOUR_11:
+                continue
+            if _is_red(bar) and bar.close < gap_floor:
+                return _signal(
+                    bar=bar,
+                    side=Side.SHORT,
+                    reason="CR09 PUT: red breaks gap floor",
+                    ticker=context.ticker,
+                )
+        return StrategyResult()
+
+
+# ── CR10 ──────────────────────────────────────────────────────────────────────
+
+
+class Cr10DailyHangerStrategy(BaseStrategy):
+    """Daily hanger (long upper wick) → PUT bias."""
+
+    @property
+    def name(self) -> str:
+        return STRATEGY_CR10_HANGER
+
+    @property
+    def description(self) -> str:
+        return "CR10 Daily hanger: long upper wick / small body (PUT)."
+
+    @property
+    def scan_timeframe(self) -> str | None:
+        return "1d"
+
+    @property
+    def scan_lookback_days(self) -> int:
+        return 40
+
+    @property
+    def default_parameters(self) -> dict[str, Any]:
+        return {
+            "wick_body_mult": 2.0,
+            "max_body_pct": 0.008,
+            "timezone": "America/New_York",
+        }
+
+    def evaluate(self, candles: list[Candle], context: StrategyContext) -> StrategyResult:
+        params = {**self.default_parameters, **(context.parameters or {})}
+        tz = ZoneInfo(str(params.get("timezone") or context.timezone))
+        session_day = _as_date(context.end)
+        d1 = sorted(candles, key=lambda x: x.timestamp)
+        # Prefer session day's daily bar if present, else last prior (late-day scan)
+        today = [c for c in d1 if _local(c.timestamp, tz).date() == session_day]
+        bar = today[-1] if today else None
+        if bar is None:
+            prior = [c for c in d1 if _local(c.timestamp, tz).date() < session_day]
+            if not prior:
+                return StrategyResult()
+            bar = prior[-1]
+
+        body = abs(bar.close - bar.open)
+        upper = bar.high - max(bar.open, bar.close)
+        if bar.close == 0 or body == 0:
+            return StrategyResult()
+        if body / bar.close > Decimal(str(params["max_body_pct"])):
+            return StrategyResult()
+        if upper < body * Decimal(str(params["wick_body_mult"])):
+            return StrategyResult()
+        return _signal(
+            bar=bar,
+            side=Side.SHORT,
+            reason="CR10 PUT: daily hanger (upper wick) — confirm near close",
+            ticker=context.ticker,
+        )
+
+
+# ── CR11 ──────────────────────────────────────────────────────────────────────
+
+
+class Cr11EarningsFloorStrategy(BaseStrategy):
+    """Soft earnings watch: decline into MA100/200 — verify calendar manually."""
+
+    @property
+    def name(self) -> str:
+        return STRATEGY_CR11_EARNINGS
+
+    @property
+    def description(self) -> str:
+        return (
+            "CR11 Earnings soft: decline into MA100/200 floor (manual earnings check)."
+        )
+
+    @property
+    def scan_timeframe(self) -> str | None:
+        return "1d"
+
+    @property
+    def scan_lookback_days(self) -> int:
+        return 140
+
+    @property
+    def default_parameters(self) -> dict[str, Any]:
+        return {
+            "ma_a": 100,
+            "ma_b": 200,
+            "touch_pct": 0.02,
+            "min_drop_pct": 0.04,
+            "timezone": "America/New_York",
+        }
+
+    def evaluate(self, candles: list[Candle], context: StrategyContext) -> StrategyResult:
+        params = {**self.default_parameters, **(context.parameters or {})}
+        tz = ZoneInfo(str(params.get("timezone") or context.timezone))
+        session_day = _as_date(context.end)
+        d1 = sorted(candles, key=lambda x: x.timestamp)
+        prior = [c for c in d1 if _local(c.timestamp, tz).date() <= session_day]
+        ma_b = int(params["ma_b"])
+        if len(prior) < ma_b + 5:
+            return StrategyResult()
+        closes = [c.close for c in prior]
+        i = len(closes) - 1
+        m100 = _sma_at(closes, int(params["ma_a"]), i)
+        m200 = _sma_at(closes, ma_b, i)
+        px = closes[i]
+        touch = Decimal(str(params["touch_pct"]))
+        near = any(m and m > 0 and abs(px - m) / m <= touch for m in (m100, m200))
+        if not near:
+            return StrategyResult()
+        look = prior[-15:]
+        hi = max(c.high for c in look)
+        if hi == 0 or (hi - px) / hi < Decimal(str(params["min_drop_pct"])):
+            return StrategyResult()
+        return _signal(
+            bar=prior[-1],
+            side=Side.LONG,
+            reason=(
+                "CR11 soft CALL bias: decline into MA100/200 — "
+                "verify earnings calendar / OptionSlam before entry"
+            ),
+            ticker=context.ticker,
+        )
+
+
+ALL_CR_STRATEGIES: tuple[BaseStrategy, ...] = (
+    Cr01Ma40BounceStrategy(),
+    Cr02DropGreenStrategy(),
+    Cr03ChannelBreakStrategy(),
+    Cr04GapUpGreenStrategy(),
+    Cr05GapDownGreenStrategy(),
+    Cr06StrongFloorStrategy(),
+    Cr07PutChannelStrategy(),
+    Cr08FirstRedStrategy(),
+    Cr09GapFloorPutStrategy(),
+    Cr10DailyHangerStrategy(),
+    Cr11EarningsFloorStrategy(),
+)

@@ -5,7 +5,6 @@ import { useCallback, useEffect, useMemo, useState, useTransition } from "react"
 import { AlarmWatchesPanel } from "@/components/AlarmWatchesPanel";
 import {
   fetchStrategies,
-  getApiBase,
   getPremarketResult,
   scanStrategies,
   startPremarketEvaluate,
@@ -168,9 +167,6 @@ export function Scanner() {
             and watch symbols until they match.
           </p>
         </div>
-        <p className="text-xs text-[var(--muted)]">
-          API <code className="text-[var(--muted)]">{getApiBase()}</code>
-        </p>
       </div>
 
       <section className="grid gap-4 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4 lg:grid-cols-[1fr_auto]">

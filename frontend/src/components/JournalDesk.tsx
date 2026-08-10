@@ -164,7 +164,7 @@ export function JournalDesk() {
   const [activo, setActivo] = useState<string>("NQ");
   const [side, setSide] = useState<"Compra" | "Venta">("Compra");
   const [session, setSession] = useState<string>("NY AM");
-  const [playbook, setPlaybook] = useState<string>("SBC");
+  const [playbook, setPlaybook] = useState<string>("E01");
   const [tfSetup, setTfSetup] = useState<string>("15m");
   const [status, setStatus] = useState<string>("Closed");
   const [stuck, setStuck] = useState<string>("Yes");

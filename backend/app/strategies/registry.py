@@ -1,6 +1,9 @@
-"""Strategy registry — resolve algorithms by name without broker coupling."""
-
 from app.ports.strategy import Strategy
+from app.strategies.bb15_gap_open import Bb15GapOpenStrategy
+from app.strategies.bb_trend_flip_h import BbTrendFlipHStrategy
+from app.strategies.creando_riquezas import ALL_CR_STRATEGIES
+from app.strategies.daily_mid_bounce import DailyMidBounceStrategy
+from app.strategies.magnet_ma20_gap import MagnetMa20GapStrategy
 from app.strategies.opening_range_breakout import OpeningRangeBreakoutStrategy
 
 
@@ -25,6 +28,12 @@ class StrategyRegistry:
 def build_default_registry() -> StrategyRegistry:
     registry = StrategyRegistry()
     registry.register(OpeningRangeBreakoutStrategy())
+    registry.register(Bb15GapOpenStrategy())
+    registry.register(MagnetMa20GapStrategy())
+    registry.register(DailyMidBounceStrategy())
+    registry.register(BbTrendFlipHStrategy())
+    for strategy in ALL_CR_STRATEGIES:
+        registry.register(strategy)
     return registry
 
 

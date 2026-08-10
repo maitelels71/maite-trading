@@ -67,7 +67,7 @@ class SchwabProvider:
             self.authenticate()
         self._client = httpx.Client(
             base_url=SCHWAB_API_BASE,
-            timeout=30.0,
+            timeout=20.0,
             headers={"Authorization": f"Bearer {self._access_token}"},
         )
         return self._client
@@ -80,7 +80,9 @@ class SchwabProvider:
         end: datetime,
     ) -> list[Candle]:
         self.ensure_authenticated()
-        freq_type, frequency = _schwab_frequency_params(timeframe)
+        # Schwab has no native 60m bar — fetch 30m and aggregate to 1h.
+        fetch_tf = "30m" if timeframe == "1h" else timeframe
+        freq_type, frequency = _schwab_frequency_params(fetch_tf)
         params: dict[str, Any] = {
             "symbol": symbol,
             "periodType": "day",
@@ -95,7 +97,14 @@ class SchwabProvider:
         raise_for_provider_response(response, provider="schwab")
         payload = response.json()
         rows = _extract_schwab_candles(payload)
-        return normalize_candles(rows, ticker=symbol, timeframe=timeframe)
+        candles = normalize_candles(rows, ticker=symbol, timeframe=fetch_tf)
+        if timeframe == "1h":
+            from app.indicators.aggregate import aggregate_candles
+
+            return aggregate_candles(
+                candles, bucket_minutes=60, out_timeframe="1h"
+            )
+        return candles
 
 
 def _schwab_frequency_params(timeframe: str) -> tuple[str, int]:
@@ -104,6 +113,7 @@ def _schwab_frequency_params(timeframe: str) -> tuple[str, int]:
         "5m": ("minute", 5),
         "15m": ("minute", 15),
         "30m": ("minute", 30),
+        # Native 60m unsupported; callers should aggregate 30m (see get_historical_candles).
         "1h": ("minute", 30),
         "4h": ("daily", 1),
         "1d": ("daily", 1),

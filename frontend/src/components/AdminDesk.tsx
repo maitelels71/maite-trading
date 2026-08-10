@@ -4,7 +4,6 @@ import { useCallback, useEffect, useState, useTransition } from "react";
 
 import {
   fetchAdminOverview,
-  getApiBase,
   publishSchwabToken,
   refreshSchwabToken,
   upsertSchwabToken,
@@ -169,17 +168,13 @@ export function AdminDesk() {
         </button>
       </div>
 
-      <p className="text-xs text-[var(--muted)]">
-        API <code>{getApiBase()}</code>
-        {overview ? (
-          <>
-            {" · "}
-            env <code>{overview.environment}</code>
-            {" · "}
-            storage <code>{overview.storage_backend}</code>
-          </>
-        ) : null}
-      </p>
+      {overview ? (
+        <p className="text-xs text-[var(--muted)]">
+          env <code>{overview.environment}</code>
+          {" · "}
+          storage <code>{overview.storage_backend}</code>
+        </p>
+      ) : null}
 
       {error ? (
         <p className="rounded-md border border-red-200 bg-[var(--danger-soft)] px-3 py-2 text-sm text-[var(--danger)]">

@@ -1,8 +1,8 @@
 name: Deploy Cheap (SAM)
 
 # Low-cost stack: Lambda + API Gateway + DynamoDB + S3/CloudFront
+# 1 API + 2 frontends: Options (public) and Futures (Basic Auth).
 # No NAT Gateway, no RDS, no App Runner.
-# You do NOT configure CloudFormation by hand — `sam deploy` creates/updates the stack.
 
 on:
   workflow_dispatch:
@@ -58,6 +58,9 @@ jobs:
 
       - name: SAM deploy
         working-directory: infra/sam
+        env:
+          FUTURES_AUTH_USER: ${{ secrets.FUTURES_BASIC_AUTH_USER || 'maite' }}
+          FUTURES_AUTH_PASSWORD: ${{ secrets.FUTURES_BASIC_AUTH_PASSWORD || 'maite-futures' }}
         run: |
           sam deploy \
             --stack-name "$STACK_NAME" \
@@ -68,6 +71,8 @@ jobs:
             --parameter-overrides \
               "ProjectName=${PROJECT_NAME}" \
               "EnvironmentName=${ENVIRONMENT}" \
+              "FuturesAuthUser=${FUTURES_AUTH_USER}" \
+              "FuturesAuthPassword=${FUTURES_AUTH_PASSWORD}" \
             --region "$AWS_REGION"
 
       - name: Read stack outputs
@@ -77,12 +82,19 @@ jobs:
           BUCKET=$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" --query "Stacks[0].Outputs[?OutputKey=='WebBucketName'].OutputValue" --output text)
           CF_ID=$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" --query "Stacks[0].Outputs[?OutputKey=='CloudFrontDistributionId'].OutputValue" --output text)
           CF_URL=$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" --query "Stacks[0].Outputs[?OutputKey=='CloudFrontUrl'].OutputValue" --output text)
+          F_BUCKET=$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" --query "Stacks[0].Outputs[?OutputKey=='FuturesWebBucketName'].OutputValue" --output text)
+          F_CF_ID=$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" --query "Stacks[0].Outputs[?OutputKey=='FuturesCloudFrontDistributionId'].OutputValue" --output text)
+          F_CF_URL=$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" --query "Stacks[0].Outputs[?OutputKey=='FuturesCloudFrontUrl'].OutputValue" --output text)
           echo "api_url=$API_URL" >> "$GITHUB_OUTPUT"
           echo "bucket=$BUCKET" >> "$GITHUB_OUTPUT"
           echo "cf_id=$CF_ID" >> "$GITHUB_OUTPUT"
           echo "cf_url=$CF_URL" >> "$GITHUB_OUTPUT"
+          echo "futures_bucket=$F_BUCKET" >> "$GITHUB_OUTPUT"
+          echo "futures_cf_id=$F_CF_ID" >> "$GITHUB_OUTPUT"
+          echo "futures_cf_url=$F_CF_URL" >> "$GITHUB_OUTPUT"
           echo "API_URL=$API_URL"
-          echo "CloudFront=$CF_URL"
+          echo "Options CloudFront=$CF_URL"
+          echo "Futures CloudFront=$F_CF_URL"
 
       - uses: actions/setup-node@v4
         with:
@@ -90,28 +102,39 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
-      - name: Build frontend (static export)
+      - name: Install frontend deps
+        working-directory: frontend
+        run: npm ci
+
+      - name: Build + sync Options frontend
         working-directory: frontend
         env:
           NEXT_PUBLIC_API_BASE_URL: ${{ steps.out.outputs.api_url }}
+          NEXT_PUBLIC_APP_MODE: options
         run: |
-          npm ci
           npm run build
-
-      - name: Sync frontend to S3
-        working-directory: frontend
-        run: |
           aws s3 sync out/ "s3://${{ steps.out.outputs.bucket }}/" --delete
-
-      - name: Invalidate CloudFront
-        run: |
           aws cloudfront create-invalidation \
             --distribution-id "${{ steps.out.outputs.cf_id }}" \
+            --paths "/*"
+
+      - name: Build + sync Futures frontend
+        working-directory: frontend
+        env:
+          NEXT_PUBLIC_API_BASE_URL: ${{ steps.out.outputs.api_url }}
+          NEXT_PUBLIC_APP_MODE: futures
+        run: |
+          rm -rf out .next
+          npm run build
+          aws s3 sync out/ "s3://${{ steps.out.outputs.futures_bucket }}/" --delete
+          aws cloudfront create-invalidation \
+            --distribution-id "${{ steps.out.outputs.futures_cf_id }}" \
             --paths "/*"
 
       - name: Summary
         run: |
           echo "### Cheap stack deployed" >> "$GITHUB_STEP_SUMMARY"
           echo "- API: ${{ steps.out.outputs.api_url }}" >> "$GITHUB_STEP_SUMMARY"
-          echo "- UI: ${{ steps.out.outputs.cf_url }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Options UI (public): ${{ steps.out.outputs.cf_url }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Futures UI (Basic Auth): ${{ steps.out.outputs.futures_cf_url }}" >> "$GITHUB_STEP_SUMMARY"
           echo "- No NAT / RDS / App Runner" >> "$GITHUB_STEP_SUMMARY"

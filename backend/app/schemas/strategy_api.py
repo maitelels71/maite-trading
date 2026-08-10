@@ -84,7 +84,7 @@ class StrategyBacktestResponse(BaseModel):
 
 
 class StrategyScanRequest(BaseModel):
-    """Scan universe for strategy setups (ORB today; more strategies later)."""
+    """Scan universe for strategy setups (E01–E04, CR, ORB, etc.)."""
 
     strategies: list[str] = Field(default_factory=list)
     timeframe: str = "5m"
@@ -92,6 +92,8 @@ class StrategyScanRequest(BaseModel):
     data_provider: str | None = None
     symbols: list[str] | None = None
     matches_only: bool = False
+    """If set, return at most this many matched hits (unique symbols first)."""
+    top_n: int | None = Field(default=None, ge=1, le=50)
 
 
 class StrategyScanHit(BaseModel):

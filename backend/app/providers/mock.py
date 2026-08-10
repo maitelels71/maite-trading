@@ -2,11 +2,17 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 
 from app.domain.candles import Candle
 from app.domain.enums import DataProviderName
 from app.providers.normalize import normalize_candles
+
+
+def _aware(ts: datetime) -> datetime:
+    if ts.tzinfo is None:
+        return ts.replace(tzinfo=UTC)
+    return ts.astimezone(UTC)
 
 
 class MockMarketDataProvider:
@@ -43,4 +49,5 @@ class MockMarketDataProvider:
         self.ensure_authenticated()
         raw = self._raw.get(symbol, [])
         candles = normalize_candles(raw, ticker=symbol, timeframe=timeframe)
-        return [c for c in candles if start <= c.timestamp <= end]
+        start_a, end_a = _aware(start), _aware(end)
+        return [c for c in candles if start_a <= c.timestamp <= end_a]

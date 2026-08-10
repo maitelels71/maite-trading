@@ -13,13 +13,17 @@ from app.providers.notion_trade import _notion_date_start
 
 
 def test_notion_date_start_includes_ny_timezone() -> None:
-    assert _notion_date_start("2026-08-09") == {"date": {"start": "2026-08-09"}}
-    assert _notion_date_start("2026-08-09T10:30") == {
-        "date": {
-            "start": "2026-08-09T10:30:00",
-            "time_zone": "America/New_York",
-        }
-    }
+    timed = _notion_date_start("2026-08-09T10:30")
+    start = timed["date"]["start"]
+    assert start.startswith("2026-08-09T10:30:00")
+    # America/New_York offset in August is EDT (−04:00)
+    assert start.endswith("-04:00")
+    assert "time_zone" not in timed["date"]
+
+    # Date-only still becomes a timed value (hour stamped in NY)
+    only_day = _notion_date_start("2026-08-09")
+    assert only_day["date"]["start"].startswith("2026-08-09T")
+    assert only_day["date"]["start"].endswith("-04:00")
 
 
 def test_create_trade_journal_entry_without_images() -> None:
@@ -79,8 +83,9 @@ def test_create_trade_journal_entry_without_images() -> None:
     assert result["page_id"] == "trade-page"
     assert result["images_uploaded"] == 0
     date_prop = captured["body"]["properties"]["Date"]["date"]
-    assert date_prop["start"] == "2026-08-08T09:45:00"
-    assert date_prop["time_zone"] == "America/New_York"
+    assert date_prop["start"].startswith("2026-08-08T09:45:00")
+    assert date_prop["start"].endswith("-04:00")
+    assert date_prop.get("time_zone") is None
 
 def test_create_trade_journal_uploads_image() -> None:
     calls: list[str] = []

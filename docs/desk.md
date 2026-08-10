@@ -1,20 +1,29 @@
 # Trading desk layout
 
+## Two apps, one API
+
+Same codebase; build-time `NEXT_PUBLIC_APP_MODE`:
+
+| Mode | Venue | CloudFront |
+|------|--------|------------|
+| `options` (default) | Schwab · ETFs/Options | Public |
+| `futures` | TradeAdvocate · Futures | Private (HTTP Basic Auth) |
+
+Nav flow (both): **1 News → 2 Daily → 3 Strategies → 4 Analyzer → 5 Journal** (+ Mind / Admin).
+
 ## Tabs
 
 | Tab | Purpose |
 |-----|---------|
-| **Daily** | Professional pre-open / session / post checklist + bias + notes (local) |
-| **Journal** | One trade form (activo, side, levels, R, screenshots) → Notion Trade Journal Desk |
-| **Mind** | Psychotrading: ritual A–E, life/trading mantras, quotes |
-| **Strategies** | Playbooks (rules by timeframe, entry/exit) + live scan for that strategy |
-| **Analyzer** | Deep-dive one symbol: evaluate / backtest / chart |
-| **News** | Red folder calendar + session headlines |
-| **Admin** | Schwab token expiry, Refresh, Publish to Secrets Manager (staging) |
+| **News** | Macro calendar + session headlines |
+| **Daily** | Pre-open / session / post checklist + bias + notes |
+| **Strategies** | Playbooks + live scan for this app’s venue only |
+| **Analyzer** | Deep-dive one symbol (venue locked to app mode) |
+| **Journal** | Trade form → Notion Trade Journal Desk |
+| **Mind** | Psychotrading ritual / mantras |
+| **Admin** | Schwab token + Secrets Manager publish |
 
-Theme: **Light / Dark** toggle in the top nav (persisted in `localStorage` as `maite.theme`). Dark follows a trading-desk palette (near-black surfaces, bright candles).
-
-Scanner as a separate tab was removed: strategy-first scanning lives under **Strategies**.
+Theme: **Light / Dark** toggle in the top nav (`maite.theme`).
 
 ## Daily review
 
@@ -28,8 +37,29 @@ Tab **Journal** → `POST /journal/notion` creates one Notion page per trade in 
 
 ## Strategies
 
-Playbooks in `frontend/src/lib/playbooks.ts`. Each book has entry steps, exits, risk, invalidation, and timeframe checklists. **Scan now** calls `POST /strategy/scan` filtered to that strategy’s registry key. Draft books (no `strategyKey`) show rules only until an engine exists.
+Playbooks in `frontend/src/lib/playbooks.ts` are tagged with `venue`: `schwab` (ETFs/Options) or `tradeadvocate` (Futures). Each desk locks the scan to that data provider.
 
-### Structure Bias Continuation (SBC)
+**Scan now** calls `POST /strategy/scan` filtered to that strategy’s registry key. Draft books (no `strategyKey`) show rules only until an engine exists.
 
-Discretionary playbook from your live NQ process: **1H ChoCh/BOS bias → 15m OB/Breaker/FVG zone → 1m/3m confirm**. Not auto-scanned yet (needs structure detection); use as checklist while trading.
+### ETFs / Options (Schwab)
+
+Bollinger options system: **E01 → E02 → E03 → E04** (Schwab). ORB playbooks removed from the desk UI.
+
+- **E04** (`bb15_gap_open`) — Scan ready
+- **E03** (`magnet_ma20_gap`) — Scan ready  
+- **E01–E02** — checklist-only until wired
+
+### Futures (TradeAdvocate)
+
+No playbooks in the desk yet (ORB FUT removed). Add futures books when ready.
+
+### TradeAdvocate connection
+
+Set in local `.env` and Secrets Manager `maite-trading/staging/app`:
+
+- `TRADEADVOCATE_API_KEY`
+- `TRADEADVOCATE_API_SECRET`
+- `TRADEADVOCATE_BASE_URL`
+- `TRADEADVOCATE_ACCOUNT_ID`
+
+Then redeploy / restart the API so Lambda loads secrets. Futures scan uses `/v1/marketdata/candles` on that base URL (adapter may need tweaking once TradeAdvocate OpenAPI is confirmed).

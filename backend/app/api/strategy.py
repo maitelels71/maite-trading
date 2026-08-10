@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from uuid import uuid4
 
@@ -31,7 +31,6 @@ from app.schemas.strategy_api import (
 from app.services.market_data_service import MarketDataService
 from app.services.strategy_engine import StrategyEngine
 from app.strategies.registry import get_strategy_registry
-
 router = APIRouter(prefix="/strategy", tags=["strategy"])
 strategies_router = APIRouter(prefix="/strategies", tags=["strategies"])
 
@@ -69,7 +68,6 @@ def execute_scan(
     db: Session | None = None,
 ) -> StrategyScanResponse:
     from datetime import datetime as dt
-    from zoneinfo import ZoneInfo
 
     registry = get_strategy_registry()
     strategy_names = body.strategies or [s.name for s in registry.list()]
@@ -79,32 +77,63 @@ def execute_scan(
         except KeyError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
 
-    tz = ZoneInfo("America/New_York")
-    scan_day = body.session_date or dt.now(tz).date()
+    from app.domain.session_calendar import resolve_operative_session_date
+
+    # Live desk: omit session_date → last/current NY cash session (not calendar
+    # "today" before the open, which otherwise yields wall-to-wall no_data).
+    scan_day = body.session_date or resolve_operative_session_date()
     instruments = _list_scan_instruments(
         db,
         data_provider=body.data_provider,
         symbols=body.symbols,
     )
 
-    hits: list[StrategyScanHit] = []
-    for inst in instruments:
-        for strategy_name in strategy_names:
-            hits.append(
-                _scan_one(
-                    db=db,
-                    symbol=inst["symbol"],
-                    name=inst["name"],
-                    market_type=inst["market_type"],
-                    data_provider=inst["data_provider"],
-                    strategy_name=strategy_name,
-                    timeframe=body.timeframe,
-                    scan_day=scan_day,
-                )
-            )
+    if using_dynamo():
+        get_dynamo_store().seed_defaults()
 
-    if body.matches_only:
-        hits = [h for h in hits if h.matched]
+    candle_cache: dict[tuple[str, str, str, str, str], list] = {}
+    hits: list[StrategyScanHit] = []
+    matched_symbols: set[str] = set()
+    checked = 0
+
+    # Prefer finding matches quickly: iterate symbols outer, strategies inner,
+    # and stop early when top_n unique symbols are filled.
+    for inst in instruments:
+        if body.top_n is not None and len(matched_symbols) >= body.top_n:
+            break
+        for strategy_name in strategy_names:
+            if body.top_n is not None and len(matched_symbols) >= body.top_n:
+                break
+            hit = _scan_one(
+                db=db,
+                symbol=inst["symbol"],
+                name=inst["name"],
+                market_type=inst["market_type"],
+                data_provider=inst["data_provider"],
+                strategy_name=strategy_name,
+                timeframe=body.timeframe,
+                scan_day=scan_day,
+                candle_cache=candle_cache,
+            )
+            checked += 1
+            if body.matches_only and not hit.matched:
+                continue
+            hits.append(hit)
+            if hit.matched:
+                matched_symbols.add(hit.symbol)
+
+    if body.top_n is not None:
+        matched = [h for h in hits if h.matched]
+        picked: list[StrategyScanHit] = []
+        seen: set[str] = set()
+        for h in matched:
+            if h.symbol in seen:
+                continue
+            seen.add(h.symbol)
+            picked.append(h)
+            if len(picked) >= body.top_n:
+                break
+        hits = picked
 
     match_count = sum(1 for h in hits if h.matched)
     return StrategyScanResponse(
@@ -114,7 +143,7 @@ def execute_scan(
         strategies=strategy_names,
         hits=hits,
         match_count=match_count,
-        total_checked=len(instruments) * len(strategy_names),
+        total_checked=checked,
     )
 
 
@@ -124,6 +153,10 @@ def evaluate_strategy(
     db: Session = Depends(get_db),
 ) -> StrategyEvaluateResponse:
     try:
+        strategy = get_strategy_registry().get(body.strategy)
+        lookback = int(getattr(strategy, "scan_lookback_days", 0) or 0)
+        extra_tfs = tuple(getattr(strategy, "scan_extra_timeframes", ()) or ())
+        candle_start = body.date - timedelta(days=lookback)
         if using_dynamo():
             result = _evaluate_dynamo(
                 strategy_name=body.strategy,
@@ -133,6 +166,8 @@ def evaluate_strategy(
                 end=body.date,
                 parameters=body.parameters,
                 market_type=body.market_type,
+                extra_timeframes=extra_tfs,
+                candle_start=candle_start,
             )
         else:
             engine = StrategyEngine(session=db)
@@ -140,10 +175,12 @@ def evaluate_strategy(
                 strategy_name=body.strategy,
                 symbol=body.ticker,
                 timeframe=body.timeframe,
-                start=body.date,
+                start=candle_start,
                 end=body.date,
                 parameters=body.parameters,
                 market_type=body.market_type,
+                extra_timeframes=extra_tfs,
+                context_start=body.date,
             )
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
@@ -171,6 +208,10 @@ def backtest_strategy(
         if using_dynamo():
             store = get_dynamo_store()
             instrument = store.get_instrument(body.ticker, market_type=body.market_type)
+            strategy = get_strategy_registry().get(body.strategy)
+            lookback = int(getattr(strategy, "scan_lookback_days", 0) or 0)
+            extra_tfs = tuple(getattr(strategy, "scan_extra_timeframes", ()) or ())
+            candle_start = body.start_date - timedelta(days=lookback)
             result = _evaluate_dynamo(
                 strategy_name=body.strategy,
                 ticker=body.ticker,
@@ -179,6 +220,8 @@ def backtest_strategy(
                 end=body.end_date,
                 parameters=body.parameters,
                 market_type=body.market_type,
+                extra_timeframes=extra_tfs,
+                candle_start=candle_start,
             )
             run_id = None
             if body.persist:
@@ -194,7 +237,7 @@ def backtest_strategy(
                         "total_trades": result.metrics.total_trades,
                         "winning_trades": result.metrics.winning_trades,
                         "losing_trades": result.metrics.losing_trades,
-                        "win_rate": result.metrics.win_rate,
+                        "win_rate": str(result.metrics.win_rate),
                         "profit_loss": str(result.metrics.profit_loss),
                         "max_drawdown": str(result.metrics.max_drawdown),
                     },
@@ -216,14 +259,20 @@ def backtest_strategy(
             engine = StrategyEngine(session=db)
             mds = MarketDataService(db)
             instrument = mds.get_instrument(body.ticker, market_type=body.market_type)
+            strategy = get_strategy_registry().get(body.strategy)
+            lookback = int(getattr(strategy, "scan_lookback_days", 0) or 0)
+            extra_tfs = tuple(getattr(strategy, "scan_extra_timeframes", ()) or ())
+            candle_start = body.start_date - timedelta(days=lookback)
             result = engine.evaluate_symbol(
                 strategy_name=body.strategy,
                 symbol=body.ticker,
                 timeframe=body.timeframe,
-                start=body.start_date,
+                start=candle_start,
                 end=body.end_date,
                 parameters=body.parameters,
                 market_type=body.market_type,
+                extra_timeframes=extra_tfs,
+                context_start=body.start_date,
             )
             run_id = None
             if body.persist:
@@ -261,24 +310,51 @@ def _evaluate_dynamo(
     end: date | datetime,
     parameters: dict,
     market_type: str | None,
+    extra_timeframes: tuple[str, ...] | list[str] | None = None,
+    candle_cache: dict[tuple[str, str, str, str, str], list] | None = None,
+    candle_start: date | datetime | None = None,
 ) -> StrategyResult:
     from datetime import datetime as dt
 
+    from app.domain.candles import Candle
     from app.domain.enums import SessionType
     from app.domain.strategy_types import StrategyContext
 
     store = get_dynamo_store()
-    store.seed_defaults()
     instrument = store.get_instrument(ticker, market_type=market_type)
-    start_dt = start if isinstance(start, dt) else dt.combine(start, dt.min.time())
-    end_dt = end if isinstance(end, dt) else dt.combine(end, dt.max.time().replace(microsecond=0))
-    candles = store.get_candles_by_range(
-        instrument["symbol"],
-        instrument["market_type"],
-        timeframe,
-        start_dt,
-        end_dt,
+    load_start = candle_start if candle_start is not None else start
+    start_dt = (
+        load_start if isinstance(load_start, dt) else dt.combine(load_start, dt.min.time())
     )
+    end_dt = end if isinstance(end, dt) else dt.combine(end, dt.max.time().replace(microsecond=0))
+
+    def _load(tf: str) -> list[Candle]:
+        key = (
+            instrument["symbol"],
+            instrument["market_type"],
+            tf,
+            start_dt.isoformat(),
+            end_dt.isoformat(),
+        )
+        if candle_cache is not None and key in candle_cache:
+            return candle_cache[key]
+        rows = store.get_candles_by_range(
+            instrument["symbol"],
+            instrument["market_type"],
+            tf,
+            start_dt,
+            end_dt,
+        )
+        if candle_cache is not None:
+            candle_cache[key] = rows
+        return rows
+
+    candles = _load(timeframe)
+    extras: dict[str, list[Candle]] = {}
+    for tf in extra_timeframes or ():
+        if tf == timeframe:
+            continue
+        extras[tf] = _load(tf)
     context = StrategyContext(
         ticker=ticker,
         timeframe=timeframe,
@@ -287,6 +363,7 @@ def _evaluate_dynamo(
         parameters=parameters or {},
         timezone="America/New_York",
         session=SessionType.RTH,
+        extra_candles=extras,
     )
     return StrategyEngine().evaluate(strategy_name, candles, context)
 
@@ -342,14 +419,22 @@ def _scan_one(
     strategy_name: str,
     timeframe: str,
     scan_day: date,
+    candle_cache: dict[tuple[str, str, str, str, str], list] | None = None,
 ) -> StrategyScanHit:
+    strategy = get_strategy_registry().get(strategy_name)
+    resolve_tf = getattr(strategy, "scan_timeframe", None) or timeframe
+    lookback_days = int(getattr(strategy, "scan_lookback_days", 0) or 0)
+    extra_tfs = tuple(getattr(strategy, "scan_extra_timeframes", ()) or ())
+    eval_start = scan_day - timedelta(days=lookback_days)
+
     try:
         candle_count = _session_candle_count(
             db,
             symbol=symbol,
             market_type=market_type,
-            timeframe=timeframe,
+            timeframe=resolve_tf,
             scan_day=scan_day,
+            candle_cache=candle_cache,
         )
         if candle_count == 0:
             return StrategyScanHit(
@@ -360,29 +445,37 @@ def _scan_one(
                 strategy=strategy_name,
                 status="no_data",
                 matched=False,
-                detail="No candles for this session — sync market data when broker auth is ready.",
+                detail=(
+                    f"No {resolve_tf} candles for this session — sync market data "
+                    "when broker auth is ready."
+                ),
             )
 
         if using_dynamo():
             result = _evaluate_dynamo(
                 strategy_name=strategy_name,
                 ticker=symbol,
-                timeframe=timeframe,
+                timeframe=resolve_tf,
                 start=scan_day,
                 end=scan_day,
                 parameters={},
                 market_type=market_type,
+                extra_timeframes=extra_tfs,
+                candle_cache=candle_cache,
+                candle_start=eval_start,
             )
         else:
             engine = StrategyEngine(session=db)
             result = engine.evaluate_symbol(
                 strategy_name=strategy_name,
                 symbol=symbol,
-                timeframe=timeframe,
-                start=scan_day,
+                timeframe=resolve_tf,
+                start=eval_start,
                 end=scan_day,
                 parameters={},
                 market_type=market_type,
+                extra_timeframes=extra_tfs,
+                context_start=scan_day,
             )
     except Exception as exc:  # noqa: BLE001
         return StrategyScanHit(
@@ -419,13 +512,22 @@ def _session_candle_count(
     market_type: str,
     timeframe: str,
     scan_day: date,
+    candle_cache: dict[tuple[str, str, str, str, str], list] | None = None,
 ) -> int:
     start_dt = datetime.combine(scan_day, datetime.min.time())
     end_dt = datetime.combine(scan_day, datetime.max.time().replace(microsecond=0))
     if using_dynamo():
         store = get_dynamo_store()
-        store.seed_defaults()
         instrument = store.get_instrument(symbol, market_type=market_type)
+        key = (
+            instrument["symbol"],
+            instrument["market_type"],
+            timeframe,
+            start_dt.isoformat(),
+            end_dt.isoformat(),
+        )
+        if candle_cache is not None and key in candle_cache:
+            return len(candle_cache[key])
         candles = store.get_candles_by_range(
             instrument["symbol"],
             instrument["market_type"],
@@ -433,6 +535,8 @@ def _session_candle_count(
             start_dt,
             end_dt,
         )
+        if candle_cache is not None:
+            candle_cache[key] = candles
         return len(candles)
 
     mds = MarketDataService(db)
@@ -501,7 +605,7 @@ def _classify_scan_result(
     return (
         "watching",
         False,
-        "Watching — opening range formed or waiting for breakout",
+        "Watching — setup conditions not met for this session",
         last_signal,
         None,
     )

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from typing import Any
 
@@ -21,8 +21,29 @@ def _dec(value: Any) -> Decimal:
     return Decimal(str(value))
 
 
+def _dynamo_safe(value: Any) -> Any:
+    """Recursively convert floats so DynamoDB TypeSerializer accepts the item."""
+    if isinstance(value, float):
+        return Decimal(str(value))
+    if isinstance(value, dict):
+        return {k: _dynamo_safe(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_dynamo_safe(v) for v in value]
+    return value
+
+
 def _iso(ts: datetime) -> str:
-    return ts.isoformat()
+    if ts.tzinfo is None:
+        ts = ts.replace(tzinfo=UTC)
+    return ts.astimezone(UTC).isoformat()
+
+
+def _parse_ts(value: str) -> datetime:
+    text = value.replace("Z", "+00:00")
+    parsed = datetime.fromisoformat(text)
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC)
 
 
 class DynamoStore:
@@ -144,7 +165,7 @@ class DynamoStore:
         for i in items:
             out.append(
                 DomainCandle(
-                    timestamp=datetime.fromisoformat(i["timestamp"]),
+                    timestamp=_parse_ts(i["timestamp"]),
                     open=_dec(i["open"]),
                     high=_dec(i["high"]),
                     low=_dec(i["low"]),
@@ -176,35 +197,41 @@ class DynamoStore:
         run_id = str(uuid.uuid4())
         ddb.put_item(
             ddb.backtest_runs_table(),
-            {
-                "pk": run_id,
-                "strategy": strategy,
-                "symbol": symbol,
-                "market_type": market_type,
-                "timeframe": timeframe,
-                "start_date": start_date.isoformat(),
-                "end_date": end_date.isoformat(),
-                "parameters": parameters,
-                "metrics": metrics,
-                "status": "completed",
-            },
+            _dynamo_safe(
+                {
+                    "pk": run_id,
+                    "strategy": strategy,
+                    "symbol": symbol,
+                    "market_type": market_type,
+                    "timeframe": timeframe,
+                    "start_date": start_date.isoformat(),
+                    "end_date": end_date.isoformat(),
+                    "parameters": parameters or {},
+                    "metrics": metrics,
+                    "status": "completed",
+                }
+            ),
         )
         tbl = ddb.trades_table()
         with tbl.batch_writer() as batch:
             for idx, t in enumerate(trades):
-                batch.put_item(Item={"pk": run_id, "sk": f"{idx:05d}", **t})
+                batch.put_item(
+                    Item=_dynamo_safe({"pk": run_id, "sk": f"{idx:05d}", **t})
+                )
         return run_id
 
     def save_premarket_run(self, payload: dict[str, Any]) -> str:
         run_id = str(payload.get("run_id") or uuid.uuid4())
         ddb.put_item(
             ddb.backtest_runs_table(),
-            {
-                "pk": f"premarket#{run_id}",
-                "kind": "premarket",
-                "run_id": run_id,
-                "payload": payload,
-            },
+            _dynamo_safe(
+                {
+                    "pk": f"premarket#{run_id}",
+                    "kind": "premarket",
+                    "run_id": run_id,
+                    "payload": payload,
+                }
+            ),
         )
         ddb.put_item(
             ddb.backtest_runs_table(),

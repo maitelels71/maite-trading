@@ -22,6 +22,21 @@ class BaseStrategy(ABC):
     def default_parameters(self) -> dict[str, Any]:
         return {}
 
+    @property
+    def scan_timeframe(self) -> str | None:
+        """If set, scanner loads this TF instead of the request timeframe."""
+        return None
+
+    @property
+    def scan_lookback_days(self) -> int:
+        """Extra calendar days of candles before session_date for indicators."""
+        return 0
+
+    @property
+    def scan_extra_timeframes(self) -> tuple[str, ...]:
+        """Additional TFs loaded into context.extra_candles for multi-TF strategies."""
+        return ()
+
     @abstractmethod
     def evaluate(
         self,

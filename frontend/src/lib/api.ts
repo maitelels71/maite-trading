@@ -122,6 +122,7 @@ export async function scanStrategies(payload: {
   data_provider?: string;
   symbols?: string[];
   matches_only?: boolean;
+  top_n?: number;
 }): Promise<ScanResponse> {
   return request("/strategy/scan", {
     method: "POST",

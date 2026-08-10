@@ -72,6 +72,8 @@ class StrategyEngine:
         parameters: dict[str, Any] | None = None,
         market_type: str | None = None,
         timezone: str = "America/New_York",
+        extra_timeframes: tuple[str, ...] | list[str] | None = None,
+        context_start: date | datetime | None = None,
     ) -> StrategyResult:
         if self._market_data is None:
             raise RuntimeError("StrategyEngine requires MarketDataService for evaluate_symbol")
@@ -82,14 +84,22 @@ class StrategyEngine:
         candles = self._market_data.get_candles_by_range(
             instrument.id, timeframe, start_dt, end_dt
         )
+        extras: dict[str, list[Candle]] = {}
+        for tf in extra_timeframes or ():
+            if tf == timeframe:
+                continue
+            extras[tf] = self._market_data.get_candles_by_range(
+                instrument.id, tf, start_dt, end_dt
+            )
         context = StrategyContext(
             ticker=symbol,
             timeframe=timeframe,
-            start=start,
+            start=context_start if context_start is not None else start,
             end=end,
             parameters=parameters or {},
             timezone=timezone,
             session=SessionType.RTH,
+            extra_candles=extras,
         )
         return self.evaluate(strategy_name, candles, context)
 

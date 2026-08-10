@@ -16,12 +16,23 @@ Parameters:
   CorsOrigins:
     Type: String
     Default: "*"
+  FuturesAuthUser:
+    Type: String
+    Default: maite
+    Description: Basic-auth username for the private Futures CloudFront UI
+  FuturesAuthPassword:
+    Type: String
+    NoEcho: true
+    Default: "maite-futures"
+    Description: >
+      Basic-auth password for Futures UI. Override via SAM parameter /
+      GitHub secret FUTURES_BASIC_AUTH_PASSWORD. Change after first deploy.
 
 Globals:
   Function:
     Runtime: python3.12
     Timeout: 60
-    MemorySize: 512
+    MemorySize: 1024
     Architectures: [x86_64]
     Environment:
       Variables:
@@ -225,7 +236,7 @@ Resources:
     Properties:
       DistributionConfig:
         Enabled: true
-        Comment: !Sub "${ProjectName} ${EnvironmentName} UI"
+        Comment: !Sub "${ProjectName} ${EnvironmentName} Options UI (public)"
         DefaultRootObject: index.html
         Origins:
           - Id: webS3
@@ -251,18 +262,133 @@ Resources:
             ResponsePagePath: /index.html
         PriceClass: PriceClass_100
 
+  # --- Futures UI (private): separate bucket + CloudFront + Basic Auth ---
+
+  FuturesWebBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "${ProjectName}-${EnvironmentName}-web-futures-${AWS::AccountId}"
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+
+  FuturesWebBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref FuturesWebBucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: AllowCloudFrontReadFutures
+            Effect: Allow
+            Principal:
+              Service: cloudfront.amazonaws.com
+            Action: s3:GetObject
+            Resource: !Sub "${FuturesWebBucket.Arn}/*"
+            Condition:
+              StringEquals:
+                AWS:SourceArn: !Sub "arn:aws:cloudfront::${AWS::AccountId}:distribution/${FuturesWebDistribution}"
+
+  FuturesWebOAC:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties:
+      OriginAccessControlConfig:
+        Name: !Sub "${ProjectName}-${EnvironmentName}-futures-oac"
+        OriginAccessControlOriginType: s3
+        SigningBehavior: always
+        SigningProtocol: sigv4
+
+  FuturesAuthFunction:
+    Type: AWS::CloudFront::Function
+    Properties:
+      Name: !Sub "${ProjectName}-${EnvironmentName}-futures-auth"
+      AutoPublish: true
+      FunctionConfig:
+        Comment: HTTP Basic Auth gate for Futures UI
+        Runtime: cloudfront-js-2.0
+      FunctionCode: !Sub
+        - |
+          function handler(event) {
+            var request = event.request;
+            var headers = request.headers;
+            var expected = 'Basic ${AuthToken}';
+            if (
+              typeof headers.authorization === 'undefined' ||
+              headers.authorization.value !== expected
+            ) {
+              return {
+                statusCode: 401,
+                statusDescription: 'Unauthorized',
+                headers: {
+                  'www-authenticate': { value: 'Basic realm="Trading Like a Boss Futures"' }
+                }
+              };
+            }
+            return request;
+          }
+        - AuthToken:
+            Fn::Base64: !Sub "${FuturesAuthUser}:${FuturesAuthPassword}"
+
+  FuturesWebDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        Comment: !Sub "${ProjectName} ${EnvironmentName} Futures UI (private Basic Auth)"
+        DefaultRootObject: index.html
+        Origins:
+          - Id: futuresWebS3
+            DomainName: !GetAtt FuturesWebBucket.RegionalDomainName
+            OriginAccessControlId: !GetAtt FuturesWebOAC.Id
+            S3OriginConfig: {}
+        DefaultCacheBehavior:
+          TargetOriginId: futuresWebS3
+          ViewerProtocolPolicy: redirect-to-https
+          AllowedMethods: [GET, HEAD, OPTIONS]
+          CachedMethods: [GET, HEAD]
+          Compress: true
+          ForwardedValues:
+            QueryString: false
+            Cookies:
+              Forward: none
+          FunctionAssociations:
+            - EventType: viewer-request
+              FunctionARN: !GetAtt FuturesAuthFunction.FunctionARN
+        CustomErrorResponses:
+          - ErrorCode: 403
+            ResponseCode: 200
+            ResponsePagePath: /index.html
+          - ErrorCode: 404
+            ResponseCode: 200
+            ResponsePagePath: /index.html
+        PriceClass: PriceClass_100
+
 Outputs:
   ApiUrl:
     Description: HTTP API base URL (append paths like /health)
     Value: !Sub "https://${HttpApi}.execute-api.${AWS::Region}.amazonaws.com/${EnvironmentName}"
   WebBucketName:
-    Description: S3 bucket for frontend static files
+    Description: S3 bucket for Options frontend (public)
     Value: !Ref WebBucket
   CloudFrontUrl:
-    Description: Frontend URL
+    Description: Options frontend URL (public)
     Value: !Sub "https://${WebDistribution.DomainName}"
   CloudFrontDistributionId:
     Value: !Ref WebDistribution
+  FuturesWebBucketName:
+    Description: S3 bucket for Futures frontend (private)
+    Value: !Ref FuturesWebBucket
+  FuturesCloudFrontUrl:
+    Description: Futures frontend URL (Basic Auth required)
+    Value: !Sub "https://${FuturesWebDistribution.DomainName}"
+  FuturesCloudFrontDistributionId:
+    Value: !Ref FuturesWebDistribution
   AppSecretsArn:
     Value: !Ref AppSecrets
   StackMode:

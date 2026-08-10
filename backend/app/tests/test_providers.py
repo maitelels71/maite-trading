@@ -16,10 +16,10 @@ from app.providers.schwab import SchwabProvider
 from app.providers.tradeadvocate import TradeAdvocateProvider
 
 
-def test_normalize_candle_aliases() -> None:
+def test_normalize_ms_epoch_keeps_utc_tz() -> None:
     c = normalize_candle(
         {
-            "datetime": "2026-01-02T15:00:00+00:00",
+            "datetime": 1_704_067_200_000,  # 2024-01-01 00:00:00 UTC
             "open": "10",
             "high": "12",
             "low": "9",
@@ -27,11 +27,14 @@ def test_normalize_candle_aliases() -> None:
             "volume": "100",
         },
         ticker="SPY",
-        timeframe="5m",
+        timeframe="30m",
     )
-    assert c.ticker == "SPY"
-    assert c.high == Decimal("12")
-    assert c.volume == Decimal("100")
+    assert c.timestamp.tzinfo is not None
+    from app.indicators.aggregate import aggregate_candles
+
+    out = aggregate_candles([c], bucket_minutes=60, out_timeframe="1h")
+    assert len(out) == 1
+    assert out[0].timeframe == "1h"
 
 
 def test_mock_provider_filters_range() -> None:

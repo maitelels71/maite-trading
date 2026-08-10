@@ -27,6 +27,7 @@ class NewsItemOut(BaseModel):
 class EconomicEventOut(BaseModel):
     id: str
     country: str = ""
+    currency: str = ""
     event: str
     impact: ImpactLevel
     scheduled_at: datetime | None = None
@@ -39,9 +40,12 @@ class EconomicEventOut(BaseModel):
 class NewsBriefingResponse(BaseModel):
     as_of: datetime
     session_date: date
+    week_start: date | None = None
+    week_end: date | None = None
     provider: str
     configured: bool
     message: str = ""
+    calendar_events: list[EconomicEventOut] = Field(default_factory=list)
     red_events: list[EconomicEventOut] = Field(default_factory=list)
     aware_items: list[NewsItemOut] = Field(default_factory=list)
     watchlist_items: list[NewsItemOut] = Field(default_factory=list)

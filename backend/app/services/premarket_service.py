@@ -6,9 +6,9 @@ from datetime import UTC, datetime
 from threading import Lock
 from typing import Any
 from uuid import uuid4
-from zoneinfo import ZoneInfo
 
 from app.api.storage import get_dynamo_store, using_dynamo
+from app.domain.session_calendar import resolve_operative_session_date
 from app.schemas.premarket_api import (
     PremarketAlarmCheckRequest,
     PremarketAlarmCheckResponse,
@@ -30,8 +30,7 @@ def start_premarket(
     db: Any = None,
 ) -> PremarketResultResponse:
     started = datetime.now(UTC)
-    tz = ZoneInfo("America/New_York")
-    session_day = body.session_date or datetime.now(tz).date()
+    session_day = body.session_date or resolve_operative_session_date()
 
     scan = scan_service.run_scan(
         StrategyScanRequest(

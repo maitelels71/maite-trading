@@ -18,14 +18,19 @@ def _as_decimal(value: Any) -> Decimal:
 
 def _as_datetime(value: Any) -> datetime:
     if isinstance(value, datetime):
-        return value
+        if value.tzinfo is None:
+            return value.replace(tzinfo=UTC)
+        return value.astimezone(UTC)
     if isinstance(value, (int, float)):
         ts = float(value)
         if ts > 1e12:
             ts /= 1000.0
-        return datetime.fromtimestamp(ts, tz=UTC).replace(tzinfo=None)
+        return datetime.fromtimestamp(ts, tz=UTC)
     text = str(value).replace("Z", "+00:00")
-    return datetime.fromisoformat(text)
+    parsed = datetime.fromisoformat(text)
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC)
 
 
 def normalize_candle(

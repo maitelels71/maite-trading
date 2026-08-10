@@ -77,8 +77,10 @@ class Settings(BaseSettings):
         alias="TRADEADVOCATE_ACCOUNT_ID",
     )
 
-    # Market news / economic calendar (Finnhub free tier)
+    # Market news / economic calendar
     finnhub_api_key: str = Field(default="", alias="FINNHUB_API_KEY")
+    # Free US macro calendar fallback (demo key works without signup)
+    econpulse_api_key: str = Field(default="demo", alias="ECONPULSE_API_KEY")
 
     # Notion daily review + trade journal sync
     notion_api_key: str = Field(default="", alias="NOTION_API_KEY")
