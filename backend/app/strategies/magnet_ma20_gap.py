@@ -10,6 +10,7 @@ from zoneinfo import ZoneInfo
 from app.core.constants import STRATEGY_E03_MAGNET
 from app.domain.candles import Candle
 from app.domain.enums import Side
+from app.domain.rth_bars import bar_is_complete
 from app.domain.signals import Signal
 from app.domain.strategy_types import StrategyContext, StrategyMetrics, StrategyResult
 from app.indicators import bollinger, sma
@@ -123,6 +124,9 @@ class MagnetMa20GapStrategy(BaseStrategy):
         first_local = _local(first.timestamp, tz)
         if first_local.time() >= time(9, 45):
             return StrategyResult()
+        # Playbook: never confirm on a forming open bar
+        if not bar_is_complete(first, m15, tz=tz, bar_minutes=15):
+            return StrategyResult()
 
         gap_pct = abs(first.open - ma20_last) / ma20_last if ma20_last else Decimal("0")
         min_gap = Decimal(str(params["min_gap_from_ma20_pct"]))
@@ -159,14 +163,14 @@ class MagnetMa20GapStrategy(BaseStrategy):
         if trend == "bull" and first.open > ma20_last and fully_above:
             side = Side.SHORT
             reason = (
-                "E03 PUT proxy: Hora bull MA20/40 + gap far above MA20 + "
+                "E03 PUT setup: Hora bull MA20/40 + gap far above MA20 + "
                 "first 15m fully outside upper BB (magnet toward MA20H)"
             )
         # Bear + gap down + outside lower → CALL/LONG
         elif trend == "bear" and first.open < ma20_last and fully_below:
             side = Side.LONG
             reason = (
-                "E03 CALL proxy: Hora bear MA20/40 + gap far below MA20 + "
+                "E03 CALL setup: Hora bear MA20/40 + gap far below MA20 + "
                 "first 15m fully outside lower BB (magnet toward MA20H)"
             )
         else:

@@ -50,11 +50,33 @@ class DynamoStore:
     """Persistence used when STORAGE_BACKEND=dynamodb."""
 
     def seed_defaults(self) -> dict[str, int]:
+        """Upsert MVP instruments as active; deactivate Schwab symbols no longer in MVP."""
         instruments = 0
+        desired = {
+            (row["symbol"], row["market_type"]): row for row in MVP_INSTRUMENTS
+        }
         for row in MVP_INSTRUMENTS:
             pk = f"{row['symbol']}#{row['market_type']}"
             existing = ddb.instruments_table().get_item(Key={"pk": pk}).get("Item")
             if existing:
+                # Keep row current (name / active) when already present
+                if (
+                    existing.get("active") is not True
+                    or existing.get("name") != row["name"]
+                    or existing.get("data_provider") != row["data_provider"]
+                ):
+                    ddb.put_item(
+                        ddb.instruments_table(),
+                        {
+                            "pk": pk,
+                            "symbol": row["symbol"],
+                            "name": row["name"],
+                            "market_type": row["market_type"],
+                            "data_provider": row["data_provider"],
+                            "active": True,
+                        },
+                    )
+                    instruments += 1
                 continue
             ddb.put_item(
                 ddb.instruments_table(),
@@ -67,6 +89,18 @@ class DynamoStore:
                     "active": True,
                 },
             )
+            instruments += 1
+
+        # Soft-remove symbols dropped from MVP without deleting candle history
+        resp = ddb.instruments_table().scan()
+        for item in resp.get("Items", []):
+            key = (item.get("symbol"), item.get("market_type"))
+            if key in desired:
+                continue
+            if item.get("active") is False:
+                continue
+            item["active"] = False
+            ddb.put_item(ddb.instruments_table(), item)
             instruments += 1
 
         strategies = 0

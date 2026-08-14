@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from uuid import uuid4
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
@@ -31,6 +32,8 @@ from app.schemas.strategy_api import (
 from app.services.market_data_service import MarketDataService
 from app.services.strategy_engine import StrategyEngine
 from app.strategies.registry import get_strategy_registry
+
+_NY = ZoneInfo("America/New_York")
 router = APIRouter(prefix="/strategy", tags=["strategy"])
 strategies_router = APIRouter(prefix="/strategies", tags=["strategies"])
 
@@ -477,6 +480,25 @@ def _scan_one(
                 extra_timeframes=extra_tfs,
                 context_start=scan_day,
             )
+
+        # Desk only: never keep a morning signal after price reversed through it
+        from app.strategies.live_hold import drop_reversed_session_signals
+
+        primary = _candles_for_scan_day(
+            db,
+            symbol=symbol,
+            market_type=market_type,
+            timeframe=resolve_tf,
+            scan_day=scan_day,
+            lookback_days=lookback_days,
+            candle_cache=candle_cache,
+        )
+        result = drop_reversed_session_signals(
+            result,
+            primary,
+            session_day=scan_day,
+            timeframe=resolve_tf,
+        )
     except Exception as exc:  # noqa: BLE001
         return StrategyScanHit(
             symbol=symbol,
@@ -503,6 +525,50 @@ def _scan_one(
         open_trade=open_trade,
         metrics=_metrics_out(result),
     )
+
+
+def _candles_for_scan_day(
+    db: Session,
+    *,
+    symbol: str,
+    market_type: str,
+    timeframe: str,
+    scan_day: date,
+    lookback_days: int,
+    candle_cache: dict[tuple[str, str, str, str, str], list] | None = None,
+) -> list:
+    """Primary TF candles used for evaluate + live-hold stale filter."""
+    from datetime import datetime as dt
+
+    load_start = scan_day - timedelta(days=lookback_days)
+    start_dt = dt.combine(load_start, dt.min.time())
+    end_dt = dt.combine(scan_day, dt.max.time().replace(microsecond=0))
+    if using_dynamo():
+        store = get_dynamo_store()
+        instrument = store.get_instrument(symbol, market_type=market_type)
+        key = (
+            instrument["symbol"],
+            instrument["market_type"],
+            timeframe,
+            start_dt.isoformat(),
+            end_dt.isoformat(),
+        )
+        if candle_cache is not None and key in candle_cache:
+            return candle_cache[key]
+        rows = store.get_candles_by_range(
+            instrument["symbol"],
+            instrument["market_type"],
+            timeframe,
+            start_dt,
+            end_dt,
+        )
+        if candle_cache is not None:
+            candle_cache[key] = rows
+        return rows
+
+    mds = MarketDataService(db)
+    instrument = mds.get_instrument(symbol, market_type=market_type)
+    return mds.get_candles_by_range(instrument.id, timeframe, start_dt, end_dt)
 
 
 def _session_candle_count(
@@ -582,6 +648,27 @@ def _classify_scan_result(
             open_trade,
         )
 
+    # Closed trades from a prior NY calendar day are historical — not live entries.
+    # (E01 flattens at last RTH bar; premarket scan of yesterday must not look "live".)
+    today_ny = datetime.now(_NY).date()
+    closed = [t for t in result.trades if t.exit_time is not None]
+    if closed:
+        last_exit = max(t.exit_time for t in closed if t.exit_time is not None)
+        exit_day = _as_ny_date(last_exit)
+        if exit_day is not None and exit_day < today_ny:
+            reason = (
+                result.signals[-1].reason
+                if result.signals
+                else f"{len(closed)} trade(s) completed"
+            )
+            return (
+                "flat_after_trades",
+                False,
+                f"Completed {exit_day.isoformat()} · {reason}",
+                last_signal,
+                None,
+            )
+
     if result.signals:
         side = result.signals[-1].side
         side_val = side.value if isinstance(side, Side) else str(side)
@@ -609,6 +696,14 @@ def _classify_scan_result(
         last_signal,
         None,
     )
+
+
+def _as_ny_date(value: datetime | None) -> date | None:
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        return value.replace(tzinfo=_NY).date()
+    return value.astimezone(_NY).date()
 
 
 def _metrics_out(result: StrategyResult) -> MetricsOut:

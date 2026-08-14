@@ -15,3 +15,6 @@ export const APP_MODE_LABEL =
   APP_MODE === "futures" ? "Futures" : "Options";
 
 export const APP_MODE_HINT = VENUE_META[APP_VENUE].hint;
+
+/** Browser tab + brand title (mode first so truncated tabs stay clear). */
+export const APP_DOCUMENT_TITLE = `${APP_MODE_LABEL} | Trading Like a Boss`;

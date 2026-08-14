@@ -83,6 +83,8 @@ class SchwabProvider:
         # Schwab has no native 60m bar — fetch 30m and aggregate to 1h.
         fetch_tf = "30m" if timeframe == "1h" else timeframe
         freq_type, frequency = _schwab_frequency_params(fetch_tf)
+        # Index futures need Globex hours; cash equities stay RTH-only.
+        extended = "true" if symbol.startswith("/") else "false"
         params: dict[str, Any] = {
             "symbol": symbol,
             "periodType": "day",
@@ -90,7 +92,7 @@ class SchwabProvider:
             "frequency": frequency,
             "startDate": int(start.timestamp() * 1000),
             "endDate": int(end.timestamp() * 1000),
-            "needExtendedHoursData": "false",
+            "needExtendedHoursData": extended,
         }
         client = self._get_client()
         response = client.get("/pricehistory", params=params)
@@ -99,11 +101,11 @@ class SchwabProvider:
         rows = _extract_schwab_candles(payload)
         candles = normalize_candles(rows, ticker=symbol, timeframe=fetch_tf)
         if timeframe == "1h":
-            from app.indicators.aggregate import aggregate_candles
+            from app.indicators.aggregate import aggregate_rth_hora
 
-            return aggregate_candles(
-                candles, bucket_minutes=60, out_timeframe="1h"
-            )
+            # Session-aligned Hora (keeps 9:30–10:00). Clock-hour buckets hide
+            # the open in a 9:00 bar that RTH filters drop → false CR/E signals.
+            return aggregate_rth_hora(candles, out_timeframe="1h")
         return candles
 
 

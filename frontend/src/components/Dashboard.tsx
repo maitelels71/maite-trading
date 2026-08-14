@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState, useTransition } from "react";
 
+import { DeskSession } from "@/components/DeskSession";
 import { TradeChart } from "@/components/TradeChart";
 import { useLocale } from "@/components/LocaleProvider";
 import {
@@ -18,11 +19,16 @@ import {
   strategyDisplayName,
   type StrategyPlaybook,
 } from "@/lib/playbooks";
+import {
+  localizePlaybook,
+  localizedPlaybookLabel,
+} from "@/lib/playbook-localize";
 import { APP_MODE_LABEL, APP_VENUE } from "@/lib/app-mode";
 import {
   FALLBACK_INSTRUMENTS,
   TIMEFRAMES,
   VENUE_META,
+  sortFuturesInstruments,
   type BacktestResponse,
   type Candle,
   type EvaluateResponse,
@@ -84,13 +90,15 @@ function holdLabel(entryIso: string, exitIso: string | null | undefined): string
 }
 
 export function Dashboard() {
-  const { t } = useLocale();
+  const { t, locale } = useLocale();
   const venue = APP_VENUE;
   const [instruments, setInstruments] = useState<Instrument[]>(FALLBACK_INSTRUMENTS);
   const [strategies, setStrategies] = useState<Strategy[]>([]);
   const [symbol, setSymbol] = useState(VENUE_META[APP_VENUE].defaultSymbol);
   const [strategy, setStrategy] = useState(
-    APP_VENUE === "tradeadvocate" ? "opening_range_breakout" : "bb_trend_flip_h",
+    APP_VENUE === "tradeadvocate"
+      ? "ml01_structure_choch_bos"
+      : "bb_trend_flip_h",
   );
   const [timeframe, setTimeframe] = useState("1h");
   const [tfLocked, setTfLocked] = useState(false);
@@ -114,38 +122,61 @@ export function Dashboard() {
   const [candles, setCandles] = useState<Candle[]>([]);
   const [pending, startTransition] = useTransition();
 
-  const venueInstruments = useMemo(
-    () => instruments.filter((i) => i.data_provider === venue && i.active),
-    [instruments, venue],
-  );
+  const venueInstruments = useMemo(() => {
+    const filtered = instruments.filter(
+      (i) => i.data_provider === venue && i.active,
+    );
+    return venue === "tradeadvocate"
+      ? sortFuturesInstruments(filtered)
+      : filtered;
+  }, [instruments, venue]);
 
   const selected = useMemo(
     () => venueInstruments.find((i) => i.symbol === symbol) ?? null,
     [venueInstruments, symbol],
   );
 
-  const playbook: StrategyPlaybook | undefined = useMemo(
-    () => playbookByStrategyKey(strategy),
-    [strategy],
-  );
+  const playbook: StrategyPlaybook | undefined = useMemo(() => {
+    const raw = playbookByStrategyKey(strategy);
+    return raw ? localizePlaybook(raw, locale) : undefined;
+  }, [strategy, locale]);
 
   const books = useMemo(() => playbooksForVenue(venue), [venue]);
 
   const strategyOptions = useMemo(() => {
     const apiNames = new Set(strategies.map((s) => s.name));
     const fromBooks = books
-      .filter((p) => p.strategyKey && (apiNames.size === 0 || apiNames.has(p.strategyKey)))
-      .map((p) => ({
-        key: p.strategyKey!,
-        label: `${p.shortName} — ${p.name.replace(/^[A-Z0-9]+\s*—\s*/, "")}`,
-        group: p.id.startsWith("cr") ? "cr" : p.id.startsWith("e") ? "bb" : "other",
-        description: p.summary,
-      }));
+      .filter((p) => {
+        if (!p.strategyKey) return false;
+        // Futures desk: only playbooks (ML01), ignore full engine catalog.
+        if (venue === "tradeadvocate") return true;
+        return apiNames.size === 0 || apiNames.has(p.strategyKey);
+      })
+      .map((p) => {
+        const group =
+          p.group === "Maylels" || p.id.startsWith("ml")
+            ? ("maylels" as const)
+            : p.id.startsWith("cr")
+              ? ("cr" as const)
+              : p.id.startsWith("e")
+                ? ("bb" as const)
+                : ("other" as const);
+        return {
+          key: p.strategyKey!,
+          label: localizedPlaybookLabel(p, locale),
+          group,
+          description: localizePlaybook(p, locale).summary,
+        };
+      });
+
+    if (venue === "tradeadvocate") return fromBooks;
+
     const covered = new Set(fromBooks.map((o) => o.key));
     const extras = strategies
       .filter((s) => !covered.has(s.name))
       .filter((s) => {
-        if (venue === "schwab") return s.name !== "opening_range_breakout" || fromBooks.length === 0;
+        if (venue === "schwab")
+          return s.name !== "opening_range_breakout" || fromBooks.length === 0;
         return true;
       })
       .map((s) => ({
@@ -155,7 +186,16 @@ export function Dashboard() {
         description: s.description,
       }));
     return [...fromBooks, ...extras];
-  }, [books, strategies, venue]);
+  }, [books, strategies, venue, locale]);
+
+  useEffect(() => {
+    if (
+      strategyOptions.length > 0 &&
+      !strategyOptions.some((o) => o.key === strategy)
+    ) {
+      setStrategy(strategyOptions[0].key);
+    }
+  }, [strategyOptions, strategy]);
 
   useEffect(() => {
     const stillValid = venueInstruments.some((i) => i.symbol === symbol);
@@ -192,13 +232,23 @@ export function Dashboard() {
           setStatus(
             "API offline. Using fallback instruments. Start backend to run live.",
           );
-          setStrategies([
-            {
-              name: "opening_range_breakout",
-              description: "Opening Range Breakout (long/short)",
-              default_parameters: { opening_range_minutes: 5 },
-            },
-          ]);
+          setStrategies(
+            APP_VENUE === "tradeadvocate"
+              ? [
+                  {
+                    name: "ml01_structure_choch_bos",
+                    description: "ML01 structure ChoCh + BOS (futures)",
+                    default_parameters: {},
+                  },
+                ]
+              : [
+                  {
+                    name: "opening_range_breakout",
+                    description: "Opening Range Breakout (long/short)",
+                    default_parameters: { opening_range_minutes: 5 },
+                  },
+                ],
+          );
         }
       }
     })();
@@ -340,6 +390,7 @@ export function Dashboard() {
 
   const bbOpts = strategyOptions.filter((o) => o.group === "bb");
   const crOpts = strategyOptions.filter((o) => o.group === "cr");
+  const maylelsOpts = strategyOptions.filter((o) => o.group === "maylels");
   const otherOpts = strategyOptions.filter((o) => o.group === "other");
 
   return (
@@ -367,9 +418,15 @@ export function Dashboard() {
       </header>
 
       <main className="mx-auto grid max-w-7xl gap-4 px-6 py-6 lg:grid-cols-[340px_1fr]">
-        <aside className="space-y-3">
+        <aside className="space-y-1">
+          <DeskSession
+            first
+            step={1}
+            title={t("session.controls")}
+            hint={t("session.controlsHint")}
+            panel={false}
+          >
           <section className="space-y-3 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4">
-            <h2 className="text-sm font-semibold">{t("analyzer.controls")}</h2>
             <p className="text-[11px] text-[var(--muted)]">{VENUE_META[venue].hint}</p>
 
             <label className="block space-y-1 text-sm">
@@ -394,6 +451,15 @@ export function Dashboard() {
                 value={strategy}
                 onChange={(e) => setStrategy(e.target.value)}
               >
+                {maylelsOpts.length > 0 ? (
+                  <optgroup label={t("analyzer.groupMaylels")}>
+                    {maylelsOpts.map((o) => (
+                      <option key={o.key} value={o.key}>
+                        {o.label}
+                      </option>
+                    ))}
+                  </optgroup>
+                ) : null}
                 {bbOpts.length > 0 ? (
                   <optgroup label={t("analyzer.groupBb")}>
                     {bbOpts.map((o) => (
@@ -441,7 +507,7 @@ export function Dashboard() {
                 >
                   {TIMEFRAMES.map((tf) => (
                     <option key={tf} value={tf}>
-                      {tf === "1d" ? "Daily" : tf}
+                      {tf === "1d" ? t("analyzer.tfDaily") : tf}
                     </option>
                   ))}
                 </select>
@@ -532,13 +598,17 @@ export function Dashboard() {
               </p>
             </div>
           </section>
+          </DeskSession>
 
           {playbook ? (
+            <DeskSession
+              step={2}
+              title={t("session.rules")}
+              hint={`${localizedPlaybookLabel(playbook, locale)}`}
+              panel={false}
+            >
             <section className="space-y-2 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4">
-              <h3 className="text-sm font-semibold">{playbook.shortName}</h3>
-              <p className="text-xs font-medium text-[var(--foreground)]">
-                {playbook.name}
-              </p>
+              <h3 className="text-sm font-semibold">{localizedPlaybookLabel(playbook, locale)}</h3>
               <p className="text-[11px] text-[var(--muted)]">{playbook.summary}</p>
               <p className="text-[10px] text-[var(--muted)]">
                 {playbook.markets} · {playbook.sessionWindow}
@@ -569,10 +639,11 @@ export function Dashboard() {
                 </ul>
               </div>
             </section>
+            </DeskSession>
           ) : null}
         </aside>
 
-        <section className="space-y-4">
+        <section className="space-y-1">
           {error ? (
             <div className="rounded-xl border border-red-200 bg-[var(--danger-soft)] px-4 py-3 text-sm text-[var(--danger)]">
               {error}
@@ -584,8 +655,13 @@ export function Dashboard() {
             </div>
           ) : null}
 
-          <div>
-            <h2 className="mb-2 text-sm font-semibold">{t("analyzer.metrics")}</h2>
+          <DeskSession
+            first
+            step={3}
+            title={t("session.results")}
+            hint={t("analyzer.metrics")}
+            panel={false}
+          >
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
               {[
                 [t("analyzer.trades"), metrics ? String(metrics.total_trades) : "—"],
@@ -608,10 +684,18 @@ export function Dashboard() {
                 </div>
               ))}
             </div>
-          </div>
+          </DeskSession>
 
-          <TradeChart candles={candles} trades={trades} />
+          <DeskSession step={4} title={t("session.chart")} panel={false}>
+            <TradeChart candles={candles} trades={trades} />
+          </DeskSession>
 
+          <DeskSession
+            step={5}
+            title={t("session.trades")}
+            hint={t("analyzer.journeyHint")}
+            panel={false}
+          >
           <div className="grid gap-4 lg:grid-cols-2">
             <div className="overflow-hidden rounded-xl border border-[var(--border)]">
               <div className="border-b border-[var(--border)] px-4 py-3 text-sm font-medium">
@@ -745,7 +829,9 @@ export function Dashboard() {
               )}
             </div>
           </div>
+          </DeskSession>
 
+          <DeskSession step={6} title={t("session.signals")} panel={false}>
           <div className="overflow-hidden rounded-xl border border-[var(--border)]">
             <div className="border-b border-[var(--border)] px-4 py-3 text-sm font-medium">
               {t("analyzer.signals")}
@@ -786,6 +872,7 @@ export function Dashboard() {
               </table>
             </div>
           </div>
+          </DeskSession>
         </section>
       </main>
     </div>

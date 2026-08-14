@@ -155,6 +155,61 @@ def test_e01_put_proxy_mid_break() -> None:
     assert any(s.side is Side.SHORT for s in result.signals), result
 
 
+def test_e01_call_invalidated_when_later_hora_closes_back_below_mid() -> None:
+    """Morning flip must not stay as a live match after Hora loses the mid."""
+    start = datetime(2025, 12, 8, tzinfo=ET)
+    session = datetime(2026, 1, 6, tzinfo=ET)
+    h1 = _hora_series(
+        start, n_days=15, start_px=Decimal("110"), step=Decimal("-0.4"), stop_before=session
+    )
+    last = h1[-1].close
+    flip = session.replace(hour=10, minute=0, second=0, microsecond=0)
+    fade = session.replace(hour=11, minute=0, second=0, microsecond=0)
+    h1.append(
+        _c(
+            flip,
+            str(last),
+            str(last + Decimal("8")),
+            str(last - Decimal("0.2")),
+            str(last + Decimal("7")),
+            tf="1h",
+        )
+    )
+    # Next Hora dumps back below any reasonable mid
+    h1.append(
+        _c(
+            fade,
+            str(last + Decimal("7")),
+            str(last + Decimal("7.2")),
+            str(last - Decimal("5")),
+            str(last - Decimal("4")),
+            tf="1h",
+        )
+    )
+    m15 = _m15_slope(session, last, Decimal("0.15"))
+    # Append fading 15m closes below open of afternoon
+    t_fade = session.replace(hour=11, minute=0, second=0, microsecond=0)
+    px = m15[-1].close
+    for i in range(4):
+        ts = t_fade + timedelta(minutes=15 * i)
+        nxt = px - Decimal("1.5")
+        m15.append(_c(ts, str(px), str(px), str(nxt), str(nxt), tf="15m"))
+        px = nxt
+
+    result = BbTrendFlipHStrategy().evaluate(
+        h1,
+        StrategyContext(
+            ticker="AAPL",
+            timeframe="1h",
+            start=start,
+            end=session,
+            extra_candles={"15m": m15},
+            parameters={"min_mid_change_pct": 0.002, "min_body_pct": 0.001},
+        ),
+    )
+    assert result.signals == [], result
+
+
 def test_e01_no_signal_flat_prior() -> None:
     start = datetime(2025, 12, 15, tzinfo=ET)
     session = datetime(2026, 1, 6, tzinfo=ET)

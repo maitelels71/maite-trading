@@ -11,6 +11,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
+from app.core.constants import MVP_INSTRUMENTS
 from app.database.base import Base
 from app.database.seed import seed_all
 from app.models import BacktestRun, Candle, Instrument, SignalRow, Strategy, Trade
@@ -44,7 +45,7 @@ def db_session() -> Session:
 def test_seed_mvp_instruments_and_orb(db_session: Session) -> None:
     first = seed_all(db_session)
     second = seed_all(db_session)
-    assert first["instruments"] == 8
+    assert first["instruments"] == len(MVP_INSTRUMENTS)
     assert first["strategies"] == 1
     assert second["instruments"] == 0
     assert second["strategies"] == 0
@@ -67,11 +68,42 @@ def test_seed_mvp_instruments_and_orb(db_session: Session) -> None:
     assert nq is not None
     assert nq.data_provider == "tradeadvocate"
 
+    mes = db_session.scalar(
+        select(Instrument).where(
+            Instrument.symbol == "MES",
+            Instrument.market_type == "future",
+        )
+    )
+    assert mes is not None
+    assert mes.data_provider == "tradeadvocate"
+
     orb = db_session.scalar(
         select(Strategy).where(Strategy.name == "opening_range_breakout")
     )
     assert orb is not None
     assert orb.parameters["opening_range_minutes"] == 5
+
+
+def test_seed_deactivates_dropped_futures(db_session: Session) -> None:
+    db_session.add(
+        Instrument(
+            symbol="GC",
+            name="Gold Futures",
+            market_type="future",
+            data_provider="tradeadvocate",
+            active=True,
+        )
+    )
+    db_session.commit()
+    seed_all(db_session)
+    gc = db_session.scalar(
+        select(Instrument).where(
+            Instrument.symbol == "GC",
+            Instrument.market_type == "future",
+        )
+    )
+    assert gc is not None
+    assert gc.active is False
 
 
 def test_unique_instrument_symbol_market(db_session: Session) -> None:

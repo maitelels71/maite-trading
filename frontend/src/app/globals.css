@@ -2,19 +2,19 @@
 
 :root {
   color-scheme: light;
-  --background: #f4f5f3;
-  --background-accent: #eef1ec;
-  --foreground: #1c1917;
-  --muted: #44403c;
+  --background: #f0f1ef;
+  --background-accent: #e4e8e2;
+  --foreground: #0c0a09;
+  --muted: #292524;
   --surface: #ffffff;
-  --surface-muted: #fafaf9;
-  --hover: #f5f5f4;
-  --border: #e7e5e4;
-  --border-strong: #d6d3d1;
+  --surface-muted: #f5f5f4;
+  --hover: #ebebea;
+  --border: #d6d3d1;
+  --border-strong: #a8a29e;
   --accent: #0f766e;
   --accent-hover: #0d9488;
   --accent-soft: #ccfbf1;
-  --accent-fg: #134e4a;
+  --accent-fg: #115e59;
   --on-accent: #ffffff;
   --brand: #0f766e;
   --danger: #b91c1c;
@@ -26,9 +26,9 @@
   --info: #0369a1;
   --info-soft: #f0f9ff;
   --chart-bg: #ffffff;
-  --chart-text: #57534e;
-  --chart-grid: #f0efed;
-  --chart-border: #e7e5e4;
+  --chart-text: #44403c;
+  --chart-grid: #e7e5e4;
+  --chart-border: #d6d3d1;
   --chart-up: #0f766e;
   --chart-down: #b91c1c;
 }
@@ -83,7 +83,8 @@ body {
   font-family: var(--font-source-sans), ui-sans-serif, system-ui, sans-serif;
   font-size: 15px;
   line-height: 1.55;
-  -webkit-font-smoothing: antialiased;
+  /* Subpixel AA keeps dark text on light bg from looking washed out */
+  -webkit-font-smoothing: auto;
 }
 
 html[data-theme="dark"] body {
@@ -91,6 +92,7 @@ html[data-theme="dark"] body {
     radial-gradient(900px 420px at 0% 0%, #0a1628, transparent 55%),
     radial-gradient(700px 360px at 100% 0%, #071a16, transparent 50%),
     var(--background);
+  -webkit-font-smoothing: antialiased;
 }
 
 select,

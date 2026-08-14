@@ -15,7 +15,9 @@ class ProviderFactory:
     def __init__(self, config: Settings | None = None) -> None:
         self._config = config or settings
         self._schwab = SchwabProvider(self._config)
-        self._tradeadvocate = TradeAdvocateProvider(self._config)
+        self._tradeadvocate = TradeAdvocateProvider(
+            self._config, schwab=self._schwab
+        )
 
     def get(self, provider: DataProviderName | str) -> MarketDataProvider:
         name = DataProviderName(provider)

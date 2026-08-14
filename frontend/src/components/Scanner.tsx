@@ -12,6 +12,7 @@ import {
 import {
   TIMEFRAMES,
   VENUE_META,
+  providerLabel,
   type PremarketResult,
   type ScanHit,
   type ScanResponse,
@@ -340,7 +341,7 @@ export function Scanner() {
         </section>
       ) : (
         <p className="rounded-xl border border-[var(--border)] bg-[var(--surface-muted)] px-4 py-3 text-sm text-[var(--muted)]">
-          No strategy matches yet. Until Schwab / TradeAdvocate data is synced, most
+          No strategy matches yet. Until Schwab data is synced, most
           rows will show <code className="text-[var(--muted)]">no_data</code>.
         </p>
       )}
@@ -377,7 +378,7 @@ export function Scanner() {
                       {hit.symbol}
                       <div className="text-xs text-[var(--muted)]">{hit.name}</div>
                     </td>
-                    <td className="px-3 py-2 text-[var(--muted)]">{hit.data_provider}</td>
+                    <td className="px-3 py-2 text-[var(--muted)]">{providerLabel(hit.data_provider)}</td>
                     <td className="px-3 py-2 text-[var(--muted)]">{hit.strategy}</td>
                     <td className="px-3 py-2">
                       <span
@@ -414,7 +415,7 @@ function HitCard({ hit, highlight }: { hit: ScanHit; highlight?: boolean }) {
         </span>
       </div>
       <p className="mt-1 text-xs text-[var(--muted)]">
-        {hit.strategy} · {hit.data_provider}
+        {hit.strategy} · {providerLabel(hit.data_provider)}
       </p>
       <p className="mt-2 text-sm text-[var(--muted)]">{hit.detail}</p>
     </div>

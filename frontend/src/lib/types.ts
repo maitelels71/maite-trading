@@ -1,6 +1,6 @@
 export type MarketType = "stock" | "etf" | "future";
 export type DataProvider = "schwab" | "tradeadvocate";
-/** Dashboard workspace venue (Schwab equities/options vs TradeAdvocate futures). */
+/** Dashboard workspace venue (options vs futures). Both desks pull candles from Schwab. */
 export type Venue = DataProvider;
 export type Side = "long" | "short" | "flat";
 
@@ -12,13 +12,13 @@ export const VENUE_META: Record<
     label: "Equities / Options",
     shortLabel: "Schwab",
     defaultSymbol: "SPY",
-    hint: "SPY · AMZN · TSLA (underlying; options later)",
+    hint: "SPY · QQQ · AAPL · MSFT · AMZN · GOOGL · META · NVDA · TSLA · NFLX",
   },
   tradeadvocate: {
     label: "Futures",
-    shortLabel: "TradeAdvocate",
+    shortLabel: "Schwab",
     defaultSymbol: "NQ",
-    hint: "NQ · ES · GC · 6E",
+    hint: "NQ · MNQ · ES · MES",
   },
 };
 
@@ -262,20 +262,39 @@ export type AdminOverview = {
   notes: string[];
 };
 
+export const FUTURES_TICKERS = ["NQ", "MNQ", "ES", "MES"] as const;
+
+export function providerLabel(provider: string | null | undefined): string {
+  if (provider === "schwab" || provider === "tradeadvocate") return "Schwab";
+  return provider?.trim() || "—";
+}
+
+export function sortFuturesInstruments<T extends { symbol: string }>(items: T[]): T[] {
+  const order = new Map<string, number>(
+    FUTURES_TICKERS.map((symbol, index) => [symbol, index]),
+  );
+  return [...items].sort((a, b) => {
+    const ia = order.get(a.symbol) ?? 99;
+    const ib = order.get(b.symbol) ?? 99;
+    return ia - ib;
+  });
+}
+
 export const FALLBACK_INSTRUMENTS: Instrument[] = [
   { symbol: "NQ", name: "E-mini Nasdaq-100", market_type: "future", data_provider: "tradeadvocate", active: true },
+  { symbol: "MNQ", name: "Micro E-mini Nasdaq-100", market_type: "future", data_provider: "tradeadvocate", active: true },
   { symbol: "ES", name: "E-mini S&P 500", market_type: "future", data_provider: "tradeadvocate", active: true },
-  { symbol: "GC", name: "Gold Futures", market_type: "future", data_provider: "tradeadvocate", active: true },
-  { symbol: "6E", name: "Euro FX Futures", market_type: "future", data_provider: "tradeadvocate", active: true },
+  { symbol: "MES", name: "Micro E-mini S&P 500", market_type: "future", data_provider: "tradeadvocate", active: true },
   { symbol: "SPY", name: "SPDR S&P 500 ETF", market_type: "etf", data_provider: "schwab", active: true },
   { symbol: "QQQ", name: "Invesco QQQ Trust", market_type: "etf", data_provider: "schwab", active: true },
   { symbol: "AAPL", name: "Apple Inc", market_type: "stock", data_provider: "schwab", active: true },
+  { symbol: "MSFT", name: "Microsoft Corp", market_type: "stock", data_provider: "schwab", active: true },
   { symbol: "AMZN", name: "Amazon.com Inc", market_type: "stock", data_provider: "schwab", active: true },
+  { symbol: "GOOGL", name: "Alphabet Inc Class A", market_type: "stock", data_provider: "schwab", active: true },
   { symbol: "META", name: "Meta Platforms Inc", market_type: "stock", data_provider: "schwab", active: true },
-  { symbol: "NFLX", name: "Netflix Inc", market_type: "stock", data_provider: "schwab", active: true },
-  { symbol: "TSLA", name: "Tesla Inc", market_type: "stock", data_provider: "schwab", active: true },
   { symbol: "NVDA", name: "NVIDIA Corp", market_type: "stock", data_provider: "schwab", active: true },
-  { symbol: "BAC", name: "Bank of America", market_type: "stock", data_provider: "schwab", active: true },
+  { symbol: "TSLA", name: "Tesla Inc", market_type: "stock", data_provider: "schwab", active: true },
+  { symbol: "NFLX", name: "Netflix Inc", market_type: "stock", data_provider: "schwab", active: true },
 ];
 
-export const TIMEFRAMES = ["1m", "5m", "15m", "30m", "1h", "4h", "1d"] as const;
+export const TIMEFRAMES = ["1m", "3m", "5m", "15m", "30m", "1h", "4h", "1d"] as const;

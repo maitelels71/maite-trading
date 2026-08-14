@@ -10,6 +10,7 @@ from zoneinfo import ZoneInfo
 from app.core.constants import STRATEGY_E04_BB15_GAP
 from app.domain.candles import Candle
 from app.domain.enums import Side
+from app.domain.rth_bars import bar_is_complete
 from app.domain.signals import Signal
 from app.domain.strategy_types import StrategyContext, StrategyMetrics, StrategyResult
 from app.indicators import bollinger
@@ -132,6 +133,8 @@ class Bb15GapOpenStrategy(BaseStrategy):
             # Allow slight offset but reject if clearly after open window proxy
             if first_local.time() >= time(9, 45):
                 return StrategyResult()
+        if not bar_is_complete(first, rth, tz=tz, bar_minutes=15):
+            return StrategyResult()
 
         fully_below = first.high < prior_band.lower
         fully_above = first.low > prior_band.upper
@@ -143,13 +146,13 @@ class Bb15GapOpenStrategy(BaseStrategy):
         if fully_below and rising:
             side = Side.LONG
             reason = (
-                "E04 CALL proxy: prior BB15 squeeze + first 15m fully below lower "
+                "E04 CALL setup: prior BB15 squeeze + first 15m fully below lower "
                 "band and closing up toward mid"
             )
         elif fully_above and falling:
             side = Side.SHORT
             reason = (
-                "E04 PUT proxy: prior BB15 squeeze + first 15m fully above upper "
+                "E04 PUT setup: prior BB15 squeeze + first 15m fully above upper "
                 "band and closing down toward mid"
             )
         else:

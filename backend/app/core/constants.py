@@ -16,6 +16,8 @@ SUPPORTED_TIMEFRAMES: tuple[Timeframe, ...] = (
 )
 
 # Seed universe for MVP (persisted in Prompt 3).
+# Options desk (Schwab): index ETFs + liquid megacaps for CR/E options scans.
+# Futures desk: analysis candles come from Schwab (/NQ, /MNQ, /ES, /MES).
 MVP_INSTRUMENTS: tuple[dict[str, str], ...] = (
     {
         "symbol": "NQ",
@@ -24,22 +26,22 @@ MVP_INSTRUMENTS: tuple[dict[str, str], ...] = (
         "name": "E-mini Nasdaq-100",
     },
     {
+        "symbol": "MNQ",
+        "market_type": MarketType.FUTURE.value,
+        "data_provider": DataProviderName.TRADEADVOCATE.value,
+        "name": "Micro E-mini Nasdaq-100",
+    },
+    {
         "symbol": "ES",
         "market_type": MarketType.FUTURE.value,
         "data_provider": DataProviderName.TRADEADVOCATE.value,
         "name": "E-mini S&P 500",
     },
     {
-        "symbol": "GC",
+        "symbol": "MES",
         "market_type": MarketType.FUTURE.value,
         "data_provider": DataProviderName.TRADEADVOCATE.value,
-        "name": "Gold Futures",
-    },
-    {
-        "symbol": "6E",
-        "market_type": MarketType.FUTURE.value,
-        "data_provider": DataProviderName.TRADEADVOCATE.value,
-        "name": "Euro FX Futures",
+        "name": "Micro E-mini S&P 500",
     },
     {
         "symbol": "SPY",
@@ -60,10 +62,22 @@ MVP_INSTRUMENTS: tuple[dict[str, str], ...] = (
         "name": "Apple Inc",
     },
     {
+        "symbol": "MSFT",
+        "market_type": MarketType.STOCK.value,
+        "data_provider": DataProviderName.SCHWAB.value,
+        "name": "Microsoft Corp",
+    },
+    {
         "symbol": "AMZN",
         "market_type": MarketType.STOCK.value,
         "data_provider": DataProviderName.SCHWAB.value,
         "name": "Amazon.com Inc",
+    },
+    {
+        "symbol": "GOOGL",
+        "market_type": MarketType.STOCK.value,
+        "data_provider": DataProviderName.SCHWAB.value,
+        "name": "Alphabet Inc Class A",
     },
     {
         "symbol": "META",
@@ -72,10 +86,10 @@ MVP_INSTRUMENTS: tuple[dict[str, str], ...] = (
         "name": "Meta Platforms Inc",
     },
     {
-        "symbol": "NFLX",
+        "symbol": "NVDA",
         "market_type": MarketType.STOCK.value,
         "data_provider": DataProviderName.SCHWAB.value,
-        "name": "Netflix Inc",
+        "name": "NVIDIA Corp",
     },
     {
         "symbol": "TSLA",
@@ -84,16 +98,10 @@ MVP_INSTRUMENTS: tuple[dict[str, str], ...] = (
         "name": "Tesla Inc",
     },
     {
-        "symbol": "NVDA",
+        "symbol": "NFLX",
         "market_type": MarketType.STOCK.value,
         "data_provider": DataProviderName.SCHWAB.value,
-        "name": "NVIDIA Corp",
-    },
-    {
-        "symbol": "BAC",
-        "market_type": MarketType.STOCK.value,
-        "data_provider": DataProviderName.SCHWAB.value,
-        "name": "Bank of America",
+        "name": "Netflix Inc",
     },
 )
 
@@ -102,6 +110,7 @@ STRATEGY_E04_BB15_GAP = "bb15_gap_open"
 STRATEGY_E03_MAGNET = "magnet_ma20_gap"
 STRATEGY_E02_DAILY_MID = "daily_mid_bounce"
 STRATEGY_E01_BB_FLIP = "bb_trend_flip_h"
+STRATEGY_ML01_STRUCTURE = "ml01_structure_choch_bos"
 STRATEGY_CR01_MA40 = "cr01_ma40_bounce"
 STRATEGY_CR02_DROP = "cr02_drop_green"
 STRATEGY_CR03_CHANNEL = "cr03_channel_break"

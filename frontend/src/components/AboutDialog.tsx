@@ -3,7 +3,7 @@
 import { useEffect, useId, useRef, type ReactNode } from "react";
 
 import { useLocale } from "@/components/LocaleProvider";
-import { APP_MODE_LABEL } from "@/lib/app-mode";
+import { APP_MODE } from "@/lib/app-mode";
 import { ABOUT } from "@/lib/about";
 
 type AboutDialogProps = {
@@ -27,6 +27,9 @@ export function AboutDialog({ open, onClose }: AboutDialogProps) {
   }, [open, onClose]);
 
   if (!open) return null;
+
+  const modeLabel =
+    APP_MODE === "futures" ? t("about.modeFutures") : t("about.modeOptions");
 
   const contactBits: { key: string; node: ReactNode }[] = [];
   if (ABOUT.phone) {
@@ -123,7 +126,7 @@ export function AboutDialog({ open, onClose }: AboutDialogProps) {
                 {ABOUT.productName}
               </p>
               <p className="text-[11px] font-semibold uppercase tracking-wider text-[var(--muted)]">
-                {APP_MODE_LABEL}
+                {modeLabel}
               </p>
             </div>
           </div>
@@ -136,7 +139,7 @@ export function AboutDialog({ open, onClose }: AboutDialogProps) {
               ©{ABOUT.copyrightYear} {ABOUT.copyrightHolder}
             </p>
             <p className="leading-relaxed text-[var(--muted)]">
-              {ABOUT.ownership}
+              {t("about.ownership")}
             </p>
           </div>
 
@@ -154,7 +157,7 @@ export function AboutDialog({ open, onClose }: AboutDialogProps) {
           ) : null}
 
           <p className="text-xs leading-relaxed text-[var(--muted)]">
-            {ABOUT.disclaimer}
+            {t("about.disclaimer")}
           </p>
         </div>
 

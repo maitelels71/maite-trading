@@ -22,7 +22,7 @@ from app.schemas.news_api import (
 
 logger = get_logger(__name__)
 
-WATCHLIST = ("SPY", "QQQ", "AMZN", "TSLA", "NVDA", "ES", "NQ")
+WATCHLIST = ("SPY", "QQQ", "AAPL", "MSFT", "AMZN", "GOOGL", "META", "NVDA", "TSLA", "NFLX", "ES", "NQ")
 
 AWARE_KEYWORDS = (
     "fed",

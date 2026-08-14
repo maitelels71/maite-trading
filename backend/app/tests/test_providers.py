@@ -9,11 +9,13 @@ import httpx
 import pytest
 
 from app.core.config import Settings
+from app.domain.candles import Candle
+from app.domain.enums import DataProviderName
 from app.providers.exceptions import ProviderNotConfiguredError, ProviderRateLimitError
 from app.providers.mock import MockMarketDataProvider
 from app.providers.normalize import normalize_candle, normalize_candles
 from app.providers.schwab import SchwabProvider
-from app.providers.tradeadvocate import TradeAdvocateProvider
+from app.providers.tradeadvocate import TradeAdvocateProvider, schwab_futures_symbol
 
 
 def test_normalize_ms_epoch_keeps_utc_tz() -> None:
@@ -106,60 +108,96 @@ def test_schwab_parses_pricehistory_with_mock_transport() -> None:
     assert candles[0].open == Decimal("100")
 
 
+def test_schwab_futures_requests_extended_hours() -> None:
+    seen: dict[str, str] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["url"] = str(request.url)
+        return httpx.Response(200, json={"candles": []})
+
+    client = httpx.Client(
+        transport=httpx.MockTransport(handler),
+        base_url="https://example.test",
+    )
+    provider = SchwabProvider(
+        Settings(),
+        client=client,
+        access_token="test-token",
+    )
+    provider.get_historical_candles(
+        "/MNQ",
+        "5m",
+        datetime(2026, 1, 2, tzinfo=UTC),
+        datetime(2026, 1, 3, tzinfo=UTC),
+    )
+    assert "symbol=%2FMNQ" in seen["url"] or "symbol=/MNQ" in seen["url"]
+    assert "needExtendedHoursData=true" in seen["url"]
+
+
 def test_schwab_requires_credentials() -> None:
     provider = SchwabProvider(Settings(SCHWAB_CLIENT_ID="", SCHWAB_CLIENT_SECRET=""))
     with pytest.raises(ProviderNotConfiguredError):
         provider.authenticate()
 
 
-def test_tradeadvocate_parses_candles_with_mock_transport() -> None:
-    def handler(request: httpx.Request) -> httpx.Response:
-        return httpx.Response(
-            200,
-            json={
-                "candles": [
-                    {
-                        "t": "2026-01-02T15:00:00+00:00",
-                        "o": 5000,
-                        "h": 5005,
-                        "l": 4995,
-                        "c": 5001,
-                        "v": 12,
-                    }
-                ]
-            },
-        )
+def test_schwab_futures_symbol_maps_roots_and_contracts() -> None:
+    assert schwab_futures_symbol("MNQ") == "/MNQ"
+    assert schwab_futures_symbol("MNQU6") == "/MNQ"
+    assert schwab_futures_symbol("MES") == "/MES"
+    assert schwab_futures_symbol("MESU6") == "/MES"
+    assert schwab_futures_symbol("NQ") == "/NQ"
+    assert schwab_futures_symbol("NQU6") == "/NQ"
+    assert schwab_futures_symbol("/ES") == "/ES"
 
-    transport = httpx.MockTransport(handler)
-    client = httpx.Client(transport=transport, base_url="https://example.test")
-    cfg = Settings(
-        TRADEADVOCATE_API_KEY="key",
-        TRADEADVOCATE_BASE_URL="https://example.test",
-    )
-    provider = TradeAdvocateProvider(cfg, client=client)
+
+def test_tradeadvocate_fetches_via_schwab_and_keeps_desk_ticker() -> None:
+    captured: list[str] = []
+
+    class _FakeSchwab:
+        name = DataProviderName.SCHWAB
+
+        def get_historical_candles(
+            self,
+            symbol: str,
+            timeframe: str,
+            start: datetime,
+            end: datetime,
+        ) -> list[Candle]:
+            captured.append(symbol)
+            return [
+                Candle(
+                    timestamp=datetime(2026, 1, 2, 15, 0, tzinfo=UTC),
+                    open=Decimal("5000"),
+                    high=Decimal("5005"),
+                    low=Decimal("4995"),
+                    close=Decimal("5001"),
+                    volume=Decimal("12"),
+                    ticker=symbol,
+                    timeframe=timeframe,
+                )
+            ]
+
+    provider = TradeAdvocateProvider(Settings(), schwab=_FakeSchwab())  # type: ignore[arg-type]
     candles = provider.get_historical_candles(
         "NQ",
         "5m",
         datetime(2026, 1, 1, tzinfo=UTC),
         datetime(2026, 1, 3, tzinfo=UTC),
     )
+    assert captured == ["/NQ"]
     assert len(candles) == 1
     assert candles[0].close == Decimal("5001")
+    assert candles[0].ticker == "NQ"
 
 
 def test_tradeadvocate_rate_limit() -> None:
-    def handler(_request: httpx.Request) -> httpx.Response:
-        return httpx.Response(429, json={"error": "rate limit"})
+    class _RateLimitedSchwab:
+        def get_historical_candles(self, *args: object, **kwargs: object) -> list[Candle]:
+            raise ProviderRateLimitError("schwab 429")
 
-    client = httpx.Client(
-        transport=httpx.MockTransport(handler),
-        base_url="https://example.test",
+    provider = TradeAdvocateProvider(
+        Settings(), schwab=_RateLimitedSchwab()  # type: ignore[arg-type]
     )
-    cfg = Settings(
-        TRADEADVOCATE_API_KEY="key",
-        TRADEADVOCATE_BASE_URL="https://example.test",
-    )
-    provider = TradeAdvocateProvider(cfg, client=client)
     with pytest.raises(ProviderRateLimitError):
         provider.get_historical_candles(
             "ES",

@@ -2,12 +2,14 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import { DeskSession, DeskStack } from "@/components/DeskSession";
 import { useLocale } from "@/components/LocaleProvider";
 import { saveTradeToNotion, type JournalScreenshot } from "@/lib/api";
 import {
   compressImageFile,
   imageFromDataTransfer,
 } from "@/lib/image-compress";
+import { localizedPlaybookLabel } from "@/lib/playbook-localize";
 import { STRATEGY_PLAYBOOKS } from "@/lib/playbooks";
 
 const ACTIVOS = ["NQ", "MNQ", "ES", "MES", "YM", "RTY", "GC", "CL", "Other"] as const;
@@ -151,13 +153,16 @@ function ShotPasteSlot({
 }
 
 export function JournalDesk() {
-  const { t } = useLocale();
+  const { t, locale } = useLocale();
   const playbookOptions = useMemo(
     () => [
-      ...STRATEGY_PLAYBOOKS.map((p) => p.shortName),
-      "Other",
+      ...STRATEGY_PLAYBOOKS.map((p) => ({
+        value: p.shortName,
+        label: localizedPlaybookLabel(p, locale),
+      })),
+      { value: "Other", label: "Other" },
     ],
-    [],
+    [locale],
   );
 
   const [date, setDate] = useState(nowNyDateTimeLocal);
@@ -282,8 +287,8 @@ export function JournalDesk() {
     "w-full rounded-md border border-[var(--border-strong)] bg-[var(--surface)] px-3 py-2 text-sm";
 
   return (
-    <div className="mx-auto max-w-6xl space-y-6 px-6 py-8">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+    <DeskStack className="max-w-6xl space-y-1 px-6 py-8">
+      <div className="flex flex-col gap-3 pb-2 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h2 className="text-xl font-semibold text-[var(--foreground)]">
             {t("journal.title")}
@@ -329,6 +334,7 @@ export function JournalDesk() {
         </p>
       ) : null}
 
+      <DeskSession first step={1} title={t("session.tradeMeta")} panel={false}>
       <section className="grid gap-3 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4 sm:grid-cols-2 lg:grid-cols-4">
         <label className="space-y-1 text-sm">
           <span className="text-[var(--muted)]">{t("journal.activo")}</span>
@@ -396,8 +402,8 @@ export function JournalDesk() {
             onChange={(e) => setPlaybook(e.target.value)}
           >
             {playbookOptions.map((p) => (
-              <option key={p} value={p}>
-                {p}
+              <option key={p.value} value={p.value}>
+                {p.label}
               </option>
             ))}
           </select>
@@ -445,7 +451,9 @@ export function JournalDesk() {
           </select>
         </label>
       </section>
+      </DeskSession>
 
+      <DeskSession step={2} title={t("session.levels")} panel={false}>
       <section className="grid gap-3 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4 sm:grid-cols-2 lg:grid-cols-4">
         {(
           [
@@ -469,7 +477,9 @@ export function JournalDesk() {
           </label>
         ))}
       </section>
+      </DeskSession>
 
+      <DeskSession step={3} title={t("session.notes")} panel={false}>
       <section className="space-y-3 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4">
         <label className="block space-y-1 text-sm">
           <span className="font-medium">{t("journal.thesis")}</span>
@@ -499,12 +509,15 @@ export function JournalDesk() {
           />
         </label>
       </section>
+      </DeskSession>
 
+      <DeskSession
+        step={4}
+        title={t("session.screenshotsBefore")}
+        hint={t("journal.beforeHint")}
+        panel={false}
+      >
       <section className="space-y-3 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4">
-        <div>
-          <h3 className="font-medium">{t("journal.beforeShots")}</h3>
-          <p className="text-xs text-[var(--muted)]">{t("journal.beforeHint")}</p>
-        </div>
         <div className="grid gap-3 sm:grid-cols-3">
           {BEFORE_SLOTS.map((slot) => (
             <ShotPasteSlot
@@ -522,12 +535,15 @@ export function JournalDesk() {
           ))}
         </div>
       </section>
+      </DeskSession>
 
+      <DeskSession
+        step={5}
+        title={t("session.screenshotsAfter")}
+        hint={t("journal.afterHint")}
+        panel={false}
+      >
       <section className="space-y-3 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4">
-        <div>
-          <h3 className="font-medium">{t("journal.afterShots")}</h3>
-          <p className="text-xs text-[var(--muted)]">{t("journal.afterHint")}</p>
-        </div>
         <div className="grid gap-3 sm:grid-cols-2">
           {AFTER_SLOTS.map((slot) => (
             <ShotPasteSlot
@@ -545,6 +561,7 @@ export function JournalDesk() {
           ))}
         </div>
       </section>
-    </div>
+      </DeskSession>
+    </DeskStack>
   );
 }

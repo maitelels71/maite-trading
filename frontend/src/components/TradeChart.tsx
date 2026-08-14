@@ -14,6 +14,7 @@ import {
 } from "lightweight-charts";
 
 import { useTheme } from "@/components/ThemeProvider";
+import { useLocale } from "@/components/LocaleProvider";
 import type { Candle, Trade } from "@/lib/types";
 
 type Props = {
@@ -38,6 +39,7 @@ function cssVar(name: string, fallback: string): string {
 }
 
 export function TradeChart({ candles, trades }: Props) {
+  const { t } = useLocale();
   const { theme } = useTheme();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const chartRef = useRef<IChartApi | null>(null);
@@ -148,13 +150,12 @@ export function TradeChart({ candles, trades }: Props) {
   return (
     <div className="overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface)]">
       <div className="border-b border-[var(--border)] px-4 py-3 text-sm text-[var(--muted)]">
-        Candlestick · entries / exits
+        {t("analyzer.chartTitle")}
       </div>
       <div ref={containerRef} className="h-[420px] w-full" />
       {!candles.length ? (
         <p className="px-4 py-3 text-sm text-[var(--muted)]">
-          No candles loaded yet. Sync data or run evaluate/backtest after candles
-          exist in the database.
+          {t("analyzer.noCandles")}
         </p>
       ) : null}
     </div>

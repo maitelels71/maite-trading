@@ -1,6 +1,11 @@
 import type { Metadata } from "next";
 import { IBM_Plex_Mono, Source_Sans_3 } from "next/font/google";
 
+import {
+  APP_DOCUMENT_TITLE,
+  APP_MODE_HINT,
+  APP_MODE_LABEL,
+} from "@/lib/app-mode";
 import { THEME_BOOT_SCRIPT } from "@/lib/theme";
 
 import "./globals.css";
@@ -17,9 +22,8 @@ const ibmPlexMono = IBM_Plex_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Maite Trading — Strategy Analyzer",
-  description:
-    "Trading strategy research and backtesting platform (Schwab + TradeAdvocate).",
+  title: APP_DOCUMENT_TITLE,
+  description: `${APP_MODE_LABEL} trading desk — ${APP_MODE_HINT}`,
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

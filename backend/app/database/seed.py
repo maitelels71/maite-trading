@@ -4,6 +4,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.constants import MVP_INSTRUMENTS, STRATEGY_ORB
+from app.domain.enums import MarketType
 from app.models import Instrument, Strategy
 from app.strategies.opening_range_breakout import OpeningRangeBreakoutStrategy
 
@@ -30,6 +31,17 @@ def seed_instruments(session: Session) -> int:
             )
         )
         inserted += 1
+
+    mvp_futures = {
+        row["symbol"]
+        for row in MVP_INSTRUMENTS
+        if row["market_type"] == MarketType.FUTURE.value
+    }
+    for inst in session.scalars(
+        select(Instrument).where(Instrument.market_type == MarketType.FUTURE.value)
+    ):
+        if inst.symbol not in mvp_futures and inst.active:
+            inst.active = False
     return inserted
 
 

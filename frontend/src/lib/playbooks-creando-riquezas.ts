@@ -41,6 +41,8 @@ export const CREANDO_RIQUEZAS_PLAYBOOKS: StrategyPlaybook[] = [
   {
     id: "cr01",
     venue: "schwab",
+    group: "Creando Riquezas · CR01–CR11",
+    setupImage: "/brand/cr01-ma40-bounce.png",
     strategyKey: "cr01_ma40_bounce",
     preferredTimeframe: "1h",
     syncTimeframes: ["1h"],
@@ -93,6 +95,8 @@ export const CREANDO_RIQUEZAS_PLAYBOOKS: StrategyPlaybook[] = [
   {
     id: "cr02",
     venue: "schwab",
+    group: "Creando Riquezas · CR01–CR11",
+    setupImage: "/brand/cr02-drop-green.png",
     strategyKey: "cr02_drop_green",
     preferredTimeframe: "1h",
     syncTimeframes: ["1h"],
@@ -141,6 +145,8 @@ export const CREANDO_RIQUEZAS_PLAYBOOKS: StrategyPlaybook[] = [
   {
     id: "cr03",
     venue: "schwab",
+    group: "Creando Riquezas · CR01–CR11",
+    setupImage: "/brand/cr03-channel-break.png",
     strategyKey: "cr03_channel_break",
     preferredTimeframe: "1h",
     syncTimeframes: ["1h"],
@@ -196,6 +202,8 @@ export const CREANDO_RIQUEZAS_PLAYBOOKS: StrategyPlaybook[] = [
   {
     id: "cr04",
     venue: "schwab",
+    group: "Creando Riquezas · CR01–CR11",
+    setupImage: "/brand/cr04-gap-up-green.png",
     strategyKey: "cr04_gap_up_green",
     preferredTimeframe: "1h",
     syncTimeframes: ["1h"],
@@ -257,6 +265,8 @@ export const CREANDO_RIQUEZAS_PLAYBOOKS: StrategyPlaybook[] = [
   {
     id: "cr05",
     venue: "schwab",
+    group: "Creando Riquezas · CR01–CR11",
+    setupImage: "/brand/cr05-gap-down-green.png",
     strategyKey: "cr05_gap_down_green",
     preferredTimeframe: "1h",
     syncTimeframes: ["1h"],
@@ -311,6 +321,8 @@ export const CREANDO_RIQUEZAS_PLAYBOOKS: StrategyPlaybook[] = [
   {
     id: "cr06",
     venue: "schwab",
+    group: "Creando Riquezas · CR01–CR11",
+    setupImage: "/brand/cr06-strong-floor.png",
     strategyKey: "cr06_strong_floor",
     preferredTimeframe: "1h",
     syncTimeframes: ["1h", "1d"],
@@ -374,6 +386,8 @@ export const CREANDO_RIQUEZAS_PLAYBOOKS: StrategyPlaybook[] = [
   {
     id: "cr07",
     venue: "schwab",
+    group: "Creando Riquezas · CR01–CR11",
+    setupImage: "/brand/cr07-put-channel.png",
     strategyKey: "cr07_put_channel",
     preferredTimeframe: "1h",
     syncTimeframes: ["1h"],
@@ -433,15 +447,17 @@ export const CREANDO_RIQUEZAS_PLAYBOOKS: StrategyPlaybook[] = [
   {
     id: "cr08",
     venue: "schwab",
+    group: "Creando Riquezas · CR01–CR11",
+    setupImage: "/brand/cr08-first-red.png",
     strategyKey: "cr08_first_red",
-    preferredTimeframe: "1h",
-    syncTimeframes: ["1h", "1d"],
+    preferredTimeframe: "30m",
+    syncTimeframes: ["30m", "1d"],
     syncLookbackDays: 60,
     name: "CR08 — Primera vela roja de apertura (PUT)",
     shortName: "CR08",
     markets: "Opciones PUT · Única estrategia a las 10:00",
     summary:
-      "Creando Riquezas: primera vela Hora 9:30–10:00 ROJA → PUT a las 10:00 (mejor en canal bajista). NO aplicar cerca de piso fuerte MA200 en Diario.",
+      "Creando Riquezas: primera media hora 9:30–10:00 ROJA (30m) → PUT a las 10:00 (mejor en canal bajista). NO aplicar cerca de piso fuerte MA200 en Diario.",
     sessionWindow: "10:00 exacto · luego revisar otras estrategias a las 11:00",
     riskNotes: [
       ...OPT_RULES,
@@ -503,6 +519,7 @@ export const CREANDO_RIQUEZAS_PLAYBOOKS: StrategyPlaybook[] = [
   {
     id: "cr09",
     venue: "schwab",
+    group: "Creando Riquezas · CR01–CR11",
     strategyKey: "cr09_gap_floor_put",
     preferredTimeframe: "1h",
     syncTimeframes: ["1h"],
@@ -561,6 +578,7 @@ export const CREANDO_RIQUEZAS_PLAYBOOKS: StrategyPlaybook[] = [
   {
     id: "cr10",
     venue: "schwab",
+    group: "Creando Riquezas · CR01–CR11",
     strategyKey: "cr10_daily_hanger",
     preferredTimeframe: "1d",
     syncTimeframes: ["1d"],
@@ -619,6 +637,7 @@ export const CREANDO_RIQUEZAS_PLAYBOOKS: StrategyPlaybook[] = [
   {
     id: "cr11",
     venue: "schwab",
+    group: "Creando Riquezas · CR01–CR11",
     strategyKey: "cr11_earnings_floor",
     preferredTimeframe: "1d",
     syncTimeframes: ["1d"],

@@ -9,6 +9,7 @@ import {
   CREANDO_RIQUEZAS_PLAYBOOKS,
   CR_ORDER,
 } from "@/lib/playbooks-creando-riquezas";
+import { FUTURES_PLAYBOOKS, ML_ORDER } from "@/lib/playbooks-futures";
 import type { Venue } from "@/lib/types";
 
 export type { PlaybookStep, PlaybookTimeframe, StrategyPlaybook };
@@ -17,6 +18,8 @@ const ETF_BB_PLAYBOOKS: StrategyPlaybook[] = [
   {
     id: "e01",
     venue: "schwab",
+    group: "BB · E01–E04",
+    setupImage: "/brand/e01-bb-trend-flip.png",
     strategyKey: "bb_trend_flip_h",
     preferredTimeframe: "1h",
     syncTimeframes: ["1h", "15m"],
@@ -106,6 +109,8 @@ const ETF_BB_PLAYBOOKS: StrategyPlaybook[] = [
   {
     id: "e02",
     venue: "schwab",
+    group: "BB · E01–E04",
+    setupImage: "/brand/e02-daily-mid-bounce.png",
     strategyKey: "daily_mid_bounce",
     preferredTimeframe: "1h",
     syncTimeframes: ["1h", "1d", "15m"],
@@ -199,6 +204,8 @@ const ETF_BB_PLAYBOOKS: StrategyPlaybook[] = [
   {
     id: "e03",
     venue: "schwab",
+    group: "BB · E01–E04",
+    setupImage: "/brand/e03-magnet-ma20.png",
     strategyKey: "magnet_ma20_gap",
     preferredTimeframe: "15m",
     syncTimeframes: ["15m", "1h"],
@@ -279,6 +286,8 @@ const ETF_BB_PLAYBOOKS: StrategyPlaybook[] = [
   {
     id: "e04",
     venue: "schwab",
+    group: "BB · E01–E04",
+    setupImage: "/brand/e04-bb15-gap-open.png",
     strategyKey: "bb15_gap_open",
     preferredTimeframe: "15m",
     syncTimeframes: ["15m"],
@@ -361,6 +370,7 @@ const ETF_BB_PLAYBOOKS: StrategyPlaybook[] = [
 export const STRATEGY_PLAYBOOKS: StrategyPlaybook[] = [
   ...ETF_BB_PLAYBOOKS,
   ...CREANDO_RIQUEZAS_PLAYBOOKS,
+  ...FUTURES_PLAYBOOKS,
 ];
 
 export function getPlaybook(id: string): StrategyPlaybook | undefined {
@@ -373,10 +383,10 @@ export function playbookByStrategyKey(
   return STRATEGY_PLAYBOOKS.find((p) => p.strategyKey === strategyKey);
 }
 
-/** Human label for registry keys (E01 / CR04 / raw name). */
+/** Human label for registry keys (E01 / CR04 / ML01 / raw name). */
 export function strategyDisplayName(strategyKey: string): string {
   const pb = playbookByStrategyKey(strategyKey);
-  if (pb) return `${pb.shortName} — ${pb.name.replace(/^[A-Z0-9]+\s*—\s*/, "")}`;
+  if (pb) return `${pb.shortName} · ${pb.name.replace(/^[A-Z0-9]+\s*—\s*/, "")}`;
   return strategyKey;
 }
 
@@ -390,8 +400,10 @@ const ETF_ORDER = ["e01", "e02", "e03", "e04", ...CR_ORDER] as const;
 
 export function playbooksForVenue(venue: Venue): StrategyPlaybook[] {
   const books = STRATEGY_PLAYBOOKS.filter((p) => p.venue === venue);
-  if (venue !== "schwab") return books;
-  const order = ETF_ORDER as readonly string[];
+  const order =
+    venue === "tradeadvocate"
+      ? (ML_ORDER as readonly string[])
+      : (ETF_ORDER as readonly string[]);
   return [...books].sort((a, b) => {
     const ia = order.indexOf(a.id);
     const ib = order.indexOf(b.id);

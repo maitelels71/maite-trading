@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
 
+import { DeskSession, DeskStack } from "@/components/DeskSession";
 import { useLocale } from "@/components/LocaleProvider";
 import { fetchNewsBriefing } from "@/lib/api";
 import type { EconomicEvent, NewsBriefing, NewsItem } from "@/lib/types";
@@ -154,8 +155,8 @@ export function NewsDesk() {
   }
 
   return (
-    <div className="mx-auto max-w-7xl space-y-5 px-4 py-6 sm:px-6">
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+    <DeskStack>
+      <div className="flex flex-col gap-2 pb-2 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h2 className="text-xl font-semibold text-[var(--foreground)]">
             {t("news.title")}
@@ -171,8 +172,25 @@ export function NewsDesk() {
         ) : null}
       </div>
 
+      <DeskSession
+        first
+        step={1}
+        title={t("session.calendar")}
+        hint={t("news.timesNy")}
+        panel={false}
+        actions={
+          <button
+            type="button"
+            disabled={pending}
+            onClick={load}
+            className="rounded-md bg-[var(--accent)] px-3 py-1.5 text-xs font-medium text-[var(--on-accent)] hover:bg-[var(--accent-hover)] disabled:opacity-60"
+          >
+            {pending ? t("news.loading") : t("news.refresh")}
+          </button>
+        }
+      >
       {/* Week toolbar — Forex Factory style */}
-      <div className="flex flex-wrap items-center gap-2 rounded-lg bg-[#1e3a5f] px-3 py-2 text-white shadow-sm">
+      <div className="mb-3 flex flex-wrap items-center gap-2 rounded-lg bg-[#1e3a5f] px-3 py-2 text-white shadow-sm">
         <button
           type="button"
           onClick={() => shiftWeek(-1)}
@@ -221,25 +239,17 @@ export function NewsDesk() {
               {label}
             </button>
           ))}
-          <button
-            type="button"
-            disabled={pending}
-            onClick={load}
-            className="rounded bg-teal-500 px-3 py-1 text-xs font-semibold text-white hover:bg-teal-400 disabled:opacity-60"
-          >
-            {pending ? t("news.loading") : t("news.refresh")}
-          </button>
         </div>
       </div>
 
       {error ? (
-        <div className="rounded-xl border border-red-200 bg-[var(--danger-soft)] px-4 py-3 text-sm text-[var(--danger)]">
+        <div className="mb-3 rounded-xl border border-red-200 bg-[var(--danger-soft)] px-4 py-3 text-sm text-[var(--danger)]">
           {error}
         </div>
       ) : null}
 
       {briefing?.message ? (
-        <div className="rounded-lg border border-[var(--border)] bg-[var(--surface-muted)] px-3 py-2 text-xs text-[var(--muted)]">
+        <div className="mb-3 rounded-lg border border-[var(--border)] bg-[var(--surface-muted)] px-3 py-2 text-xs text-[var(--muted)]">
           {briefing.message}
         </div>
       ) : null}
@@ -342,32 +352,26 @@ export function NewsDesk() {
           <span className="ml-auto">{t("news.timesNy")}</span>
         </div>
       </div>
+      </DeskSession>
 
-      {/* Headlines below calendar */}
-      <section className="space-y-2">
-        <h3 className="text-sm font-semibold text-[var(--foreground)]">
-          {t("news.headlines")}
-        </h3>
+      <DeskSession step={2} title={t("session.headlines")} panel={false}>
         <div className="grid gap-2">
           {(briefing?.aware_items ?? []).map((item) => (
             <NewsCard key={item.id} item={item} />
           ))}
         </div>
-      </section>
+      </DeskSession>
 
       {(briefing?.watchlist_items.length ?? 0) > 0 ? (
-        <section className="space-y-2">
-          <h3 className="text-sm font-medium text-[var(--muted)]">
-            {t("news.watchlist")}
-          </h3>
+        <DeskSession step={3} title={t("session.watchlist")} panel={false}>
           <div className="grid gap-2 md:grid-cols-2">
             {briefing!.watchlist_items.map((item) => (
               <NewsCard key={`w-${item.id}`} item={item} compact />
             ))}
           </div>
-        </section>
+        </DeskSession>
       ) : null}
-    </div>
+    </DeskStack>
   );
 }
 

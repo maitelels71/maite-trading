@@ -39,7 +39,9 @@ Tab **Journal** → `POST /journal/notion` creates one Notion page per trade in 
 
 Playbooks in `frontend/src/lib/playbooks.ts` are tagged with `venue`: `schwab` (ETFs/Options) or `tradeadvocate` (Futures). Each desk locks the scan to that data provider.
 
-**Scan now** calls `POST /strategy/scan` filtered to that strategy’s registry key. Draft books (no `strategyKey`) show rules only until an engine exists.
+### Futures (TradeAdvocate)
+
+- **ML01** (`ml01_structure_choch_bos`) — Major 1H structure (HH/HL) + 15m ChoCh/BOS entry. First futures playbook.
 
 ### ETFs / Options (Schwab)
 
@@ -53,13 +55,6 @@ Bollinger options system: **E01 → E02 → E03 → E04** (Schwab). ORB playbook
 
 No playbooks in the desk yet (ORB FUT removed). Add futures books when ready.
 
-### TradeAdvocate connection
+### Futures data (analysis)
 
-Set in local `.env` and Secrets Manager `maite-trading/staging/app`:
-
-- `TRADEADVOCATE_API_KEY`
-- `TRADEADVOCATE_API_SECRET`
-- `TRADEADVOCATE_BASE_URL`
-- `TRADEADVOCATE_ACCOUNT_ID`
-
-Then redeploy / restart the API so Lambda loads secrets. Futures scan uses `/v1/marketdata/candles` on that base URL (adapter may need tweaking once TradeAdvocate OpenAPI is confirmed).
+The futures desk scans like options: candles only. It uses the same Schwab token (`SCHWAB_*`). Desk symbols `NQ` / `MNQ` / `ES` / `MES` map to Schwab `/NQ`, `/MNQ`, `/ES`, `/MES`. Tradovate / MFF is not required for Analyzer or ML01.

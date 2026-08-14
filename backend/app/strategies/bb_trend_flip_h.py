@@ -10,6 +10,7 @@ from zoneinfo import ZoneInfo
 from app.core.constants import STRATEGY_E01_BB_FLIP
 from app.domain.candles import Candle
 from app.domain.enums import Side
+from app.domain.rth_bars import bar_is_complete
 from app.domain.signals import Signal
 from app.domain.strategy_types import StrategyContext, StrategyMetrics, StrategyResult
 from app.domain.trades import Trade
@@ -166,6 +167,8 @@ def _score_session(
     flip_i: int | None = None
     flip_side: Side | None = None
     for i, c in today:
+        if not bar_is_complete(c, h1, tz=tz):
+            continue
         level = bands[i - 1].mid if i > 0 else bands[i].mid
         if level is None:
             continue
@@ -183,6 +186,23 @@ def _score_session(
     if flip_i is None or flip_side is None:
         return None
 
+    # Live hold / invalidation: do not keep a stale morning flip as a desk match
+    # after price closes back through the Hora BB mid (AAPL 10:00 break → 11:40 fade).
+    later_done = [
+        (i, c)
+        for i, c in today
+        if i >= flip_i and bar_is_complete(c, h1, tz=tz)
+    ]
+    if later_done:
+        hold_i, hold_bar = later_done[-1]
+        hold_mid = bands[hold_i].mid
+        if hold_mid is None:
+            return None
+        if flip_side is Side.LONG and hold_bar.close < hold_mid:
+            return None
+        if flip_side is Side.SHORT and hold_bar.close > hold_mid:
+            return None
+
     if m15:
         m_closes = [c.close for c in m15]
         bb_period = int(params["bb_period"])
@@ -191,7 +211,9 @@ def _score_session(
         sess_m = [
             (j, c)
             for j, c in enumerate(m15)
-            if _local(c.timestamp, tz).date() == session_day and m_bands[j].mid is not None
+            if _local(c.timestamp, tz).date() == session_day
+            and m_bands[j].mid is not None
+            and bar_is_complete(c, m15, tz=tz, bar_minutes=15)
         ]
         if len(sess_m) >= 3:
             m0 = m_bands[sess_m[0][0]].mid
@@ -201,17 +223,25 @@ def _score_session(
                 return None
             if flip_side is Side.SHORT and m1 > m0:
                 return None
+            # Also require last completed 15m still on the flip side of its mid
+            lj, last15 = sess_m[-1]
+            last_mid = m_bands[lj].mid
+            if last_mid is not None:
+                if flip_side is Side.LONG and last15.close < last_mid:
+                    return None
+                if flip_side is Side.SHORT and last15.close > last_mid:
+                    return None
 
     bar = h1[flip_i]
     reason = (
-        "E01 CALL proxy: prior Hora BB mid down ≥2d + completed mid break up "
-        "(trendline still checklist)"
+        "E01 CALL setup: prior 1H BB mid down ≥2d + completed mid break up "
+        "(trendline still checklist) · still holding above mid"
         if flip_side is Side.LONG
-        else "E01 PUT proxy: prior Hora BB mid up ≥2d + completed mid break down "
-        "(trendline still checklist)"
+        else "E01 PUT setup: prior 1H BB mid up ≥2d + completed mid break down "
+        "(trendline still checklist) · still holding below mid"
     )
-    # Exit at last RTH Hora bar of the session (same-day flatten MVP).
-    exit_bar = today[-1][1]
+    # Exit at last *completed* RTH Hora of the session for PnL snapshot.
+    exit_bar = later_done[-1][1] if later_done else bar
     pnl = (
         (exit_bar.close - bar.close)
         if flip_side is Side.LONG
@@ -232,7 +262,7 @@ def _score_session(
         exit_time=exit_bar.timestamp,
         exit_price=exit_bar.close,
         profit_loss=pnl,
-        notes="E01 same-session exit at last RTH 1h bar",
+        notes="E01 same-session exit at last completed RTH 1h bar",
     )
     return signal, trade
 

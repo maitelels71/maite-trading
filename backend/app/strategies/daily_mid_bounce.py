@@ -10,6 +10,7 @@ from zoneinfo import ZoneInfo
 from app.core.constants import STRATEGY_E02_DAILY_MID
 from app.domain.candles import Candle
 from app.domain.enums import Side
+from app.domain.rth_bars import bar_is_complete
 from app.domain.signals import Signal
 from app.domain.strategy_types import StrategyContext, StrategyMetrics, StrategyResult
 from app.indicators import bollinger
@@ -129,10 +130,11 @@ class DailyMidBounceStrategy(BaseStrategy):
             return StrategyResult()
 
         today_h = [c for c in h1 if _local(c.timestamp, tz).date() == session_day]
-        if not today_h:
+        today_done = [c for c in today_h if bar_is_complete(c, h1, tz=tz)]
+        if not today_done:
             return StrategyResult()
-        # Prefer last completed hour before close; use latest available today
-        bar = today_h[-1]
+        # Prefer last *completed* Hora of the session (never the forming bar)
+        bar = today_done[-1]
         dist = abs(bar.close - daily_mid) / daily_mid if daily_mid else Decimal("1")
         if dist > touch and not _crossed_mid(bar, daily_mid):
             return StrategyResult()
@@ -142,13 +144,13 @@ class DailyMidBounceStrategy(BaseStrategy):
         if d_trend == "bull" and bar.close > bar.open and bar.close >= daily_mid:
             side = Side.LONG
             reason = (
-                "E02 CALL proxy: daily mid up + Hora pullback + "
+                "E02 CALL setup: daily mid up + Hora pullback + "
                 "completed bullish Hora holding above/at MA20D"
             )
         elif d_trend == "bear" and bar.close < bar.open and bar.close <= daily_mid:
             side = Side.SHORT
             reason = (
-                "E02 PUT proxy: daily mid down + Hora rally + "
+                "E02 PUT setup: daily mid down + Hora rally + "
                 "completed bearish Hora holding below/at MA20D"
             )
         else:

@@ -22,6 +22,7 @@ from app.core.constants import (
 )
 from app.domain.candles import Candle
 from app.domain.enums import Side
+from app.domain.rth_bars import bar_is_complete
 from app.domain.signals import Signal
 from app.domain.strategy_types import StrategyContext, StrategyMetrics, StrategyResult
 from app.indicators import sma
@@ -175,6 +176,8 @@ class Cr01Ma40BounceStrategy(BaseStrategy):
         swing_high = max(c.high for c in recent[-6:])
         min_body = Decimal(str(params["min_body_pct"]))
         for bar in today:
+            if not bar_is_complete(bar, h1, tz=tz):
+                continue
             if (
                 _is_green(bar)
                 and _body_pct(bar) >= min_body
@@ -254,6 +257,8 @@ class Cr02DropGreenStrategy(BaseStrategy):
 
         min_body = Decimal(str(params["min_body_pct"]))
         for bar in today:
+            if not bar_is_complete(bar, h1, tz=tz):
+                continue
             if _is_green(bar) and _body_pct(bar) >= min_body:
                 return _signal(
                     bar=bar,
@@ -312,6 +317,8 @@ class Cr03ChannelBreakStrategy(BaseStrategy):
         ceiling = max(c.high for c in win[-5:])
         min_body = Decimal(str(params["min_body_pct"]))
         for bar in today:
+            if not bar_is_complete(bar, h1, tz=tz):
+                continue
             if (
                 _is_green(bar)
                 and _body_pct(bar) >= min_body
@@ -321,7 +328,7 @@ class Cr03ChannelBreakStrategy(BaseStrategy):
                 return _signal(
                     bar=bar,
                     side=Side.LONG,
-                    reason="CR03 CALL: break descending-channel ceiling (proxy)",
+                    reason="CR03 CALL: break descending-channel ceiling",
                     ticker=context.ticker,
                 )
         return StrategyResult()
@@ -413,6 +420,11 @@ def _gap_two_green(
         return StrategyResult()
 
     first, second = today[0], today[1]
+    # Must be true open (9:30) + next Hora (10:00–11:00); never clock-hour 10:00 as "first"
+    if _local(first.timestamp, tz).time() != RTH_OPEN:
+        return StrategyResult()
+    if not bar_is_complete(first, h1, tz=tz) or not bar_is_complete(second, h1, tz=tz):
+        return StrategyResult()
     if prev.close == 0:
         return StrategyResult()
     gap = (first.open - prev.close) / prev.close
@@ -493,6 +505,8 @@ class Cr06StrongFloorStrategy(BaseStrategy):
             return StrategyResult()
         ceiling = max(c.high for c in prior_h[-8:])
         for bar in today:
+            if not bar_is_complete(bar, h1, tz=tz):
+                continue
             if (
                 _is_green(bar)
                 and bar.close > ceiling
@@ -553,6 +567,8 @@ class Cr07PutChannelStrategy(BaseStrategy):
         floor = min(c.low for c in bounce)
         near = Decimal(str(params["near_top_pct"]))
         for bar in today:
+            if not bar_is_complete(bar, h1, tz=tz):
+                continue
             if _local(bar.timestamp, tz).time() < HOUR_11:
                 continue
             if top == 0:
@@ -573,7 +589,12 @@ class Cr07PutChannelStrategy(BaseStrategy):
 
 
 class Cr08FirstRedStrategy(BaseStrategy):
-    """First RTH hour red → PUT at 10:00; skip if daily near MA200."""
+    """First RTH half-hour (9:30–10:00) red → PUT at 10:00; skip if daily near MA200.
+
+    Uses 30m bars on purpose: Schwab has no native 1h, and clock-hour aggregation
+    drops the 9:30–10:00 open into a 9:00 bucket (excluded by RTH), so a naive
+    ``today[0]`` on 1h was actually the **10:00–11:00** clock hour — wrong bar.
+    """
 
     @property
     def name(self) -> str:
@@ -581,11 +602,11 @@ class Cr08FirstRedStrategy(BaseStrategy):
 
     @property
     def description(self) -> str:
-        return "CR08 First red open: 9:30–10:00 red Hora PUT (skip daily MA200 floor)."
+        return "CR08 First red open: 9:30–10:00 red 30m PUT (skip daily MA200 floor)."
 
     @property
     def scan_timeframe(self) -> str | None:
-        return "1h"
+        return "30m"
 
     @property
     def scan_lookback_days(self) -> int:
@@ -603,15 +624,12 @@ class Cr08FirstRedStrategy(BaseStrategy):
         params = {**self.default_parameters, **(context.parameters or {})}
         tz = ZoneInfo(str(params.get("timezone") or context.timezone))
         session_day = _as_date(context.end)
-        h1 = _rth(candles, tz)
-        today = _today(h1, tz, session_day)
-        if not today:
+        opening = _opening_half_hour(candles, tz, session_day)
+        if opening is None:
             return StrategyResult()
-        first = today[0]
-        if _local(first.timestamp, tz).time() != RTH_OPEN:
-            # Still accept first available RTH bar of the day
-            pass
-        if not _is_red(first):
+        if not _half_hour_complete(opening, candles, tz, session_day):
+            return StrategyResult()
+        if not _is_red(opening):
             return StrategyResult()
 
         d1 = sorted(context.extra_candles.get("1d", []), key=lambda x: x.timestamp)
@@ -626,11 +644,44 @@ class Cr08FirstRedStrategy(BaseStrategy):
                 return StrategyResult()
 
         return _signal(
-            bar=first,
+            bar=opening,
             side=Side.SHORT,
-            reason="CR08 PUT: first RTH Hora red (not near daily MA200)",
+            reason="CR08 PUT: 9:30–10:00 half-hour red (not near daily MA200)",
             ticker=context.ticker,
         )
+
+
+def _opening_half_hour(
+    candles: list[Candle],
+    tz: ZoneInfo,
+    session_day: date,
+) -> Candle | None:
+    """Exact RTH open bar (9:30 ET) — the CR08 'primera vela'."""
+    for c in sorted(candles, key=lambda x: x.timestamp):
+        lt = _local(c.timestamp, tz)
+        if lt.date() == session_day and lt.time() == RTH_OPEN:
+            return c
+    return None
+
+
+def _half_hour_complete(
+    opening: Candle,
+    candles: list[Candle],
+    tz: ZoneInfo,
+    session_day: date,
+) -> bool:
+    """Playbook requires the 9:30–10:00 candle fully closed before PUT at 10:00."""
+    open_local = _local(opening.timestamp, tz)
+    for c in candles:
+        lt = _local(c.timestamp, tz)
+        if lt.date() == session_day and lt > open_local:
+            return True
+    now = datetime.now(tz)
+    if now.date() > session_day:
+        return True
+    if now.date() == session_day and now.time() >= time(10, 0):
+        return True
+    return False
 
 
 # ── CR09 ──────────────────────────────────────────────────────────────────────
@@ -669,6 +720,8 @@ class Cr09GapFloorPutStrategy(BaseStrategy):
         if not today or prev is None:
             return StrategyResult()
         first = today[0]
+        if _local(first.timestamp, tz).time() != RTH_OPEN:
+            return StrategyResult()
         if prev.close == 0:
             return StrategyResult()
         gap = abs(first.open - prev.close) / prev.close
@@ -677,6 +730,8 @@ class Cr09GapFloorPutStrategy(BaseStrategy):
         # Gap floor = min(prior close, open) for up/down gaps
         gap_floor = min(prev.close, first.open)
         for bar in today:
+            if not bar_is_complete(bar, h1, tz=tz):
+                continue
             if _local(bar.timestamp, tz).time() < HOUR_11:
                 continue
             if _is_red(bar) and bar.close < gap_floor:
@@ -732,6 +787,11 @@ class Cr10DailyHangerStrategy(BaseStrategy):
             if not prior:
                 return StrategyResult()
             bar = prior[-1]
+        else:
+            # Playbook: confirm near close (~15:55) — don't fire midday on forming daily
+            now = datetime.now(tz)
+            if now.date() == session_day and now.time() < time(15, 55):
+                return StrategyResult()
 
         body = abs(bar.close - bar.open)
         upper = bar.high - max(bar.open, bar.close)

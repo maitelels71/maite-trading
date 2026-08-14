@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 
+import { DeskSession, DeskStack } from "@/components/DeskSession";
 import { useLocale } from "@/components/LocaleProvider";
 import { saveDailyToNotion } from "@/lib/api";
 import {
@@ -234,9 +235,9 @@ export function DailyReview() {
     "rounded-md border border-[var(--border-strong)] px-2.5 py-1.5 text-xs text-[var(--foreground)] hover:bg-[var(--hover)]";
 
   return (
-    <div className="mx-auto max-w-7xl space-y-3 px-4 py-4 sm:px-6">
+    <DeskStack>
       {/* Compact session bar */}
-      <div className="flex flex-wrap items-center gap-2 gap-y-2">
+      <div className="flex flex-wrap items-center gap-2 gap-y-2 pb-2">
         <div className="mr-auto min-w-0">
           <h2 className="text-lg font-semibold leading-tight text-[var(--foreground)]">
             {t("daily.title")}
@@ -296,49 +297,57 @@ export function DailyReview() {
         </p>
       ) : null}
 
-      {/* Bias strip */}
-      <label className="flex items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm">
-        <span className="shrink-0 text-xs text-[var(--muted)]">
-          {t("daily.bias")}
-        </span>
-        <input
-          type="text"
-          className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-[var(--muted)]"
-          placeholder="Long NQ if OR holds · stand down into CPI…"
-          value={bias}
-          onChange={(e) => setBias(e.target.value)}
-        />
-        <span className="shrink-0 text-xs tabular-nums text-[var(--muted)]">
-          {done}/{total}
-        </span>
-      </label>
-
-      {/* Checklist columns — denser, more visible at once */}
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-        {DAILY_REVIEW_SECTIONS.map((section) => (
-          <SectionCard
-            key={section.id}
-            section={section}
-            checked={checked}
-            onToggle={toggle}
-          />
-        ))}
-      </div>
-
-      {/* Notes — shorter, same viewport */}
-      <section className="rounded-xl border border-[var(--border)] bg-[var(--surface)] px-3 py-2">
-        <label className="block space-y-1 text-sm">
-          <span className="text-xs font-medium text-[var(--muted)]">
-            {t("daily.notes")}
+      <DeskSession first step={1} title={t("session.bias")} panel={false}>
+        <label className="flex items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm">
+          <span className="shrink-0 text-xs text-[var(--muted)]">
+            {t("daily.bias")}
           </span>
-          <textarea
-            className="min-h-[72px] w-full resize-y rounded-md border border-[var(--border-strong)] bg-[var(--surface)] px-2.5 py-1.5 text-sm"
-            placeholder="What worked, what you broke, what you carry tomorrow…"
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
+          <input
+            type="text"
+            className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-[var(--muted)]"
+            placeholder="Long NQ if OR holds · stand down into CPI…"
+            value={bias}
+            onChange={(e) => setBias(e.target.value)}
           />
+          <span className="shrink-0 text-xs tabular-nums text-[var(--muted)]">
+            {done}/{total}
+          </span>
         </label>
-      </section>
-    </div>
+      </DeskSession>
+
+      <DeskSession
+        step={2}
+        title={t("session.checklistDaily")}
+        hint={`${done}/${total}`}
+        panel={false}
+      >
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          {DAILY_REVIEW_SECTIONS.map((section) => (
+            <SectionCard
+              key={section.id}
+              section={section}
+              checked={checked}
+              onToggle={toggle}
+            />
+          ))}
+        </div>
+      </DeskSession>
+
+      <DeskSession step={3} title={t("session.notesDaily")} panel={false}>
+        <section className="rounded-xl border border-[var(--border)] bg-[var(--surface)] px-3 py-2">
+          <label className="block space-y-1 text-sm">
+            <span className="text-xs font-medium text-[var(--muted)]">
+              {t("daily.notes")}
+            </span>
+            <textarea
+              className="min-h-[72px] w-full resize-y rounded-md border border-[var(--border-strong)] bg-[var(--surface)] px-2.5 py-1.5 text-sm"
+              placeholder="What worked, what you broke, what you carry tomorrow…"
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+            />
+          </label>
+        </section>
+      </DeskSession>
+    </DeskStack>
   );
 }

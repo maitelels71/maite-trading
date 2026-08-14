@@ -9,6 +9,7 @@ import {
   useTransition,
 } from "react";
 
+import { DeskSession, DeskStack } from "@/components/DeskSession";
 import { fetchInstruments, scanStrategies, syncMarketData } from "@/lib/api";
 import { useLocale } from "@/components/LocaleProvider";
 import {
@@ -18,8 +19,16 @@ import {
   type StrategyPlaybook,
 } from "@/lib/playbooks";
 import {
+  localizePlaybook,
+  localizedPlaybookLabel,
+  localizedPlaybookName,
+} from "@/lib/playbook-localize";
+import { buildOptionsEntryPlan } from "@/lib/options-premium-ranges";
+import {
+  FALLBACK_INSTRUMENTS,
   TIMEFRAMES,
-  VENUE_META,
+  sortFuturesInstruments,
+  providerLabel,
   type Instrument,
   type ScanHit,
   type ScanResponse,
@@ -28,10 +37,92 @@ import {
 
 const AUTO_LIVE_MS = 150_000; // 2.5 minutes
 const AUTO_LIVE_KEY = "maite.strategies.autoLive";
+const AUTO_DESK_KEY = "maite.strategies.autoDesk";
 const DESK_TOP_N = 5;
 const DESK_SYNC_TFS = ["1h", "1d"] as const;
 const DESK_LOOKBACK_DAYS = 60;
 const DESK_STRATEGY_CHUNK = 3;
+
+type DeskConfluenceGroup = {
+  symbol: string;
+  name: string;
+  /** CALL | PUT — only this side is shown / ranked. */
+  side: "long" | "short";
+  hits: ScanHit[];
+  confluence: number;
+  /** Matching setups on the opposite side (hidden from rank, shown as note). */
+  opposedCount: number;
+};
+
+function hitSide(hit: ScanHit): "long" | "short" | null {
+  const side = hit.last_signal?.side;
+  if (side === "long" || side === "short") return side;
+  if (hit.status.includes("long") || hit.status.includes("call")) return "long";
+  if (hit.status.includes("short") || hit.status.includes("put")) return "short";
+  return null;
+}
+
+/**
+ * Rank by directional confluence: count strategies that agree on CALL *or* PUT,
+ * keep the stronger side only (no mixed PUT+CALL stacks in TOP 5).
+ */
+function rankByConfluence(hits: ScanHit[], topN: number): DeskConfluenceGroup[] {
+  const bySymbol = new Map<string, ScanHit[]>();
+  for (const hit of hits) {
+    if (!hit.matched) continue;
+    const list = bySymbol.get(hit.symbol) ?? [];
+    if (list.some((h) => h.strategy === hit.strategy)) continue;
+    list.push(hit);
+    bySymbol.set(hit.symbol, list);
+  }
+
+  const groups: DeskConfluenceGroup[] = [];
+  for (const [symbol, symbolHits] of bySymbol.entries()) {
+    const calls = symbolHits.filter((h) => hitSide(h) === "long");
+    const puts = symbolHits.filter((h) => hitSide(h) === "short");
+    // Prefer the side with more agreement; on a tie, skip (contradictory — not confluence)
+    let side: "long" | "short";
+    let keep: ScanHit[];
+    let opposed: number;
+    if (calls.length > puts.length) {
+      side = "long";
+      keep = calls;
+      opposed = puts.length;
+    } else if (puts.length > calls.length) {
+      side = "short";
+      keep = puts;
+      opposed = calls.length;
+    } else if (calls.length === 0 && puts.length === 0) {
+      continue;
+    } else {
+      // Exact CALL/PUT tie → no directional confluence; drop from TOP
+      continue;
+    }
+    if (keep.length === 0) continue;
+    const sortedHits = [...keep].sort((a, b) => {
+      const ta = a.last_signal?.timestamp ?? "";
+      const tb = b.last_signal?.timestamp ?? "";
+      return ta.localeCompare(tb);
+    });
+    groups.push({
+      symbol,
+      name: symbolHits[0]?.name ?? symbol,
+      side,
+      hits: sortedHits,
+      confluence: sortedHits.length,
+      opposedCount: opposed,
+    });
+  }
+
+  groups.sort((a, b) => {
+    if (b.confluence !== a.confluence) return b.confluence - a.confluence;
+    // Prefer cleaner (fewer opposing hits) when tied
+    if (a.opposedCount !== b.opposedCount) return a.opposedCount - b.opposedCount;
+    return a.symbol.localeCompare(b.symbol);
+  });
+
+  return groups.slice(0, topN);
+}
 
 function nyParts(d = new Date()): { y: number; m: number; day: number; hh: number; mm: number; weekday: string } {
   const fmt = new Intl.DateTimeFormat("en-US", {
@@ -87,7 +178,36 @@ function operativeSessionNyIso(now = new Date()): string {
   return today;
 }
 
-function statusStyle(status: string): string {
+/** True before 9:30 ET on a weekday (or anytime weekend) — session = prior cash day. */
+function isPremarketOrClosedNy(now = new Date()): boolean {
+  const p = nyParts(now);
+  const today = `${p.y}-${String(p.m).padStart(2, "0")}-${String(p.day).padStart(2, "0")}`;
+  const [y, m, day] = today.split("-").map(Number);
+  const wd = new Date(Date.UTC(y, m - 1, day, 12)).getUTCDay();
+  if (wd === 0 || wd === 6) return true;
+  return p.hh < 9 || (p.hh === 9 && p.mm < 30);
+}
+
+/** NY date + time for scan stamps (avoids “is this yesterday?” confusion). */
+function formatNyDateTime(isoOrDate: string | Date, locale: string): string {
+  const d = typeof isoOrDate === "string" ? new Date(isoOrDate) : isoOrDate;
+  if (Number.isNaN(d.getTime())) return "—";
+  return new Intl.DateTimeFormat(locale === "es" ? "es-US" : "en-US", {
+    timeZone: "America/New_York",
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: true,
+  }).format(d);
+}
+
+function statusStyle(status: string, priorSession = false): string {
+  if (priorSession && (status.startsWith("active_") || status.startsWith("signal_"))) {
+    return "border-amber-200/50 bg-[var(--warn-soft)] text-[var(--warn)]";
+  }
   if (status.startsWith("active_") || status.startsWith("signal_")) {
     return "border-emerald-200 bg-[var(--ok-soft)] text-[var(--ok)]";
   }
@@ -97,9 +217,28 @@ function statusStyle(status: string): string {
   return "border-[var(--border)] bg-[var(--surface-muted)] text-[var(--muted)]";
 }
 
+function displayScanStatus(
+  status: string,
+  priorSession: boolean,
+  t: (key: string) => string,
+): string {
+  if (
+    priorSession &&
+    (status.startsWith("active_") || status.startsWith("signal_"))
+  ) {
+    return t("strategies.priorSessionStatus").replace("{status}", status);
+  }
+  return status;
+}
+
 function readAutoLive(): boolean {
   if (typeof window === "undefined") return false;
   return window.localStorage.getItem(AUTO_LIVE_KEY) === "1";
+}
+
+function readAutoDesk(): boolean {
+  if (typeof window === "undefined") return false;
+  return window.localStorage.getItem(AUTO_DESK_KEY) === "1";
 }
 
 type StrategiesDeskProps = {
@@ -107,27 +246,51 @@ type StrategiesDeskProps = {
 };
 
 export function StrategiesDesk({ venue }: StrategiesDeskProps) {
-  const { t } = useLocale();
+  const { t, locale } = useLocale();
   const books = useMemo(() => playbooksForVenue(venue), [venue]);
   const [selectedId, setSelectedId] = useState(books[0]?.id ?? "");
   const [timeframe, setTimeframe] = useState("15m");
   const [sessionDate, setSessionDate] = useState(operativeSessionNyIso);
+  const [premarket, setPremarket] = useState(false);
   const [scan, setScan] = useState<ScanResponse | null>(null);
-  const [deskTop, setDeskTop] = useState<ScanHit[]>([]);
+  const [deskGroups, setDeskGroups] = useState<DeskConfluenceGroup[]>([]);
   const [deskNote, setDeskNote] = useState<string | null>(null);
   const [deskError, setDeskError] = useState<string | null>(null);
+  /** Which TOP 5 row checkbox is on (one row); still loads that row's playbook into Focus. */
+  const [deskFocusKey, setDeskFocusKey] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [syncNote, setSyncNote] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const [deskPending, startDeskTransition] = useTransition();
   const [checkedSteps, setCheckedSteps] = useState<Record<string, boolean>>({});
   const [autoLive, setAutoLive] = useState(false);
+  const [autoDesk, setAutoDesk] = useState(false);
   const [instruments, setInstruments] = useState<Instrument[]>([]);
   const runGen = useRef(0);
   const deskGen = useRef(0);
 
   useEffect(() => {
-    setAutoLive(readAutoLive());
+    const live = readAutoLive();
+    const desk = readAutoDesk();
+    // Prefer desk auto if both were left on from an older build
+    if (live && desk) {
+      window.localStorage.setItem(AUTO_LIVE_KEY, "0");
+      setAutoLive(false);
+      setAutoDesk(true);
+    } else {
+      setAutoLive(live);
+      setAutoDesk(desk);
+    }
+  }, []);
+
+  useEffect(() => {
+    const tick = () => {
+      setSessionDate(operativeSessionNyIso());
+      setPremarket(isPremarketOrClosedNy());
+    };
+    tick();
+    const id = window.setInterval(tick, 30_000);
+    return () => window.clearInterval(id);
   }, []);
 
   useEffect(() => {
@@ -150,10 +313,21 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
     }
   }, [books, selectedId]);
 
-  const playbook = useMemo(
-    () => books.find((p) => p.id === selectedId) ?? books[0],
-    [books, selectedId],
-  );
+  const playbook = useMemo(() => {
+    const raw = books.find((p) => p.id === selectedId) ?? books[0];
+    return raw ? localizePlaybook(raw, locale) : undefined;
+  }, [books, selectedId, locale]);
+
+  const playbookGroups = useMemo(() => {
+    const map = new Map<string, StrategyPlaybook[]>();
+    for (const p of books) {
+      const label = playbookGroupLabel(p, t);
+      const list = map.get(label) ?? [];
+      list.push(p);
+      map.set(label, list);
+    }
+    return [...map.entries()].map(([label, items]) => ({ label, items }));
+  }, [books, t]);
 
   const tfLocked = Boolean(playbook?.preferredTimeframe);
   const effectiveTf = playbook?.preferredTimeframe ?? timeframe;
@@ -164,10 +338,12 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
   }, [playbook?.syncTimeframes, playbook?.preferredTimeframe, effectiveTf]);
   const lookbackDays = playbook?.syncLookbackDays ?? 7;
 
-  const venueInstruments = useMemo(
-    () => instruments.filter((i) => i.data_provider === venue),
-    [instruments, venue],
-  );
+  const venueInstruments = useMemo(() => {
+    const filtered = instruments.filter((i) => i.data_provider === venue);
+    return venue === "tradeadvocate"
+      ? sortFuturesInstruments(filtered)
+      : filtered;
+  }, [instruments, venue]);
 
   const deskStrategyKeys = useMemo(
     () => scannableStrategyKeys(venue),
@@ -176,14 +352,8 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
 
   const universe = useMemo(() => {
     if (venueInstruments.length > 0) return venueInstruments;
-    return [
-      { symbol: "SPY", market_type: "etf", data_provider: "schwab" },
-      { symbol: "QQQ", market_type: "etf", data_provider: "schwab" },
-      { symbol: "AAPL", market_type: "stock", data_provider: "schwab" },
-      { symbol: "AMZN", market_type: "stock", data_provider: "schwab" },
-      { symbol: "TSLA", market_type: "stock", data_provider: "schwab" },
-    ] as Instrument[];
-  }, [venueInstruments]);
+    return FALLBACK_INSTRUMENTS.filter((i) => i.data_provider === venue);
+  }, [venueInstruments, venue]);
 
   useEffect(() => {
     setScan(null);
@@ -299,11 +469,10 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
     );
 
     try {
-      const picked: ScanHit[] = [];
-      const seen = new Set<string>();
+      // Collect ALL matches (every strategy) so we can rank by confluence.
+      const allMatches: ScanHit[] = [];
       for (let i = 0; i < deskStrategyKeys.length; i += DESK_STRATEGY_CHUNK) {
         if (gen !== deskGen.current) return;
-        if (seen.size >= DESK_TOP_N) break;
         const chunk = deskStrategyKeys.slice(i, i + DESK_STRATEGY_CHUNK);
         const res = await scanStrategies({
           strategies: chunk,
@@ -311,26 +480,36 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
           session_date: day,
           data_provider: venue,
           matches_only: true,
-          top_n: DESK_TOP_N,
         });
         for (const hit of res.hits) {
-          if (!hit.matched || seen.has(hit.symbol)) continue;
-          seen.add(hit.symbol);
-          picked.push(hit);
-          if (picked.length >= DESK_TOP_N) break;
+          if (hit.matched) allMatches.push(hit);
         }
       }
       if (gen !== deskGen.current) return;
-      setDeskTop(picked.slice(0, DESK_TOP_N));
+      const ranked = rankByConfluence(allMatches, DESK_TOP_N);
+      setDeskGroups(ranked);
+      // Keep Focus checkbox across auto refreshes when the row is still in TOP 5
+      setDeskFocusKey((prev) => {
+        if (!prev) return null;
+        const stillThere = ranked.some((g) =>
+          g.hits.some((h) => `${h.symbol}::${h.strategy}` === prev),
+        );
+        return stillThere ? prev : null;
+      });
+      const strategyHits = ranked.reduce((n, g) => n + g.confluence, 0);
       setDeskNote(
-        `${picked.length} top hits · ${new Date().toLocaleTimeString()}`,
+        t("strategies.deskTopSummary")
+          .replace("{n}", String(ranked.length))
+          .replace("{hits}", String(strategyHits))
+          .replace("{session}", day)
+          .replace("{when}", formatNyDateTime(new Date(), locale)),
       );
     } catch (err) {
       if (gen !== deskGen.current) return;
       setDeskError(err instanceof Error ? err.message : "Desk scan failed");
-      setDeskTop([]);
+      setDeskGroups([]);
     }
-  }, [deskStrategyKeys, universe, venue, t]);
+  }, [deskStrategyKeys, universe, venue, t, locale]);
 
   const runSyncAndScan = useCallback(() => {
     startTransition(async () => {
@@ -344,37 +523,27 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
     });
   }, [runDeskTop5]);
 
-  const runScanOnly = useCallback(() => {
-    if (!playbook?.strategyKey) {
-      setError(t("strategies.draftError"));
-      setScan(null);
-      return;
-    }
-    setError(null);
-    startTransition(async () => {
-      const day = operativeSessionNyIso();
-      setSessionDate(day);
-      try {
-        const res = await scanStrategies({
-          strategies: [playbook.strategyKey!],
-          timeframe: effectiveTf,
-          session_date: day,
-          data_provider: venue,
-          matches_only: false,
-        });
-        setScan(res);
-        if (res.session_date) setSessionDate(res.session_date);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Scan failed");
-        setScan(null);
-      }
-    });
-  }, [playbook, effectiveTf, venue, t]);
-
   function toggleAutoLive() {
     setAutoLive((prev) => {
       const next = !prev;
       window.localStorage.setItem(AUTO_LIVE_KEY, next ? "1" : "0");
+      // Only one auto at a time — TOP 5 + Focus together doubles broker sync
+      if (next) {
+        setAutoDesk(false);
+        window.localStorage.setItem(AUTO_DESK_KEY, "0");
+      }
+      return next;
+    });
+  }
+
+  function toggleAutoDesk() {
+    setAutoDesk((prev) => {
+      const next = !prev;
+      window.localStorage.setItem(AUTO_DESK_KEY, next ? "1" : "0");
+      if (next) {
+        setAutoLive(false);
+        window.localStorage.setItem(AUTO_LIVE_KEY, "0");
+      }
       return next;
     });
   }
@@ -393,6 +562,20 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
     };
   }, [autoLive, playbook?.strategyKey, playbook?.id, venue, syncAndScan]);
 
+  useEffect(() => {
+    if (!autoDesk || deskStrategyKeys.length === 0) return;
+    const kickoff = window.setTimeout(() => {
+      void runDeskTop5();
+    }, 400);
+    const id = window.setInterval(() => {
+      void runDeskTop5();
+    }, AUTO_LIVE_MS);
+    return () => {
+      window.clearTimeout(kickoff);
+      window.clearInterval(id);
+    };
+  }, [autoDesk, deskStrategyKeys.length, venue, runDeskTop5]);
+
   const matches = useMemo(
     () => (scan?.hits ?? []).filter((h) => h.matched),
     [scan],
@@ -403,10 +586,8 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
     setCheckedSteps((prev) => ({ ...prev, [id]: !prev[id] }));
   }
 
-  const titleKey =
-    venue === "schwab" ? "strategies.titleEtf" : "strategies.titleFutures";
-  const dataViaKey =
-    venue === "schwab" ? "strategies.dataViaSchwab" : "strategies.dataViaTa";
+  const titleKey = "strategies.title";
+  const dataViaKey = "strategies.dataViaSchwab";
 
   const field =
     "w-full rounded-md border border-[var(--border-strong)] bg-[var(--surface)] px-2.5 py-1.5 text-xs";
@@ -422,102 +603,104 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
   }
 
   return (
-    <div className="mx-auto max-w-7xl space-y-3 px-4 py-4 sm:px-6">
-      <div className="flex flex-wrap items-center gap-2">
+    <DeskStack>
+      <div className="flex flex-wrap items-center gap-2 pb-2">
         <div className="mr-auto min-w-0">
           <h2 className="text-lg font-semibold leading-tight">{t(titleKey)}</h2>
           <p className="text-[11px] text-[var(--muted)]">
             {t(dataViaKey)} · {t("strategies.howToUse")}
           </p>
         </div>
-        <span className="rounded-md border border-[var(--border)] bg-[var(--surface-muted)] px-2 py-1 text-[10px] font-medium text-[var(--muted)]">
-          {VENUE_META[venue].label}
-        </span>
-      </div>
-
-      <div className="flex flex-wrap items-end gap-2">
-        <label className="min-w-[16rem] flex-1 space-y-0.5 text-[11px] text-[var(--muted)]">
-          {t("strategies.playbook")}
-          <select
-            className={field}
-            value={playbook.id}
-            onChange={(e) => setSelectedId(e.target.value)}
-          >
-            <optgroup label="BB · E01–E04">
-              {books
-                .filter((p) => p.id.startsWith("e"))
-                .map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.shortName} — {p.name.replace(/^E\d+\s*—\s*/, "")}
-                    {p.strategyKey ? "" : " (draft)"}
-                  </option>
-                ))}
-            </optgroup>
-            <optgroup label="Creando Riquezas · CR01–CR11">
-              {books
-                .filter((p) => p.id.startsWith("cr"))
-                .map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.shortName} — {p.name.replace(/^CR\d+\s*—\s*/, "")}
-                    {p.strategyKey ? "" : " (draft)"}
-                  </option>
-                ))}
-            </optgroup>
-            {books
-              .filter((p) => !p.id.startsWith("e") && !p.id.startsWith("cr"))
-              .map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.shortName} — {p.name}
-                </option>
-              ))}
-          </select>
-        </label>
-        <label className="space-y-0.5 text-[11px] text-[var(--muted)]">
+        <label className="flex items-center gap-1.5 text-[11px] text-[var(--muted)]">
           {t("strategies.sessionDate")}
-          <div className={`${field} opacity-90`}>
+          <div
+            className={`${field} w-auto min-w-[11rem] truncate opacity-90`}
+            title={
+              premarket
+                ? t("strategies.premarketHint")
+                : `${sessionDate} (${t("strategies.sessionAuto")})`
+            }
+          >
             {sessionDate}{" "}
-            <span className="text-[10px] text-[var(--muted)]">
-              ({t("strategies.sessionAuto")})
+            <span className="text-[10px]">
+              (
+              {premarket
+                ? t("strategies.premarketBadge")
+                : t("strategies.sessionAuto")}
+              )
             </span>
           </div>
         </label>
+        <span className="inline-flex h-6 min-w-[7.5rem] items-center justify-center rounded-md border border-[var(--border)] bg-[var(--surface-muted)] px-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--muted)]">
+          {venue === "schwab" ? t("about.modeOptions") : t("about.modeFutures")}
+        </span>
       </div>
 
-      <section className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-3">
-        <div className="flex flex-wrap items-end gap-2">
-          <div className="mr-auto min-w-0">
-            <h3 className="text-sm font-semibold">{t("strategies.deskTopTitle")}</h3>
-            <p className="text-[11px] text-[var(--muted)]">
-              {t("strategies.deskTopHint")}
-            </p>
-          </div>
-          <button
-            type="button"
-            disabled={deskPending || deskStrategyKeys.length === 0}
-            onClick={runDeskScan}
-            className="rounded-md bg-[var(--accent)] px-3 py-1.5 text-xs font-medium text-[var(--on-accent)] hover:bg-[var(--accent-hover)] disabled:opacity-50"
-          >
-            {deskPending
-              ? t("strategies.deskTopScanning")
-              : t("strategies.deskTopScan")}
-          </button>
-        </div>
+      <DeskSession
+        first
+        step={1}
+        title={t("session.deskTop5")}
+        hint={t("session.deskTop5Hint")}
+        actions={
+          <>
+            <button
+              type="button"
+              disabled={deskPending || deskStrategyKeys.length === 0}
+              onClick={runDeskScan}
+              className="shrink-0 rounded-md bg-[var(--accent)] px-3 py-1.5 text-xs font-medium text-[var(--on-accent)] hover:bg-[var(--accent-hover)] disabled:opacity-50"
+            >
+              {deskPending
+                ? t("strategies.deskTopScanning")
+                : t("strategies.deskTopScan")}
+            </button>
+            <button
+              type="button"
+              disabled={deskStrategyKeys.length === 0}
+              onClick={toggleAutoDesk}
+              className={`shrink-0 rounded-md px-3 py-1.5 text-xs font-medium disabled:opacity-50 ${
+                autoDesk
+                  ? "border border-[var(--ok)] text-[var(--ok)]"
+                  : "border border-[var(--border)] text-[var(--muted)] hover:bg-[var(--hover)]"
+              }`}
+              title={t("strategies.deskAutoHint")}
+            >
+              {autoDesk ? t("strategies.autoStop") : t("strategies.autoStart")}
+            </button>
+          </>
+        }
+      >
         {deskNote ? (
-          <p className="mt-2 text-[11px] text-[var(--muted)]">{deskNote}</p>
-        ) : null}
+          <p className="text-[11px] text-[var(--muted)]">{deskNote}</p>
+        ) : (
+          <p className="text-[11px] text-[var(--muted)]">
+            {t("strategies.deskTopHint")}
+          </p>
+        )}
         {deskError ? (
           <div className="mt-2 rounded-md border border-red-200 bg-[var(--danger-soft)] px-3 py-1.5 text-xs text-[var(--danger)]">
             {deskError}
           </div>
         ) : null}
-        {deskTop.length > 0 ? (
+        {premarket && deskGroups.length > 0 ? (
+          <div className="mt-2 rounded-md border border-amber-300/60 bg-[var(--warn-soft)] px-3 py-2 text-[11px] leading-snug text-[var(--warn)]">
+            {t("strategies.priorSessionBanner")}
+          </div>
+        ) : null}
+        {deskGroups.length > 0 ? (
           <div className="mt-2 overflow-auto rounded-lg border border-[var(--border)]">
+            <p className="border-b border-[var(--border)] bg-[var(--surface-muted)] px-2 py-1.5 text-[10px] text-[var(--muted)]">
+              {t("strategies.focusHint")}
+            </p>
             <table className="min-w-full text-left text-xs">
               <thead className="bg-[var(--surface-muted)] text-[var(--muted)]">
                 <tr>
+                  <th className="px-2 py-1.5 font-medium">{t("strategies.colFocus")}</th>
                   <th className="px-2 py-1.5 font-medium">#</th>
                   <th className="px-2 py-1.5 font-medium">
                     {t("strategies.colSymbol")}
+                  </th>
+                  <th className="px-2 py-1.5 font-medium">
+                    {t("strategies.colConfluence")}
                   </th>
                   <th className="px-2 py-1.5 font-medium">
                     {t("strategies.colStrategy")}
@@ -528,45 +711,124 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
                   <th className="px-2 py-1.5 font-medium">
                     {t("strategies.colDetail")}
                   </th>
+                  <th className="px-2 py-1.5 font-medium">
+                    {t("strategies.colSignalAt")}
+                  </th>
                 </tr>
               </thead>
               <tbody>
-                {deskTop.map((hit, i) => {
-                  const pb = playbookByStrategyKey(hit.strategy);
-                  const side = hit.last_signal?.side;
-                  return (
-                    <tr
-                      key={`${hit.symbol}-${hit.strategy}-top`}
-                      className="border-t border-[var(--border)]"
-                    >
-                      <td className="px-2 py-1.5 text-[var(--muted)]">{i + 1}</td>
-                      <td className="px-2 py-1.5 font-semibold">{hit.symbol}</td>
-                      <td className="px-2 py-1.5">
-                        <button
-                          type="button"
-                          className="text-left font-medium text-[var(--accent)] hover:underline"
-                          onClick={() => pb && setSelectedId(pb.id)}
-                          title={pb?.name ?? hit.strategy}
-                        >
-                          {pb?.shortName ?? hit.strategy}
-                        </button>
-                        <span className="ml-1 text-[10px] text-[var(--muted)]">
-                          {pb?.name?.replace(/^[A-Z0-9]+\s*—\s*/, "") ?? ""}
-                        </span>
-                      </td>
-                      <td className="px-2 py-1.5 uppercase text-[var(--muted)]">
-                        {side === "long"
-                          ? "CALL"
-                          : side === "short"
-                            ? "PUT"
+                {deskGroups.map((group, gi) =>
+                  group.hits.map((hit, hi) => {
+                    const pb = playbookByStrategyKey(hit.strategy);
+                    const side = hit.last_signal?.side;
+                    const rowKey = `${hit.symbol}::${hit.strategy}`;
+                    const focused = deskFocusKey === rowKey;
+                    const isFirst = hi === 0;
+                    return (
+                      <tr
+                        key={`${hit.symbol}-${hit.strategy}-top`}
+                        className={`border-t border-[var(--border)] ${
+                          focused
+                            ? "bg-[var(--ok-soft)]/40"
+                            : isFirst
+                              ? "bg-[var(--surface)]"
+                              : "bg-[var(--surface-muted)]/40"
+                        }`}
+                      >
+                        <td className="px-2 py-1.5">
+                          <input
+                            type="checkbox"
+                            className="h-3.5 w-3.5 cursor-pointer accent-[var(--accent)]"
+                            checked={focused}
+                            disabled={!pb}
+                            title={t("strategies.focusHint")}
+                            aria-label={
+                              pb
+                                ? `${hit.symbol} · ${localizedPlaybookLabel(pb, locale)}`
+                                : `${hit.symbol} · ${hit.strategy}`
+                            }
+                            onChange={() => {
+                              if (!pb) return;
+                              setDeskFocusKey(rowKey);
+                              setSelectedId(pb.id);
+                            }}
+                          />
+                        </td>
+                        <td className="px-2 py-1.5 text-[var(--muted)]">
+                          {isFirst ? gi + 1 : ""}
+                        </td>
+                        <td className="px-2 py-1.5 font-semibold">
+                          {isFirst ? hit.symbol : ""}
+                        </td>
+                        <td className="px-2 py-1.5">
+                          {isFirst ? (
+                            <span className="inline-flex flex-col gap-0.5">
+                              <span className="inline-flex rounded px-1.5 py-0.5 text-[10px] font-semibold tabular-nums bg-[var(--accent-soft)] text-[var(--accent-fg)]">
+                                {t("strategies.confluenceCount")
+                                  .replace("{n}", String(group.confluence))
+                                  .replace(
+                                    "{side}",
+                                    group.side === "long" ? "CALL" : "PUT",
+                                  )}
+                              </span>
+                              {group.opposedCount > 0 ? (
+                                <span className="text-[9px] text-[var(--muted)]">
+                                  {t("strategies.confluenceOpposed").replace(
+                                    "{n}",
+                                    String(group.opposedCount),
+                                  )}
+                                </span>
+                              ) : null}
+                            </span>
+                          ) : null}
+                        </td>
+                        <td className="px-2 py-1.5 font-medium text-[var(--foreground)]">
+                          {pb
+                            ? localizedPlaybookLabel(pb, locale)
+                            : hit.strategy}
+                        </td>
+                        <td className="px-2 py-1.5 uppercase text-[var(--muted)]">
+                          {side === "long"
+                            ? "CALL"
+                            : side === "short"
+                              ? "PUT"
+                              : "—"}
+                        </td>
+                        <td className="px-2 py-1.5 text-[var(--muted)]">
+                          <div className="space-y-0.5">
+                            <div>{hit.last_signal?.reason ?? hit.detail}</div>
+                            {venue === "schwab" && hit.last_signal ? (
+                              (() => {
+                                const plan = buildOptionsEntryPlan(
+                                  hit.symbol,
+                                  hit.last_signal.side,
+                                  hit.last_signal.price,
+                                );
+                                if (!plan) return null;
+                                return (
+                                  <div className="text-[10px] leading-snug text-[var(--foreground)]">
+                                    {plan.optionType} strike ≈ {plan.strike}
+                                    {plan.hasRange
+                                      ? ` · prima ${plan.rangeLabel} · TP 10/20/35: $${plan.tp10}/$${plan.tp20}/$${plan.tp35}`
+                                      : ""}
+                                  </div>
+                                );
+                              })()
+                            ) : null}
+                          </div>
+                        </td>
+                        <td className="px-2 py-1.5 whitespace-nowrap text-[var(--muted)]">
+                          {hit.last_signal?.timestamp
+                            ? formatNyDateTime(
+                                hit.last_signal.timestamp,
+                                locale,
+                              )
                             : "—"}
-                      </td>
-                      <td className="px-2 py-1.5 text-[var(--muted)]">
-                        {hit.last_signal?.reason ?? hit.detail}
-                      </td>
-                    </tr>
-                  );
-                })}
+                        </td>
+                      </tr>
+                    );
+                  }),
+                )}
               </tbody>
             </table>
           </div>
@@ -575,55 +837,65 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
             {t("strategies.deskTopEmpty")}
           </p>
         ) : null}
-      </section>
+      </DeskSession>
 
-      <section className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-3">
-        <div className="flex flex-wrap items-end gap-2">
-          <div className="mr-auto min-w-0">
-            <div className="flex flex-wrap items-center gap-2">
-              <h3 className="text-sm font-semibold">
-                {t("strategies.liveScanTitle")}
-              </h3>
-              <span
-                className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${
-                  playbook.strategyKey
-                    ? "bg-[var(--ok-soft)] text-[var(--ok)]"
-                    : "bg-[var(--warn-soft)] text-[var(--warn)]"
-                }`}
-                title={
-                  playbook.strategyKey
-                    ? t("strategies.scanReadyHint")
-                    : t("strategies.draftHint")
-                }
-              >
-                {playbook.strategyKey
-                  ? t("strategies.scanReady")
-                  : t("strategies.draft")}
-              </span>
-              {autoLive ? (
-                <span className="rounded px-1.5 py-0.5 text-[10px] font-medium bg-[var(--ok-soft)] text-[var(--ok)]">
-                  {t("strategies.autoOn")}
-                </span>
-              ) : null}
-            </div>
-            <p className="text-[11px] text-[var(--muted)]">
-              {playbook.shortName} · {t("strategies.liveScanHint")}
-            </p>
-            <p className="text-[10px] text-[var(--muted)]">
-              {t("strategies.syncHint").replace("{tfs}", syncTfs.join(" + "))}
-            </p>
-          </div>
-          <label className="space-y-0.5 text-[11px] text-[var(--muted)]">
-            {t("strategies.timeframe")}
-            {tfLocked ? (
-              <div
-                className={`${field} opacity-80`}
-                title={t("strategies.tfLockedHint")}
-              >
-                {effectiveTf}{" "}
-                <span className="text-[10px]">({t("strategies.tfFixed")})</span>
-              </div>
-            ) : (
+      <DeskSession
+        step={2}
+        title={t("session.focusScan")}
+        hint={t("session.focusScanHint")}
+        actions={
+          <>
+            <button
+              type="button"
+              disabled={pending || !playbook.strategyKey}
+              onClick={runSyncAndScan}
+              className="rounded-md bg-[var(--accent)] px-3 py-1.5 text-xs font-medium text-[var(--on-accent)] hover:bg-[var(--accent-hover)] disabled:opacity-50"
+            >
+              {pending ? t("strategies.syncScanning") : t("strategies.syncAndScan")}
+            </button>
+            <button
+              type="button"
+              disabled={!playbook.strategyKey}
+              onClick={toggleAutoLive}
+              className={`rounded-md px-3 py-1.5 text-xs font-medium disabled:opacity-50 ${
+                autoLive
+                  ? "border border-[var(--ok)] text-[var(--ok)]"
+                  : "border border-[var(--border)] text-[var(--muted)] hover:bg-[var(--hover)]"
+              }`}
+              title={t("strategies.autoHint")}
+            >
+              {autoLive ? t("strategies.autoStop") : t("strategies.autoStart")}
+            </button>
+          </>
+        }
+      >
+        <div className="mb-3 flex flex-wrap items-end gap-2">
+          <label className="min-w-[14rem] max-w-md flex-1 space-y-0.5 text-[11px] text-[var(--muted)]">
+            {t("strategies.playbook")}
+            <select
+              className={field}
+              value={playbook.id}
+              onChange={(e) => {
+                setSelectedId(e.target.value);
+                setDeskFocusKey(null);
+              }}
+              title={localizedPlaybookLabel(playbook, locale)}
+            >
+              {playbookGroups.map((g) => (
+                <optgroup key={g.label} label={g.label}>
+                  {g.items.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {localizedPlaybookLabel(p, locale)}
+                      {p.strategyKey ? "" : ` (${t("strategies.draftShort")})`}
+                    </option>
+                  ))}
+                </optgroup>
+              ))}
+            </select>
+          </label>
+          {!tfLocked ? (
+            <label className="w-[5.5rem] space-y-0.5 text-[11px] text-[var(--muted)]">
+              {t("strategies.timeframe")}
               <select
                 className={field}
                 value={timeframe}
@@ -635,41 +907,42 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
                   </option>
                 ))}
               </select>
-            )}
-          </label>
-          <button
-            type="button"
-            disabled={pending || !playbook.strategyKey}
-            onClick={runSyncAndScan}
-            className="rounded-md bg-[var(--accent)] px-3 py-1.5 text-xs font-medium text-[var(--on-accent)] hover:bg-[var(--accent-hover)] disabled:opacity-50"
-          >
-            {pending ? t("strategies.syncScanning") : t("strategies.syncAndScan")}
-          </button>
-          <button
-            type="button"
-            disabled={pending || !playbook.strategyKey}
-            onClick={runScanOnly}
-            className="rounded-md border border-[var(--border)] px-3 py-1.5 text-xs font-medium text-[var(--muted)] hover:bg-[var(--hover)] disabled:opacity-50"
-          >
-            {t("strategies.scanOnly")}
-          </button>
-          <button
-            type="button"
-            disabled={!playbook.strategyKey}
-            onClick={toggleAutoLive}
-            className={`rounded-md px-3 py-1.5 text-xs font-medium disabled:opacity-50 ${
-              autoLive
-                ? "border border-[var(--ok)] text-[var(--ok)]"
-                : "border border-[var(--border)] text-[var(--muted)] hover:bg-[var(--hover)]"
+            </label>
+          ) : null}
+          <p className="pb-2 text-[11px] text-[var(--muted)]">
+            {t("session.pickPlaybookHint")}
+          </p>
+        </div>
+
+        <div className="mb-2 flex flex-wrap items-center gap-2">
+          <span
+            className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${
+              playbook.strategyKey
+                ? "bg-[var(--ok-soft)] text-[var(--ok)]"
+                : "bg-[var(--warn-soft)] text-[var(--warn)]"
             }`}
-            title={t("strategies.autoHint")}
+            title={
+              playbook.strategyKey
+                ? t("strategies.scanReadyHint")
+                : t("strategies.draftHint")
+            }
           >
-            {autoLive ? t("strategies.autoStop") : t("strategies.autoStart")}
-          </button>
+            {playbook.strategyKey
+              ? t("strategies.scanReady")
+              : t("strategies.draft")}
+          </span>
+          {autoLive ? (
+            <span className="rounded px-1.5 py-0.5 text-[10px] font-medium bg-[var(--ok-soft)] text-[var(--ok)]">
+              {t("strategies.autoOn")}
+            </span>
+          ) : null}
+          <span className="text-[10px] text-[var(--muted)]">
+            {t("strategies.syncHint").replace("{tfs}", syncTfs.join(" + "))}
+          </span>
         </div>
 
         {syncNote ? (
-          <p className="mt-2 text-[11px] text-[var(--muted)]">{syncNote}</p>
+          <p className="text-[11px] text-[var(--muted)]">{syncNote}</p>
         ) : null}
 
         {error ? (
@@ -680,15 +953,32 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
 
         {scan ? (
           <p className="mt-2 text-[11px] text-[var(--muted)]">
-            {scan.match_count} matches · {scan.total_checked} checked ·{" "}
-            {new Date(scan.scanned_at).toLocaleTimeString()}
+            {(premarket
+              ? t("strategies.priorSessionSummary")
+              : t("strategies.scanSummary")
+            )
+              .replace("{session}", scan.session_date || sessionDate)
+              .replace("{when}", formatNyDateTime(scan.scanned_at, locale))
+              .replace("{matches}", String(scan.match_count))
+              .replace("{checked}", String(scan.total_checked))}
           </p>
+        ) : null}
+
+        {premarket && matches.length > 0 ? (
+          <div className="mt-2 rounded-md border border-amber-300/60 bg-[var(--warn-soft)] px-3 py-2 text-[11px] leading-snug text-[var(--warn)]">
+            {t("strategies.priorSessionBanner")}
+          </div>
         ) : null}
 
         {matches.length > 0 ? (
           <div className="mt-2 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
             {matches.map((hit) => (
-              <HitCard key={`${hit.symbol}-${hit.strategy}`} hit={hit} />
+              <HitCard
+                key={`${hit.symbol}-${hit.strategy}`}
+                hit={hit}
+                priorSession={premarket}
+                showOptionsPlan={venue === "schwab"}
+              />
             ))}
           </div>
         ) : scan ? (
@@ -717,17 +1007,21 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
                   >
                     <td className="px-2 py-1 font-medium">{hit.symbol}</td>
                     <td className="px-2 py-1">
-                      {playbookByStrategyKey(hit.strategy)?.shortName ??
-                        hit.strategy}
+                      {(() => {
+                        const pb = playbookByStrategyKey(hit.strategy);
+                        return pb
+                          ? localizedPlaybookLabel(pb, locale)
+                          : hit.strategy;
+                      })()}
                     </td>
                     <td className="px-2 py-1 text-[var(--muted)]">
-                      {hit.data_provider}
+                      {providerLabel(hit.data_provider)}
                     </td>
                     <td className="px-2 py-1">
                       <span
-                        className={`inline-block rounded px-1.5 py-0.5 text-[10px] ${statusStyle(hit.status)}`}
+                        className={`inline-block rounded px-1.5 py-0.5 text-[10px] ${statusStyle(hit.status, premarket)}`}
                       >
-                        {hit.status}
+                        {displayScanStatus(hit.status, premarket, t)}
                       </span>
                     </td>
                     <td className="px-2 py-1 text-[var(--muted)]">
@@ -739,50 +1033,99 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
             </table>
           </div>
         ) : null}
-      </section>
+      </DeskSession>
 
-      <header className="rounded-xl border border-[var(--border)] bg-[var(--surface)] px-3 py-2">
-        <div className="flex flex-wrap items-start justify-between gap-2">
-          <div className="min-w-0">
-            <h3 className="text-sm font-semibold">{playbook.name}</h3>
-            <p className="text-[12px] leading-snug text-[var(--muted)]">
-              {playbook.summary}
-            </p>
-            <p className="mt-1 text-[11px] text-[var(--muted)]">
-              {playbook.markets} · {playbook.sessionWindow}
-            </p>
-          </div>
+      <DeskSession
+        step={3}
+        title={t("session.playbook")}
+        hint={t("session.playbookHint")}
+        panel={false}
+      >
+        <div className="space-y-3">
+          <header className="rounded-xl border border-[var(--border)] bg-[var(--surface)] px-3 py-2">
+            <div className="min-w-0">
+              <h3 className="text-sm font-semibold">
+                <span className="text-[var(--accent)]">{playbook.shortName}</span>
+                <span className="text-[var(--muted)]"> · </span>
+                {localizedPlaybookName(playbook, locale)}
+              </h3>
+              <p className="text-[12px] leading-snug text-[var(--muted)]">
+                {playbook.summary}
+              </p>
+              <p className="mt-1 text-[11px] text-[var(--muted)]">
+                {playbook.markets} · {playbook.sessionWindow}
+              </p>
+            </div>
+          </header>
+
+          {playbook.setupImage ? (
+            <figure className="overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface)]">
+              <figcaption className="border-b border-[var(--border)] px-3 py-1.5 text-xs font-semibold text-[var(--muted)]">
+                {t("strategies.setup")} ·{" "}
+                {localizedPlaybookLabel(playbook, locale)}
+              </figcaption>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={playbook.setupImage}
+                alt={`${t("strategies.setup")} ${localizedPlaybookLabel(playbook, locale)}`}
+                className="h-auto w-full object-contain bg-[var(--surface-muted)]"
+              />
+            </figure>
+          ) : null}
         </div>
-      </header>
+      </DeskSession>
 
-      <PlaybookRules
-        playbook={playbook}
-        checked={checkedSteps}
-        onToggle={toggleStep}
-      />
-    </div>
+      <DeskSession
+        step={4}
+        title={t("session.checklist")}
+        hint={t("session.checklistHint")}
+        panel={false}
+      >
+        <PlaybookRules
+          playbook={playbook}
+          checked={checkedSteps}
+          onToggle={toggleStep}
+          t={t}
+        />
+      </DeskSession>
+    </DeskStack>
   );
+}
+
+function playbookGroupLabel(
+  p: StrategyPlaybook,
+  t: (key: string) => string,
+): string {
+  if (p.group === "Maylels" || p.id.startsWith("ml"))
+    return t("strategies.groupMaylels");
+  if (p.group?.startsWith("BB") || p.id.startsWith("e"))
+    return t("strategies.groupBb");
+  if (p.group?.startsWith("Creando") || p.id.startsWith("cr"))
+    return t("strategies.groupCr");
+  return t("strategies.groupOther");
 }
 
 function PlaybookRules({
   playbook,
   checked,
   onToggle,
+  t,
 }: {
   playbook: StrategyPlaybook;
   checked: Record<string, boolean>;
   onToggle: (id: string) => void;
+  t: (key: string) => string;
 }) {
   return (
     <div className="grid gap-3 lg:grid-cols-2 xl:grid-cols-3">
       <RuleBlock
-        title="Entry"
+        title={t("strategies.entry")}
         items={playbook.entrySteps}
         checked={checked}
         onToggle={onToggle}
       />
       <RuleBlock
-        title="Exits"
+        title={t("strategies.exits")}
         items={playbook.exitSteps}
         checked={checked}
         onToggle={onToggle}
@@ -792,7 +1135,7 @@ function PlaybookRules({
         <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-1">
           <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)]">
             <div className="border-b border-[var(--border)] px-3 py-1.5">
-              <h4 className="text-xs font-semibold">Risk</h4>
+              <h4 className="text-xs font-semibold">{t("strategies.risk")}</h4>
             </div>
             <ul className="divide-y divide-[var(--border)]">
               {playbook.riskNotes.map((n) => (
@@ -807,7 +1150,9 @@ function PlaybookRules({
           </div>
           <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)]">
             <div className="border-b border-[var(--border)] px-3 py-1.5">
-              <h4 className="text-xs font-semibold">Invalidation</h4>
+              <h4 className="text-xs font-semibold">
+                {t("strategies.invalidation")}
+              </h4>
             </div>
             <ul className="divide-y divide-[var(--border)]">
               {playbook.invalidation.map((n) => (
@@ -825,7 +1170,7 @@ function PlaybookRules({
 
       <div className="space-y-2 lg:col-span-2 xl:col-span-3">
         <h4 className="text-xs font-semibold text-[var(--muted)]">
-          By timeframe
+          {t("strategies.byTimeframe")}
         </h4>
         <div className="grid gap-2 md:grid-cols-3">
           {playbook.byTimeframe.map((tf) => (
@@ -924,23 +1269,119 @@ function RuleBlock({
   );
 }
 
-function HitCard({ hit }: { hit: ScanHit }) {
+function HitCard({
+  hit,
+  priorSession = false,
+  showOptionsPlan = false,
+}: {
+  hit: ScanHit;
+  priorSession?: boolean;
+  showOptionsPlan?: boolean;
+}) {
+  const { locale, t } = useLocale();
+  const pb = playbookByStrategyKey(hit.strategy);
+  const strategyLabel = pb
+    ? localizedPlaybookLabel(pb, locale)
+    : hit.strategy;
+  const signalAt = hit.last_signal?.timestamp
+    ? formatNyDateTime(hit.last_signal.timestamp, locale)
+    : null;
+  const plan =
+    showOptionsPlan && hit.last_signal
+      ? buildOptionsEntryPlan(
+          hit.symbol,
+          hit.last_signal.side,
+          hit.last_signal.price,
+        )
+      : null;
   return (
-    <div className="rounded-lg border border-emerald-200/40 bg-[var(--ok-soft)] px-3 py-2">
+    <div
+      className={`rounded-lg border px-3 py-2 ${
+        priorSession
+          ? "border-amber-300/50 bg-[var(--warn-soft)]"
+          : "border-emerald-200/40 bg-[var(--ok-soft)]"
+      }`}
+    >
       <div className="flex items-center justify-between gap-2">
         <p className="text-sm font-semibold">{hit.symbol}</p>
         <span
-          className={`rounded px-1.5 py-0.5 text-[10px] ${statusStyle(hit.status)}`}
+          className={`rounded px-1.5 py-0.5 text-[10px] ${statusStyle(hit.status, priorSession)}`}
         >
-          {hit.status}
+          {displayScanStatus(hit.status, priorSession, t)}
         </span>
       </div>
+      {priorSession ? (
+        <p className="mt-0.5 text-[10px] font-semibold uppercase tracking-[0.06em] text-[var(--warn)]">
+          {t("strategies.priorSessionBadge")}
+        </p>
+      ) : null}
       <p className="text-[11px] text-[var(--muted)]">
-        {hit.name} · {hit.data_provider}
+        {strategyLabel} · {hit.name} · {providerLabel(hit.data_provider)}
       </p>
+      {signalAt ? (
+        <p className="mt-0.5 text-[10px] font-medium text-[var(--muted)]">
+          {t("strategies.signalAt")} {signalAt} ET
+        </p>
+      ) : null}
       <p className="mt-1 text-[12px] leading-snug text-[var(--muted)]">
         {hit.detail}
       </p>
+      {plan ? <OptionsPlanBlock plan={plan} /> : null}
+    </div>
+  );
+}
+
+function OptionsPlanBlock({
+  plan,
+}: {
+  plan: NonNullable<ReturnType<typeof buildOptionsEntryPlan>>;
+}) {
+  const { t } = useLocale();
+  const money = (n: number) =>
+    n > 0
+      ? n.toLocaleString(undefined, {
+          style: "currency",
+          currency: "USD",
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        })
+      : "—";
+  return (
+    <div
+      className="mt-2 rounded-md border border-[var(--border)] bg-[var(--surface)]/70 px-2 py-1.5"
+      title={t("strategies.optionsPlanHint")}
+    >
+      <p className="text-[10px] font-semibold uppercase tracking-[0.06em] text-[var(--muted)]">
+        {t("strategies.optionsPlan")} · {plan.optionType}
+      </p>
+      <p className="mt-0.5 text-[11px] leading-snug text-[var(--foreground)]">
+        Spot {money(plan.spot)} → {t("strategies.optionsStrike")}{" "}
+        <span className="font-semibold tabular-nums">{money(plan.strike)}</span>
+      </p>
+      {plan.hasRange ? (
+        <>
+          <p className="mt-0.5 text-[11px] leading-snug text-[var(--muted)]">
+            {t("strategies.optionsPrem")}: {plan.rangeLabel} · entry ≈{" "}
+            <span className="font-medium text-[var(--foreground)]">
+              {money(plan.entryPremium)}
+            </span>
+          </p>
+          <p className="mt-0.5 text-[11px] leading-snug text-[var(--foreground)]">
+            {t("strategies.optionsTp")}:{" "}
+            <span className="tabular-nums">10% {money(plan.tp10)}</span>
+            {" · "}
+            <span className="tabular-nums">20% {money(plan.tp20)}</span>
+            {" · "}
+            <span className="font-semibold tabular-nums">
+              35% {money(plan.tp35)}
+            </span>
+          </p>
+        </>
+      ) : (
+        <p className="mt-0.5 text-[10px] leading-snug text-[var(--muted)]">
+          {t("strategies.optionsNoRange")}
+        </p>
+      )}
     </div>
   );
 }

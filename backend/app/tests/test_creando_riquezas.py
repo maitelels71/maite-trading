@@ -87,17 +87,78 @@ def test_cr08_first_red() -> None:
         px = nxt
         day += timedelta(days=1)
 
-    h1 = [
-        _c(session.replace(hour=9, minute=30), "120", "120.5", "118", "118.5"),
+    # True CR08 bar = 9:30–10:00 30m red; 10:00 green must NOT drive the signal
+    m30 = [
+        _c(
+            session.replace(hour=9, minute=30),
+            "120",
+            "120.5",
+            "118",
+            "118.5",
+            tf="30m",
+        ),
+        _c(
+            session.replace(hour=10, minute=0),
+            "118.5",
+            "122",
+            "118.4",
+            "121.5",
+            tf="30m",
+        ),
     ]
     result = Cr08FirstRedStrategy().evaluate(
-        h1,
+        m30,
         StrategyContext(
             ticker="SPY",
-            timeframe="1h",
+            timeframe="30m",
             start=session,
             end=session,
             extra_candles={"1d": d1},
         ),
     )
     assert any(s.side is Side.SHORT for s in result.signals)
+
+
+def test_cr08_ignores_green_open_even_if_10am_red() -> None:
+    """Regression: clock-hour 1h used to treat 10:00 as 'first RTH'."""
+    session = datetime(2026, 1, 6, tzinfo=ET)
+    d1 = []
+    day = datetime(2025, 6, 2, 16, 0, tzinfo=ET)
+    px = Decimal("80")
+    for _ in range(220):
+        while day.weekday() >= 5:
+            day += timedelta(days=1)
+        nxt = px + Decimal("0.2")
+        d1.append(_c(day, str(px), str(nxt + 1), str(px - 1), str(nxt), tf="1d"))
+        px = nxt
+        day += timedelta(days=1)
+
+    m30 = [
+        _c(
+            session.replace(hour=9, minute=30),
+            "120",
+            "123",
+            "119.5",
+            "122.5",
+            tf="30m",
+        ),  # green open
+        _c(
+            session.replace(hour=10, minute=0),
+            "122.5",
+            "122.6",
+            "118",
+            "118.5",
+            tf="30m",
+        ),  # red 10:00
+    ]
+    result = Cr08FirstRedStrategy().evaluate(
+        m30,
+        StrategyContext(
+            ticker="TSLA",
+            timeframe="30m",
+            start=session,
+            end=session,
+            extra_candles={"1d": d1},
+        ),
+    )
+    assert result.signals == []

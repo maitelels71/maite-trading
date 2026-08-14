@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 
+import { DeskSession, DeskStack } from "@/components/DeskSession";
+import { useLocale } from "@/components/LocaleProvider";
 import {
   LIFE_MANTRAS,
   RITUAL_SECTIONS,
@@ -25,6 +27,7 @@ function storageKey(date: string): string {
 }
 
 export function MindDesk() {
+  const { t } = useLocale();
   const [tab, setTab] = useState<MindTab>("ritual");
   const [date, setDate] = useState(todayNyIso);
   const [checked, setChecked] = useState<Record<string, boolean>>({});
@@ -76,11 +79,11 @@ export function MindDesk() {
   const quote = TRADING_QUOTES[quoteIndex % TRADING_QUOTES.length];
 
   return (
-    <div className="mx-auto max-w-6xl space-y-6 px-6 py-8">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+    <DeskStack className="max-w-6xl space-y-1 px-6 py-8">
+      <div className="flex flex-col gap-3 pb-2 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h2 className="text-xl font-semibold text-[var(--foreground)]">
-            Psychotrading
+            Psicotrading
           </h2>
           <p className="text-sm text-[var(--muted)]">
             Ritual de disciplina, mantras cortos y quotes — entrena la mente
@@ -112,9 +115,9 @@ export function MindDesk() {
       <div className="flex flex-wrap gap-1 border-b border-[var(--border)] pb-2">
         {(
           [
-            ["ritual", "Ritual"],
-            ["mantras", "Mantras"],
-            ["quotes", "Quotes"],
+            ["ritual", t("session.ritual")],
+            ["mantras", t("session.mantras")],
+            ["quotes", t("session.quotes")],
           ] as const
         ).map(([id, label]) => {
           const active = tab === id;
@@ -136,36 +139,39 @@ export function MindDesk() {
       </div>
 
       {tab === "ritual" ? (
-        <div className="space-y-6">
-          <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3">
-            <p className="text-xs uppercase tracking-wide text-[var(--muted)]">
-              Progress · neuroplasticidad & disciplina
-            </p>
-            <p className="mt-1 text-xl font-semibold">
-              {done} / {total}
-            </p>
-          </div>
+        <div className="space-y-1">
+          <DeskSession
+            first
+            step={1}
+            title={t("session.ritual")}
+            hint={`${done} / ${total}`}
+            panel={false}
+          >
+            <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3">
+              <p className="text-xs uppercase tracking-wide text-[var(--muted)]">
+                Progress · neuroplasticidad & disciplina
+              </p>
+              <p className="mt-1 text-xl font-semibold">
+                {done} / {total}
+              </p>
+            </div>
+          </DeskSession>
 
-          {RITUAL_SECTIONS.map((section) => {
+          {RITUAL_SECTIONS.map((section, idx) => {
             const sectionDone = section.items.filter((i) => checked[i.id]).length;
             return (
-              <section
+              <DeskSession
                 key={section.id}
-                className="overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface)]"
+                step={idx + 2}
+                title={section.title}
+                hint={
+                  section.subtitle
+                    ? `${section.subtitle} · ${sectionDone}/${section.items.length}`
+                    : `${sectionDone}/${section.items.length}`
+                }
+                panel={false}
               >
-                <div className="flex items-start justify-between gap-3 border-b border-[var(--border)] px-4 py-3">
-                  <div>
-                    <h3 className="font-medium">{section.title}</h3>
-                    {section.subtitle ? (
-                      <p className="text-xs text-[var(--muted)]">
-                        {section.subtitle}
-                      </p>
-                    ) : null}
-                  </div>
-                  <p className="shrink-0 text-xs text-[var(--muted)]">
-                    {sectionDone}/{section.items.length}
-                  </p>
-                </div>
+              <section className="overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface)]">
                 <ul className="divide-y divide-[var(--border)]">
                   {section.items.map((item) => {
                     const on = Boolean(checked[item.id]);
@@ -198,15 +204,18 @@ export function MindDesk() {
                   </p>
                 ) : null}
               </section>
+              </DeskSession>
             );
           })}
 
+          <DeskSession
+            step={RITUAL_SECTIONS.length + 2}
+            title="E. Mantra de neuroplasticidad"
+            hint="Leer en voz alta antes de operar"
+            panel={false}
+          >
           <section className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4">
-            <h3 className="font-medium">E. Mantra de neuroplasticidad</h3>
-            <p className="mt-1 text-xs text-[var(--muted)]">
-              Leer en voz alta antes de operar
-            </p>
-            <ul className="mt-4 space-y-3">
+            <ul className="space-y-3">
               {TRADING_MANTRA_LINES.map((line) => (
                 <li
                   key={line}
@@ -217,20 +226,22 @@ export function MindDesk() {
               ))}
             </ul>
           </section>
+          </DeskSession>
         </div>
       ) : null}
 
       {tab === "mantras" ? (
-        <div className="space-y-6">
-          {LIFE_MANTRAS.map((group) => (
-            <section
+        <div className="space-y-1">
+          {LIFE_MANTRAS.map((group, idx) => (
+            <DeskSession
               key={group.id}
-              className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5"
+              first={idx === 0}
+              step={idx + 1}
+              title={group.title}
+              panel={false}
             >
-              <h3 className="text-sm font-semibold uppercase tracking-wide text-[var(--accent)]">
-                {group.title}
-              </h3>
-              <ul className="mt-4 space-y-3">
+            <section className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5">
+              <ul className="space-y-3">
                 {group.lines.map((line) => (
                   <li
                     key={line}
@@ -241,16 +252,17 @@ export function MindDesk() {
                 ))}
               </ul>
             </section>
+            </DeskSession>
           ))}
 
+          <DeskSession
+            step={LIFE_MANTRAS.length + 1}
+            title="Mantra de trading"
+            hint="Versión corta del ritual de neuroplasticidad"
+            panel={false}
+          >
           <section className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5">
-            <h3 className="text-sm font-semibold uppercase tracking-wide text-[var(--accent)]">
-              Mantra de trading
-            </h3>
-            <p className="mt-1 text-xs text-[var(--muted)]">
-              Versión corta del ritual de neuroplasticidad
-            </p>
-            <ul className="mt-4 space-y-3">
+            <ul className="space-y-3">
               {TRADING_MANTRA_LINES.map((line) => (
                 <li
                   key={line}
@@ -261,11 +273,13 @@ export function MindDesk() {
               ))}
             </ul>
           </section>
+          </DeskSession>
         </div>
       ) : null}
 
       {tab === "quotes" ? (
-        <div className="space-y-6">
+        <div className="space-y-1">
+          <DeskSession first step={1} title={t("session.quotes")} panel={false}>
           <section className="rounded-xl border border-[var(--border)] bg-[var(--surface)] px-6 py-10 text-center">
             <p className="mx-auto max-w-2xl text-xl leading-relaxed text-[var(--foreground)] sm:text-2xl">
               “{quote.text}”
@@ -295,7 +309,9 @@ export function MindDesk() {
               {quoteIndex + 1} / {TRADING_QUOTES.length}
             </p>
           </section>
+          </DeskSession>
 
+          <DeskSession step={2} title="All quotes" panel={false}>
           <section className="grid gap-3 sm:grid-cols-2">
             {TRADING_QUOTES.map((q, idx) => (
               <button
@@ -312,8 +328,9 @@ export function MindDesk() {
               </button>
             ))}
           </section>
+          </DeskSession>
         </div>
       ) : null}
-    </div>
+    </DeskStack>
   );
 }
