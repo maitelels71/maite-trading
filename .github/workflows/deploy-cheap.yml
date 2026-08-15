@@ -59,6 +59,8 @@ jobs:
       - name: SAM deploy
         working-directory: infra/sam
         env:
+          OPTIONS_AUTH_USER: ${{ secrets.OPTIONS_BASIC_AUTH_USER || 'maite' }}
+          OPTIONS_AUTH_PASSWORD: ${{ secrets.OPTIONS_BASIC_AUTH_PASSWORD || 'maite-options' }}
           FUTURES_AUTH_USER: ${{ secrets.FUTURES_BASIC_AUTH_USER || 'maite' }}
           FUTURES_AUTH_PASSWORD: ${{ secrets.FUTURES_BASIC_AUTH_PASSWORD || 'maite-futures' }}
         run: |
@@ -71,6 +73,8 @@ jobs:
             --parameter-overrides \
               "ProjectName=${PROJECT_NAME}" \
               "EnvironmentName=${ENVIRONMENT}" \
+              "OptionsAuthUser=${OPTIONS_AUTH_USER}" \
+              "OptionsAuthPassword=${OPTIONS_AUTH_PASSWORD}" \
               "FuturesAuthUser=${FUTURES_AUTH_USER}" \
               "FuturesAuthPassword=${FUTURES_AUTH_PASSWORD}" \
             --region "$AWS_REGION"

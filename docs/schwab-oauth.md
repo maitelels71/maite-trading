@@ -38,3 +38,13 @@ Access tokens refresh automatically via `refresh_token` (file locally; Secrets M
 ## After login
 
 In the UI: **Analyzer** → Equities/Schwab → **Sync market data** for SPY/QQQ/etc.
+
+## Positions + TP auto-close (Trader API)
+
+1. In [Schwab Developer Portal](https://developer.schwab.com/) enable **Accounts and Trading Production** on your app (in addition to Market Data).
+2. Re-run `schwab_login` (authorize URL now sends `scope=api`) and **Publish to staging**.
+3. Options desk → **Trading Session**: capital bar loads equity from Schwab; risk = **10% equity**. Per asset with a plan, **Open N× @ mid-optimal** appears only if 1 contract fits risk + cash. Trigger opens → BUY_TO_OPEN LIMIT to Schwab.
+4. After fill → **Desk tools → Positions**: refresh, then **TP 10/20/35** (scale-out LIMIT sells).
+5. Check **Arm live closes** before Close now / auto-close (real orders).
+
+Set `SCHWAB_TRADING_ENABLED=false` in Secrets Manager to keep alerts-only.

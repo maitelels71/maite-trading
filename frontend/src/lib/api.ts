@@ -1,6 +1,7 @@
 import type {
   AdminOverview,
   BacktestResponse,
+  BrokerPositionsResponse,
   Candle,
   EvaluateResponse,
   Instrument,
@@ -10,6 +11,8 @@ import type {
   ScanResponse,
   SchwabTokenStatus,
   Strategy,
+  TpCheckResponse,
+  TpLadderResponse,
 } from "./types";
 
 const API_BASE =
@@ -272,6 +275,93 @@ export async function saveTradeToNotion(payload: {
   images_failed: number;
 }> {
   return request("/journal/notion", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function fetchBrokerPositions(): Promise<BrokerPositionsResponse> {
+  return request("/broker/positions");
+}
+
+export async function brokerOpenOption(payload: {
+  account_hash: string;
+  underlying: string;
+  option_type: string;
+  strike: number;
+  exp_iso: string;
+  entry_premium: number;
+  quantity?: number;
+  confirm_live: boolean;
+  order_type?: string;
+  duration?: string;
+}): Promise<{
+  ok: boolean;
+  order_id: string | null;
+  status: string;
+  message: string;
+  option_symbol?: string | null;
+  limit_price?: number | null;
+  quantity?: number | null;
+  cost?: number | null;
+  risk_budget?: number | null;
+}> {
+  return request("/broker/orders/open", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function brokerClosePosition(payload: {
+  account_hash: string;
+  symbol: string;
+  quantity: number;
+  asset_type: string;
+  instruction: string;
+  confirm_live: boolean;
+  order_type?: string;
+  limit_price?: number | null;
+}): Promise<{
+  ok: boolean;
+  order_id: string | null;
+  status: string;
+  message: string;
+}> {
+  return request("/broker/orders/close", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function brokerTpCheck(payload: {
+  account_hash: string;
+  symbol: string;
+  quantity: number;
+  asset_type: string;
+  instruction: string;
+  average_price: number;
+  target_pct: number;
+  auto_close: boolean;
+  confirm_live: boolean;
+  order_type?: string;
+}): Promise<TpCheckResponse> {
+  return request("/broker/tp-check", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function brokerTpLadder(payload: {
+  account_hash: string;
+  symbol: string;
+  quantity: number;
+  asset_type: string;
+  instruction: string;
+  average_price: number;
+  confirm_live: boolean;
+  duration?: string;
+}): Promise<TpLadderResponse> {
+  return request("/broker/orders/tp-ladder", {
     method: "POST",
     body: JSON.stringify(payload),
   });

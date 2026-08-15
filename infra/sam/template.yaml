@@ -16,6 +16,17 @@ Parameters:
   CorsOrigins:
     Type: String
     Default: "*"
+  OptionsAuthUser:
+    Type: String
+    Default: maite
+    Description: Basic-auth username for the private Options CloudFront UI
+  OptionsAuthPassword:
+    Type: String
+    NoEcho: true
+    Default: "maite-options"
+    Description: >
+      Basic-auth password for Options UI. Override via SAM parameter /
+      GitHub secret OPTIONS_BASIC_AUTH_PASSWORD. Change after first deploy.
   FuturesAuthUser:
     Type: String
     Default: maite
@@ -231,12 +242,43 @@ Resources:
         SigningBehavior: always
         SigningProtocol: sigv4
 
+  OptionsAuthFunction:
+    Type: AWS::CloudFront::Function
+    Properties:
+      Name: !Sub "${ProjectName}-${EnvironmentName}-options-auth"
+      AutoPublish: true
+      FunctionConfig:
+        Comment: HTTP Basic Auth gate for Options UI
+        Runtime: cloudfront-js-2.0
+      FunctionCode: !Sub
+        - |
+          function handler(event) {
+            var request = event.request;
+            var headers = request.headers;
+            var expected = 'Basic ${AuthToken}';
+            if (
+              typeof headers.authorization === 'undefined' ||
+              headers.authorization.value !== expected
+            ) {
+              return {
+                statusCode: 401,
+                statusDescription: 'Unauthorized',
+                headers: {
+                  'www-authenticate': { value: 'Basic realm="Trading Like a Boss Options"' }
+                }
+              };
+            }
+            return request;
+          }
+        - AuthToken:
+            Fn::Base64: !Sub "${OptionsAuthUser}:${OptionsAuthPassword}"
+
   WebDistribution:
     Type: AWS::CloudFront::Distribution
     Properties:
       DistributionConfig:
         Enabled: true
-        Comment: !Sub "${ProjectName} ${EnvironmentName} Options UI (public)"
+        Comment: !Sub "${ProjectName} ${EnvironmentName} Options UI (Basic Auth)"
         DefaultRootObject: index.html
         Origins:
           - Id: webS3
@@ -253,6 +295,9 @@ Resources:
             QueryString: false
             Cookies:
               Forward: none
+          FunctionAssociations:
+            - EventType: viewer-request
+              FunctionARN: !GetAtt OptionsAuthFunction.FunctionARN
         CustomErrorResponses:
           - ErrorCode: 403
             ResponseCode: 200
@@ -374,10 +419,10 @@ Outputs:
     Description: HTTP API base URL (append paths like /health)
     Value: !Sub "https://${HttpApi}.execute-api.${AWS::Region}.amazonaws.com/${EnvironmentName}"
   WebBucketName:
-    Description: S3 bucket for Options frontend (public)
+    Description: S3 bucket for Options frontend (Basic Auth)
     Value: !Ref WebBucket
   CloudFrontUrl:
-    Description: Options frontend URL (public)
+    Description: Options frontend URL (Basic Auth required)
     Value: !Sub "https://${WebDistribution.DomainName}"
   CloudFrontDistributionId:
     Value: !Ref WebDistribution

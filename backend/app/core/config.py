@@ -61,6 +61,8 @@ class Settings(BaseSettings):
     )
     # Optional JSON blob (Secrets Manager / Lambda). Same shape as the token file.
     schwab_token_json: str = Field(default="", alias="SCHWAB_TOKEN_JSON")
+    # Live SELL_TO_CLOSE / equity SELL via Trader API (requires Accounts & Trading product).
+    schwab_trading_enabled: bool = Field(default=True, alias="SCHWAB_TRADING_ENABLED")
 
     # TradeAdvocate (futures)
     tradeadvocate_api_key: str = Field(default="", alias="TRADEADVOCATE_API_KEY")
@@ -89,6 +91,10 @@ class Settings(BaseSettings):
         default="",
         alias="NOTION_JOURNAL_DATABASE_ID",
     )
+
+    # SMS ready-to-enter alerts (Amazon SNS). Phone lives in Secrets Manager.
+    sms_alert_phone: str = Field(default="", alias="SMS_ALERT_PHONE")
+    sms_alerts_enabled: bool = Field(default=True, alias="SMS_ALERTS_ENABLED")
 
     # Market session defaults
     default_timezone: str = Field(

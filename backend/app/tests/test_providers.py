@@ -9,13 +9,12 @@ import httpx
 import pytest
 
 from app.core.config import Settings
-from app.domain.candles import Candle
-from app.domain.enums import DataProviderName
 from app.providers.exceptions import ProviderNotConfiguredError, ProviderRateLimitError
 from app.providers.mock import MockMarketDataProvider
 from app.providers.normalize import normalize_candle, normalize_candles
 from app.providers.schwab import SchwabProvider
-from app.providers.tradeadvocate import TradeAdvocateProvider, schwab_futures_symbol
+from app.providers.tradeadvocate import TradeAdvocateProvider
+from app.providers.yahoo import YahooProvider, extract_yahoo_candles, yahoo_futures_symbol
 
 
 def test_normalize_ms_epoch_keeps_utc_tz() -> None:
@@ -140,63 +139,105 @@ def test_schwab_requires_credentials() -> None:
         provider.authenticate()
 
 
-def test_schwab_futures_symbol_maps_roots_and_contracts() -> None:
-    assert schwab_futures_symbol("MNQ") == "/MNQ"
-    assert schwab_futures_symbol("MNQU6") == "/MNQ"
-    assert schwab_futures_symbol("MES") == "/MES"
-    assert schwab_futures_symbol("MESU6") == "/MES"
-    assert schwab_futures_symbol("NQ") == "/NQ"
-    assert schwab_futures_symbol("NQU6") == "/NQ"
-    assert schwab_futures_symbol("/ES") == "/ES"
+def test_yahoo_futures_symbol_maps_roots_and_contracts() -> None:
+    assert yahoo_futures_symbol("MNQ") == "MNQ=F"
+    assert yahoo_futures_symbol("MNQU6") == "MNQ=F"
+    assert yahoo_futures_symbol("MES") == "MES=F"
+    assert yahoo_futures_symbol("MESU6") == "MES=F"
+    assert yahoo_futures_symbol("NQ") == "NQ=F"
+    assert yahoo_futures_symbol("NQU6") == "NQ=F"
+    assert yahoo_futures_symbol("/ES") == "ES=F"
+    assert yahoo_futures_symbol("ES=F") == "ES=F"
 
 
-def test_tradeadvocate_fetches_via_schwab_and_keeps_desk_ticker() -> None:
-    captured: list[str] = []
+def test_yahoo_parses_chart_and_keeps_desk_ticker() -> None:
+    seen: dict[str, str] = {}
 
-    class _FakeSchwab:
-        name = DataProviderName.SCHWAB
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["url"] = str(request.url)
+        return httpx.Response(
+            200,
+            json={
+                "chart": {
+                    "result": [
+                        {
+                            "timestamp": [1735826400],
+                            "indicators": {
+                                "quote": [
+                                    {
+                                        "open": [21000.0],
+                                        "high": [21010.0],
+                                        "low": [20990.0],
+                                        "close": [21005.0],
+                                        "volume": [120],
+                                    }
+                                ]
+                            },
+                        }
+                    ],
+                    "error": None,
+                }
+            },
+        )
 
-        def get_historical_candles(
-            self,
-            symbol: str,
-            timeframe: str,
-            start: datetime,
-            end: datetime,
-        ) -> list[Candle]:
-            captured.append(symbol)
-            return [
-                Candle(
-                    timestamp=datetime(2026, 1, 2, 15, 0, tzinfo=UTC),
-                    open=Decimal("5000"),
-                    high=Decimal("5005"),
-                    low=Decimal("4995"),
-                    close=Decimal("5001"),
-                    volume=Decimal("12"),
-                    ticker=symbol,
-                    timeframe=timeframe,
-                )
-            ]
-
-    provider = TradeAdvocateProvider(Settings(), schwab=_FakeSchwab())  # type: ignore[arg-type]
+    client = httpx.Client(
+        transport=httpx.MockTransport(handler),
+        base_url="https://query1.finance.yahoo.com",
+    )
+    provider = TradeAdvocateProvider(
+        Settings(), yahoo=YahooProvider(Settings(), client=client)
+    )
     candles = provider.get_historical_candles(
         "NQ",
         "5m",
-        datetime(2026, 1, 1, tzinfo=UTC),
+        datetime(2026, 1, 2, tzinfo=UTC),
         datetime(2026, 1, 3, tzinfo=UTC),
     )
-    assert captured == ["/NQ"]
+    assert "NQ=F" in seen["url"]
+    assert "interval=5m" in seen["url"]
     assert len(candles) == 1
-    assert candles[0].close == Decimal("5001")
+    assert candles[0].close == Decimal("21005.0")
     assert candles[0].ticker == "NQ"
 
 
-def test_tradeadvocate_rate_limit() -> None:
-    class _RateLimitedSchwab:
-        def get_historical_candles(self, *args: object, **kwargs: object) -> list[Candle]:
-            raise ProviderRateLimitError("schwab 429")
+def test_yahoo_skips_null_bars() -> None:
+    rows = extract_yahoo_candles(
+        {
+            "chart": {
+                "result": [
+                    {
+                        "timestamp": [1, 2],
+                        "indicators": {
+                            "quote": [
+                                {
+                                    "open": [None, 10],
+                                    "high": [None, 11],
+                                    "low": [None, 9],
+                                    "close": [None, 10.5],
+                                    "volume": [None, 3],
+                                }
+                            ]
+                        },
+                    }
+                ],
+                "error": None,
+            }
+        }
+    )
+    assert len(rows) == 1
+    assert rows[0]["close"] == 10.5
 
+
+def test_tradeadvocate_rate_limit() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(429, text="too many")
+
+    client = httpx.Client(
+        transport=httpx.MockTransport(handler),
+        base_url="https://query1.finance.yahoo.com",
+    )
     provider = TradeAdvocateProvider(
-        Settings(), schwab=_RateLimitedSchwab()  # type: ignore[arg-type]
+        Settings(), yahoo=YahooProvider(Settings(), client=client)
     )
     with pytest.raises(ProviderRateLimitError):
         provider.get_historical_candles(

@@ -47,6 +47,8 @@ def build_authorize_url(config: Settings | None = None) -> str:
         {
             "client_id": cfg.schwab_client_id,
             "redirect_uri": cfg.schwab_redirect_uri,
+            "response_type": "code",
+            "scope": "api",
         }
     )
     return f"{SCHWAB_AUTHORIZE_URL}?{qs}"

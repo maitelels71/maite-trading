@@ -10,7 +10,7 @@
 |-------|---------|-----------|
 | API | Lambda + HTTP API | ~$0 |
 | Data | DynamoDB on-demand | ~$0 |
-| UI Options | S3 + CloudFront (public) | cents |
+| UI Options | S3 + CloudFront + Basic Auth | cents |
 | UI Futures | S3 + CloudFront + Basic Auth | cents |
 | Secrets | Secrets Manager | ~$0.40/secret |
 | NAT / RDS / App Runner | **Not included** | $0 |
@@ -22,13 +22,13 @@ One API serves both frontends. Build mode is set with `NEXT_PUBLIC_APP_MODE=opti
 ### GitHub Actions (preferred)
 
 1. Repo secrets: `AWS_ROLE_ARN`
-2. Optional (recommended): `FUTURES_BASIC_AUTH_USER`, `FUTURES_BASIC_AUTH_PASSWORD`
-   - Defaults if unset: user `maite` / password `maite-futures` — **change these**
+2. Optional (recommended): `OPTIONS_BASIC_AUTH_*`, `FUTURES_BASIC_AUTH_*`
+   - Defaults if unset: Options `maite` / `maite-options`, Futures `maite` / `maite-futures` — **change these**
 3. Actions → **Deploy Cheap (SAM)** → Run workflow → `staging`
 4. Job summary shows:
    - `ApiUrl`
-   - Options `CloudFrontUrl` (public)
-   - Futures `FuturesCloudFrontUrl` (browser prompts for Basic Auth)
+   - Options `CloudFrontUrl` (Basic Auth)
+   - Futures `FuturesCloudFrontUrl` (Basic Auth)
 
 ### Local (optional)
 
@@ -56,7 +56,7 @@ aws s3 sync out/ s3://<FuturesWebBucketName>/ --delete
 ## After deploy
 
 1. Fill Schwab/TradeAdvocate keys in Secrets Manager: `maite-trading/staging/app`
-2. Bookmark Options URL (public) and Futures URL (private password)
+2. Bookmark Options + Futures URLs (browser will prompt for Basic Auth)
 3. API health: `{ApiUrl}/health`
 
 ## Expensive stack

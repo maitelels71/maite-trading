@@ -17,7 +17,7 @@ SUPPORTED_TIMEFRAMES: tuple[Timeframe, ...] = (
 
 # Seed universe for MVP (persisted in Prompt 3).
 # Options desk (Schwab): index ETFs + liquid megacaps for CR/E options scans.
-# Futures desk: analysis candles come from Schwab (/NQ, /MNQ, /ES, /MES).
+# Futures desk: analysis candles come from Yahoo (NQ=F / MNQ=F / ES=F / MES=F).
 MVP_INSTRUMENTS: tuple[dict[str, str], ...] = (
     {
         "symbol": "NQ",
@@ -103,6 +103,36 @@ MVP_INSTRUMENTS: tuple[dict[str, str], ...] = (
         "data_provider": DataProviderName.SCHWAB.value,
         "name": "Netflix Inc",
     },
+    {
+        "symbol": "IOVA",
+        "market_type": MarketType.STOCK.value,
+        "data_provider": DataProviderName.SCHWAB.value,
+        "name": "Iovance Biotherapeutics Inc",
+    },
+    {
+        "symbol": "IWM",
+        "market_type": MarketType.ETF.value,
+        "data_provider": DataProviderName.SCHWAB.value,
+        "name": "iShares Russell 2000 ETF",
+    },
+    {
+        "symbol": "USAR",
+        "market_type": MarketType.STOCK.value,
+        "data_provider": DataProviderName.SCHWAB.value,
+        "name": "USA Rare Earth Inc",
+    },
+    {
+        "symbol": "UUUU",
+        "market_type": MarketType.STOCK.value,
+        "data_provider": DataProviderName.SCHWAB.value,
+        "name": "Energy Fuels Inc",
+    },
+    {
+        "symbol": "ONDS",
+        "market_type": MarketType.STOCK.value,
+        "data_provider": DataProviderName.SCHWAB.value,
+        "name": "Ondas Holdings Inc",
+    },
 )
 
 STRATEGY_ORB = "opening_range_breakout"
@@ -122,3 +152,47 @@ STRATEGY_CR08_FIRST_RED = "cr08_first_red"
 STRATEGY_CR09_GAP_FLOOR = "cr09_gap_floor_put"
 STRATEGY_CR10_HANGER = "cr10_daily_hanger"
 STRATEGY_CR11_EARNINGS = "cr11_earnings_floor"
+
+# SMS alerts: Options TOP5 needs ≥2 playbooks agreeing on CALL or PUT.
+ALERT_TOP_N = 5
+ALERT_MIN_CONFLUENCE = 2
+
+OPTIONS_ALERT_STRATEGIES: tuple[str, ...] = (
+    STRATEGY_E01_BB_FLIP,
+    STRATEGY_E02_DAILY_MID,
+    STRATEGY_E03_MAGNET,
+    STRATEGY_E04_BB15_GAP,
+    STRATEGY_CR01_MA40,
+    STRATEGY_CR02_DROP,
+    STRATEGY_CR03_CHANNEL,
+    STRATEGY_CR04_GAP_UP,
+    STRATEGY_CR05_GAP_DOWN,
+    STRATEGY_CR06_FLOOR,
+    STRATEGY_CR07_PUT_CH,
+    STRATEGY_CR08_FIRST_RED,
+    STRATEGY_CR09_GAP_FLOOR,
+    STRATEGY_CR10_HANGER,
+    STRATEGY_CR11_EARNINGS,
+)
+
+FUTURES_ALERT_STRATEGIES: tuple[str, ...] = (STRATEGY_ML01_STRUCTURE,)
+
+STRATEGY_SHORT_LABEL: dict[str, str] = {
+    STRATEGY_E01_BB_FLIP: "E01",
+    STRATEGY_E02_DAILY_MID: "E02",
+    STRATEGY_E03_MAGNET: "E03",
+    STRATEGY_E04_BB15_GAP: "E04",
+    STRATEGY_ML01_STRUCTURE: "ML01",
+    STRATEGY_CR01_MA40: "CR01",
+    STRATEGY_CR02_DROP: "CR02",
+    STRATEGY_CR03_CHANNEL: "CR03",
+    STRATEGY_CR04_GAP_UP: "CR04",
+    STRATEGY_CR05_GAP_DOWN: "CR05",
+    STRATEGY_CR06_FLOOR: "CR06",
+    STRATEGY_CR07_PUT_CH: "CR07",
+    STRATEGY_CR08_FIRST_RED: "CR08",
+    STRATEGY_CR09_GAP_FLOOR: "CR09",
+    STRATEGY_CR10_HANGER: "CR10",
+    STRATEGY_CR11_EARNINGS: "CR11",
+    STRATEGY_ORB: "ORB",
+}

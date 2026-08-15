@@ -48,7 +48,7 @@ export const DAILY_REVIEW_SECTIONS: ChecklistSection[] = [
       },
       {
         id: "po-platform",
-        label: "Platforms ready (Schwab) + data ok",
+        label: "Platforms ready (Schwab / Tradovate) + data ok",
       },
     ],
   },

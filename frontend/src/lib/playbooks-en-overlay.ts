@@ -1023,4 +1023,207 @@ export const PLAYBOOK_EN: Record<string, PlaybookEnOverlay> = {
       },
     ],
   },
+
+  ml02: {
+    name: "Single Candle Mitigation",
+    markets: "Futures LONG/SHORT · NQ/MNQ · ES/MES · HTF OB 15m + SCM 1m/3m",
+    summary:
+      "Mitigate the HTF Order Block (supply/demand from the BOS impulse). Mark bias + HTF OB · sweep inducement · price returns into the OB · SCM inside the OB = entry trigger (sweeps prior candle extreme and closes back). SCM alone mid-range / without HTF OB = no trade. Candle color does not matter.",
+    sessionWindow: "Intraday · OB / bias 15m · SCM entry 1m–3m",
+    riskNotes: [
+      "Thesis = HTF OB mitigation — not a lone mid-range internal pullback",
+      "HTF bias (BOS / momentum) aligned with the OB side",
+      "Mark HTF OB: last impulse zone before BOS (supply sell / demand buy)",
+      "Inducement or engineering liquidity swept BEFORE accepting the return to the OB",
+      "Valid SCM only INSIDE / at the edge of the HTF OB: prior-candle sweep + close back",
+      "SL beyond OB / SCM wick; TP at opposite HTF structure",
+      "Stacking: new SCM in the same OB (or extreme OB) after a new inducement",
+    ],
+    invalidation: [
+      "SCM mid-range with no marked HTF OB (internal structure alone)",
+      "Enter HTF OB with no prior inducement (classic trap)",
+      "Trade against HTF BOS / bias",
+      "Candle that does not sweep the prior extreme (not SCM)",
+      "Body closes through the OB / SCM against you",
+      "Chase outside the HTF OB",
+    ],
+    entrySteps: [
+      {
+        id: "ml02-e1",
+        label: "HTF bias + mark HTF OB",
+        detail:
+          "SELL: bearish BOS → supply OB (last bullish impulse before BOS). BUY: bullish BOS → demand OB.",
+      },
+      {
+        id: "ml02-e2",
+        label: "Wait for inducement / eng. liquidity",
+        detail:
+          "Do not take the first mid pullback OB — sweep inducement first, then return to the HTF OB.",
+      },
+      {
+        id: "ml02-e3",
+        label: "Price returns to the HTF OB",
+        detail:
+          "Mitigating the HTF OB is the trade. No touch of the OB → no setup.",
+      },
+      {
+        id: "ml02-e4",
+        label: "SCM inside the OB (trigger)",
+        detail:
+          "SELL: sweeps prior high and closes below. BUY: sweeps prior low and closes above. Color irrelevant.",
+      },
+      {
+        id: "ml02-e5",
+        label: "Entry · SL · TP",
+        detail:
+          "Enter on SCM rejection. SL beyond OB/SCM. TP1 internal liquidity · TP2 HTF high/low.",
+      },
+    ],
+    exitSteps: [
+      { id: "ml02-x1", label: "TP1: liquidity / internal LTF swing" },
+      { id: "ml02-x2", label: "TP2: HTF structure (bias high/low)" },
+      {
+        id: "ml02-x3",
+        label: "BE / exit if body closes through OB / SCM against you",
+      },
+      { id: "ml02-x4", label: "No clean return to HTF OB → paper / no trade" },
+    ],
+    byTimeframe: [
+      {
+        timeframe: "15m / 1H",
+        focus: "Bias + HTF OB (thesis)",
+        steps: [
+          { id: "ml02-htf-1", label: "HTF BOS / momentum = direction" },
+          {
+            id: "ml02-htf-2",
+            label: "Mark HTF OB (supply/demand of the BOS impulse)",
+          },
+          {
+            id: "ml02-htf-3",
+            label: "Inducement first; mid OBs without HTF OB = traps",
+          },
+        ],
+      },
+      {
+        timeframe: "1m / 3m",
+        focus: "SCM in the OB (trigger)",
+        steps: [
+          {
+            id: "ml02-ltf-1",
+            label: "Confirm price inside / at edge of HTF OB",
+          },
+          {
+            id: "ml02-ltf-2",
+            label: "SCM: prior-candle sweep + close back",
+          },
+          {
+            id: "ml02-ltf-3",
+            label: "Entry + SL; stack only if new SCM stays in the OB",
+          },
+        ],
+      },
+    ],
+  },
+
+  ml02o: {
+    name: "Single Candle Mitigation",
+    markets: "Options CALL/PUT · HTF OB 15m/1H + LTF SCM · plan ≤35%",
+    summary:
+      "Mitigate the HTF Order Block (supply/demand from the BOS impulse). Mark bias + HTF OB · sweep inducement · price returns into the OB · SCM inside the OB = entry trigger (sweeps prior candle extreme and closes back). SCM alone mid-range / without HTF OB = no trade. Candle color does not matter.",
+    sessionWindow: "Intraday · OB / bias 15m/1H · SCM 5m–15m · options plan ≤35%",
+    riskNotes: [
+      "Thesis = HTF OB mitigation — not a lone mid-range internal pullback",
+      "HTF bias (BOS / momentum) aligned with the OB side",
+      "Mark HTF OB: last impulse zone before BOS (supply sell / demand buy)",
+      "Inducement or engineering liquidity swept BEFORE accepting the return to the OB",
+      "Valid SCM only INSIDE / at the edge of the HTF OB: prior-candle sweep + close back",
+      "SL beyond OB / SCM wick; TP at opposite HTF structure",
+      "Stacking: new SCM in the same OB (or extreme OB) after a new inducement",
+      "Options: ATM/OTM in range · plan 10/20/35% — not 100% plan",
+    ],
+    invalidation: [
+      "SCM mid-range with no marked HTF OB (internal structure alone)",
+      "Enter HTF OB with no prior inducement (classic trap)",
+      "Trade against HTF BOS / bias",
+      "Candle that does not sweep the prior extreme (not SCM)",
+      "Body closes through the OB / SCM against you",
+      "Chase outside the HTF OB",
+    ],
+    entrySteps: [
+      {
+        id: "ml02o-e1",
+        label: "HTF bias + mark HTF OB",
+        detail:
+          "PUT: bearish BOS → supply OB. CALL: bullish BOS → demand OB (15m/1H).",
+      },
+      {
+        id: "ml02o-e2",
+        label: "Wait for inducement / eng. liquidity",
+        detail:
+          "Do not take the first mid pullback OB — sweep inducement first, then return to the HTF OB.",
+      },
+      {
+        id: "ml02o-e3",
+        label: "Price returns to the HTF OB",
+        detail:
+          "Mitigating the HTF OB is the trade. No touch of the OB → no setup.",
+      },
+      {
+        id: "ml02o-e4",
+        label: "SCM inside the OB (trigger)",
+        detail:
+          "PUT: sweeps prior high and closes below. CALL: sweeps prior low and closes above. Color irrelevant.",
+      },
+      {
+        id: "ml02o-e5",
+        label: "Entry · SL · TP",
+        detail:
+          "Enter on SCM rejection. SL beyond OB/SCM. Options plan ≤35% · TP HTF swing.",
+      },
+    ],
+    exitSteps: [
+      { id: "ml02o-x1", label: "TP1: liquidity / internal LTF swing" },
+      { id: "ml02o-x2", label: "TP2: HTF structure (bias high/low)" },
+      {
+        id: "ml02o-x3",
+        label: "BE / exit if body closes through OB / SCM against you",
+      },
+      { id: "ml02o-x4", label: "No clean return to HTF OB → paper / no trade" },
+    ],
+    byTimeframe: [
+      {
+        timeframe: "15m / 1H",
+        focus: "Bias + HTF OB (thesis)",
+        steps: [
+          { id: "ml02o-htf-1", label: "HTF BOS / momentum = direction" },
+          {
+            id: "ml02o-htf-2",
+            label: "Mark HTF OB (supply/demand of the BOS impulse)",
+          },
+          {
+            id: "ml02o-htf-3",
+            label: "Inducement first; mid OBs without HTF OB = traps",
+          },
+        ],
+      },
+      {
+        timeframe: "5m / 15m",
+        focus: "SCM in the OB (trigger)",
+        steps: [
+          {
+            id: "ml02o-ltf-1",
+            label: "Confirm price inside / at edge of HTF OB",
+          },
+          {
+            id: "ml02o-ltf-2",
+            label: "SCM: prior-candle sweep + close back",
+          },
+          {
+            id: "ml02o-ltf-3",
+            label: "Entry + SL; stack only if new SCM stays in the OB",
+          },
+        ],
+      },
+    ],
+  },
 };

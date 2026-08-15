@@ -6,7 +6,7 @@
 # schemas/     Pydantic request/response DTOs
 # services/    Use cases (MarketDataService, StrategyEngine)
 # strategies/  Broker-agnostic algorithms (ORB, …)
-# providers/   Schwab + TradeAdvocate adapters
+# providers/   Schwab (equities) + TradeAdvocate/Yahoo (futures) adapters
 # ports/       Protocols (MarketDataProvider, Strategy, BrokerExecutionPort)
 # domain/      Pure types (Candle, Signal, Trade, …)
 # models/      SQLAlchemy entities (Prompt 3)

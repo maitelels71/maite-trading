@@ -1,6 +1,7 @@
 from fastapi import APIRouter
 
 from app.api.admin import router as admin_router
+from app.api.broker import router as broker_router
 from app.api.daily import router as daily_router
 from app.api.health import router as health_router
 from app.api.instruments import router as instruments_router
@@ -14,6 +15,7 @@ from app.api.strategy import strategies_router
 api_router = APIRouter()
 api_router.include_router(health_router)
 api_router.include_router(admin_router)
+api_router.include_router(broker_router)
 api_router.include_router(daily_router)
 api_router.include_router(journal_router)
 api_router.include_router(instruments_router)

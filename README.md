@@ -26,13 +26,13 @@ infra/aws/nested/              network | secrets | database | api | frontend
 ### Provider routing (MVP)
 
 - **Stocks / ETFs** → Charles Schwab (OAuth2)
-- **Futures** → TradeAdvocate (API auth)
+- **Futures** → Yahoo Finance chart API (analysis; delayed). Tradovate is execution only.
 - Strategy code never talks to brokers directly
 
 ### Auth (important)
 
-- **No app user login in v1** (personal use).
-- **Broker authentication is required** (Schwab OAuth2 + TradeAdvocate via Secrets Manager / `.env`).
+- **UI gate:** CloudFront HTTP Basic Auth on Options + Futures (browser login prompt; personal desk).
+- **Broker authentication is required** (Schwab OAuth2 + Tradovate via Secrets Manager / `.env`).
 
 ## AWS templates
 
@@ -42,7 +42,7 @@ Start here: [`infra/aws/README.md`](infra/aws/README.md)
 |----------|---------|
 | [`infra/aws/template.yaml`](infra/aws/template.yaml) | Root stack |
 | [`nested/network.yaml`](infra/aws/nested/network.yaml) | VPC / subnets / SGs |
-| [`nested/secrets.yaml`](infra/aws/nested/secrets.yaml) | Schwab + TradeAdvocate secrets |
+| [`nested/secrets.yaml`](infra/aws/nested/secrets.yaml) | Schwab + Tradovate secrets |
 | [`nested/database.yaml`](infra/aws/nested/database.yaml) | RDS PostgreSQL |
 | [`nested/api.yaml`](infra/aws/nested/api.yaml) | ECR + App Runner |
 | [`nested/frontend.yaml`](infra/aws/nested/frontend.yaml) | Amplify |
@@ -124,8 +124,8 @@ The dashboard calls the FastAPI backend for instruments, strategies, sync, evalu
 ## Security notes (v1)
 
 - Never commit `.env`, `.env.local`, or `.secrets/`
-- Schwab / TradeAdvocate credentials live in env vars or AWS Secrets Manager only
-- No app user login in v1; broker OAuth is still required for live market data
+- Schwab / Tradovate credentials live in env vars or AWS Secrets Manager only
+- UI Basic Auth on Options + Futures; broker OAuth is still required for live market data
 - Database should stay private (RDS in private subnets; not publicly open)
 - CORS is configured via `CORS_ORIGINS` (default `http://localhost:3000`)
 

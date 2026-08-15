@@ -650,12 +650,106 @@ export type OptionsEntryPlan = {
   rangeLabel: string;
   minmaxLabel: string;
   hasRange: boolean;
+  /** Suggested expiry YYYY-MM-DD (desk rule vs 10:00 ET). */
+  expIso: string;
+  /** Short display e.g. Fri 8/14 */
+  expLabel: string;
+  /** True when suggested expiry is the NY session calendar day (0DTE / hoy). */
+  expIsToday: boolean;
+  /** before_10 → hoy allowed; from_10 → next available after today. */
+  expRule: "before_10" | "from_10";
 };
+
+function nyClock(now = new Date()): {
+  iso: string;
+  hh: number;
+  weekday: number;
+} {
+  const fmt = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    hourCycle: "h23",
+  });
+  const parts = Object.fromEntries(
+    fmt.formatToParts(now).map((p) => [p.type, p.value]),
+  );
+  const iso = `${parts.year}-${parts.month}-${parts.day}`;
+  const [y, m, d] = iso.split("-").map(Number);
+  const weekday = new Date(Date.UTC(y, m - 1, d, 12)).getUTCDay();
+  return { iso, hh: Number(parts.hour), weekday };
+}
+
+function addDaysIso(isoDate: string, deltaDays: number): string {
+  const [y, m, d] = isoDate.split("-").map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  dt.setUTCDate(dt.getUTCDate() + deltaDays);
+  return dt.toISOString().slice(0, 10);
+}
+
+function weekdayUtc(isoDate: string): number {
+  const [y, m, d] = isoDate.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d, 12)).getUTCDay();
+}
+
+function nextWeekdayOnOrAfter(isoDate: string): string {
+  let d = isoDate;
+  for (let i = 0; i < 8; i += 1) {
+    const wd = weekdayUtc(d);
+    if (wd !== 0 && wd !== 6) return d;
+    d = addDaysIso(d, 1);
+  }
+  return isoDate;
+}
+
+function formatExpShort(isoDate: string): string {
+  const [y, m, d] = isoDate.split("-").map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d, 12));
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone: "UTC",
+    weekday: "short",
+    month: "numeric",
+    day: "numeric",
+  }).format(dt);
+}
+
+/**
+ * Desk expiry helper (no live chain):
+ * - Before 10:00 ET → next weekday exp, including today (hoy / 0DTE OK)
+ * - From 10:00 ET → next weekday after today (e.g. Fri after 10 → Mon)
+ * Uses Mon–Fri session days (liquid names with dailies). Confirm on live chain.
+ */
+export function suggestOptionExpDate(
+  symbol: string,
+  now = new Date(),
+): Pick<OptionsEntryPlan, "expIso" | "expLabel" | "expIsToday" | "expRule"> {
+  void symbol; // reserved if we later branch thin names to weeklies
+  const clock = nyClock(now);
+  const before10 = clock.hh < 10;
+  const expRule: "before_10" | "from_10" = before10 ? "before_10" : "from_10";
+  // Before 10am on a weekday → today can be the exp. Otherwise start tomorrow.
+  const start =
+    before10 && clock.weekday !== 0 && clock.weekday !== 6
+      ? clock.iso
+      : addDaysIso(clock.iso, 1);
+
+  const expIso = nextWeekdayOnOrAfter(start);
+
+  return {
+    expIso,
+    expLabel: formatExpShort(expIso),
+    expIsToday: expIso === clock.iso,
+    expRule,
+  };
+}
 
 export function buildOptionsEntryPlan(
   symbol: string,
   side: "long" | "short" | string | null | undefined,
   spotRaw: number | string | null | undefined,
+  now = new Date(),
 ): OptionsEntryPlan | null {
   const spot =
     typeof spotRaw === "number"
@@ -680,6 +774,8 @@ export function buildOptionsEntryPlan(
       ? Math.round(entryPremium * (1 + pct) * 100) / 100
       : 0;
 
+  const exp = suggestOptionExpDate(symbol, now);
+
   return {
     symbol: symbol.toUpperCase(),
     optionType,
@@ -694,6 +790,7 @@ export function buildOptionsEntryPlan(
     rangeLabel: band?.optimalLabel ?? "—",
     minmaxLabel: band?.minmaxLabel ?? "—",
     hasRange: Boolean(band),
+    ...exp,
   };
 }
 

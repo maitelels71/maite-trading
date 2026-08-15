@@ -11,6 +11,7 @@ import { LocaleProvider, useLocale } from "@/components/LocaleProvider";
 import { MindDesk } from "@/components/MindDesk";
 import { NewsDesk } from "@/components/NewsDesk";
 import { OptionsChecklistDesk } from "@/components/OptionsChecklistDesk";
+import { PositionsDesk } from "@/components/PositionsDesk";
 import { SettingsMenu } from "@/components/SettingsMenu";
 import { StickyNotesDesk } from "@/components/StickyNotesDesk";
 import { StrategiesDesk } from "@/components/StrategiesDesk";
@@ -25,6 +26,7 @@ type AppView =
   | "mind"
   | "stickyNotes"
   | "optionsChecklist"
+  | "positions"
   | "news"
   | "admin";
 
@@ -41,17 +43,30 @@ type ExtraItem = {
   labelKey: string;
 };
 
-/** Daily trading flow — stays on the primary header row. */
+/** Live trading flow — primary header (action path during the session). */
 const FLOW: StepItem[] = [
-  { kind: "step", step: 1, id: "news", labelKey: "nav.news" },
-  { kind: "step", step: 2, id: "daily", labelKey: "nav.daily" },
-  { kind: "step", step: 3, id: "strategies", labelKey: "nav.strategies" },
-  { kind: "step", step: 4, id: "analyzer", labelKey: "nav.analyzer" },
-  { kind: "step", step: 5, id: "journal", labelKey: "nav.journal" },
+  { kind: "step", step: 1, id: "strategies", labelKey: "nav.strategies" },
+  ...(APP_MODE === "options"
+    ? ([{ kind: "step", step: 2, id: "positions", labelKey: "nav.positions" }] as StepItem[])
+    : []),
+  {
+    kind: "step",
+    step: APP_MODE === "options" ? 3 : 2,
+    id: "analyzer",
+    labelKey: "nav.analyzer",
+  },
+  {
+    kind: "step",
+    step: APP_MODE === "options" ? 4 : 3,
+    id: "journal",
+    labelKey: "nav.journal",
+  },
 ];
 
-/** Reference / mindset tools — second quieter row under the flow. */
+/** Prep / reference — quieter second row (not in the live click path). */
 const DESK_TOOLS: ExtraItem[] = [
+  { kind: "extra", id: "daily", labelKey: "nav.daily" },
+  { kind: "extra", id: "news", labelKey: "nav.news" },
   { kind: "extra", id: "stickyNotes", labelKey: "nav.stickyNotes" },
   ...(APP_MODE === "options"
     ? ([
@@ -66,7 +81,7 @@ const DESK_TOOLS: ExtraItem[] = [
 ];
 
 function AppShellInner() {
-  const [view, setView] = useState<AppView>("news");
+  const [view, setView] = useState<AppView>("strategies");
   const [aboutOpen, setAboutOpen] = useState(false);
   const { t } = useLocale();
 
@@ -78,7 +93,7 @@ function AppShellInner() {
         <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-x-3 gap-y-2 px-4 py-2.5 sm:px-6">
           <button
             type="button"
-            onClick={() => setView("news")}
+            onClick={() => setView("strategies")}
             className="group mr-1 flex min-w-0 items-center gap-3 rounded-lg py-1 pr-2 text-left transition hover:bg-[var(--hover)]"
             aria-label={APP_DOCUMENT_TITLE}
           >
@@ -102,11 +117,11 @@ function AppShellInner() {
 
           <nav
             className="flex min-w-0 flex-1 flex-wrap items-center gap-1"
-            aria-label="Daily flow"
+            aria-label="Trading flow"
           >
-            {FLOW.map((item) => {
+            {FLOW.map((item, index) => {
               const active = view === item.id;
-              const showArrow = item.step < 5;
+              const showArrow = index < FLOW.length - 1;
               return (
                 <div key={item.id} className="flex items-center gap-1">
                   <StepButton
@@ -184,6 +199,8 @@ function AppShellInner() {
         <StickyNotesDesk />
       ) : view === "optionsChecklist" ? (
         <OptionsChecklistDesk />
+      ) : view === "positions" ? (
+        <PositionsDesk />
       ) : view === "strategies" ? (
         <StrategiesDesk venue={APP_VENUE} />
       ) : view === "analyzer" ? (

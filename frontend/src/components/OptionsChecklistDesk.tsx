@@ -13,6 +13,7 @@ import {
   type OptionsTradeTicket,
 } from "@/lib/options-checklist";
 import type { Instrument } from "@/lib/types";
+import { groupEquitySymbols } from "@/lib/instrument-groups";
 
 const FALLBACK_WATCHLIST = [
   "SPY",
@@ -25,6 +26,11 @@ const FALLBACK_WATCHLIST = [
   "NVDA",
   "TSLA",
   "NFLX",
+  "IOVA",
+  "IWM",
+  "USAR",
+  "UUUU",
+  "ONDS",
 ];
 
 function todayNyIso(): string {
@@ -173,9 +179,13 @@ export function OptionsChecklistDesk() {
     const fromApi = instruments
       .filter((i) => !i.data_provider || i.data_provider === APP_VENUE)
       .map((i) => i.symbol.toUpperCase());
-    const merged = [...new Set([...fromApi, ...FALLBACK_WATCHLIST])].sort();
-    return merged;
+    return [...new Set([...fromApi, ...FALLBACK_WATCHLIST])];
   }, [instruments]);
+
+  const watchlistGroups = useMemo(
+    () => groupEquitySymbols(watchlist),
+    [watchlist],
+  );
 
   const total = useMemo(
     () =>
@@ -246,10 +256,14 @@ export function OptionsChecklistDesk() {
       title={t("optionsChecklist.fieldTicker")}
     >
       <option value="">{t("optionsChecklist.pickTicker")}</option>
-      {watchlist.map((sym) => (
-        <option key={sym} value={sym}>
-          {sym}
-        </option>
+      {watchlistGroups.map((g) => (
+        <optgroup key={g.id} label={t(g.labelKey)}>
+          {g.symbols.map((sym) => (
+            <option key={sym} value={sym}>
+              {sym}
+            </option>
+          ))}
+        </optgroup>
       ))}
       {ticket.ticker &&
       !watchlist.includes(ticket.ticker.toUpperCase()) ? (

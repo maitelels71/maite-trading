@@ -6,22 +6,23 @@ Same codebase; build-time `NEXT_PUBLIC_APP_MODE`:
 
 | Mode | Venue | CloudFront |
 |------|--------|------------|
-| `options` (default) | Schwab · ETFs/Options | Public |
-| `futures` | TradeAdvocate · Futures | Private (HTTP Basic Auth) |
+| `options` (default) | Schwab · ETFs/Options | Private (HTTP Basic Auth) |
+| `futures` | Tradovate · Futures | Private (HTTP Basic Auth) |
 
-Nav flow (both): **1 News → 2 Daily → 3 Strategies → 4 Analyzer → 5 Journal** (+ Mind / Admin).
+Browser prompts for user/password on first visit (saved by the browser). Defaults: `maite` / `maite-options` (Options) and `maite` / `maite-futures` (Futures). Override via GitHub secrets `OPTIONS_BASIC_AUTH_*` / `FUTURES_BASIC_AUTH_*`.
+
+Nav flow (Options): **1 Trading Session → 2 Positions → 3 Analyzer → 4 Journal**.  
+Prep under **Desk tools**: Daily · News · Sticky · Checklist · Mind.
 
 ## Tabs
 
-| Tab | Purpose |
-|-----|---------|
-| **News** | Macro calendar + session headlines |
-| **Daily** | Pre-open / session / post checklist + bias + notes |
-| **Strategies** | Playbooks + live scan for this app’s venue only |
-| **Analyzer** | Deep-dive one symbol (venue locked to app mode) |
-| **Journal** | Trade form → Notion Trade Journal Desk |
-| **Mind** | Psychotrading ritual / mantras |
-| **Admin** | Schwab token + Secrets Manager publish |
+| Tab | Where | Purpose |
+|-----|--------|---------|
+| **Trading Session** | Primary | Scan, plan, capital 1%, open to Schwab |
+| **Positions** | Primary (Options) | Open positions, TP 10/20/35, closes |
+| **Analyzer** | Primary | Deep-dive one symbol |
+| **Journal** | Primary | Trade → Notion |
+| **Daily / News / …** | Desk tools | Prep & reference (not in live click path) |
 
 Theme: **Light / Dark** toggle in the top nav (`maite.theme`).
 
@@ -35,11 +36,11 @@ Checklist inspired by discretionary process: calendar, bias, levels, risk limits
 
 Tab **Journal** → `POST /journal/notion` creates one Notion page per trade in **Trade Journal Desk** (`NOTION_JOURNAL_DATABASE_ID`). Fields: Activo, Side, Session, Playbook, TF, Entry/SL/TP/BE, R, PnL, stuck-to-plan, thesis / what happened / lesson. Screenshots: up to 3 before (1H / 15m / entry) and 2 after; compressed in-browser and uploaded via Notion File Upload API.
 
-## Strategies
+## Trading Session
 
 Playbooks in `frontend/src/lib/playbooks.ts` are tagged with `venue`: `schwab` (ETFs/Options) or `tradeadvocate` (Futures). Each desk locks the scan to that data provider.
 
-### Futures (TradeAdvocate)
+### Futures (Tradovate)
 
 - **ML01** (`ml01_structure_choch_bos`) — Major 1H structure (HH/HL) + 15m ChoCh/BOS entry. First futures playbook.
 
@@ -51,10 +52,10 @@ Bollinger options system: **E01 → E02 → E03 → E04** (Schwab). ORB playbook
 - **E03** (`magnet_ma20_gap`) — Scan ready  
 - **E01–E02** — checklist-only until wired
 
-### Futures (TradeAdvocate)
+### Futures (Tradovate)
 
 No playbooks in the desk yet (ORB FUT removed). Add futures books when ready.
 
 ### Futures data (analysis)
 
-The futures desk scans like options: candles only. It uses the same Schwab token (`SCHWAB_*`). Desk symbols `NQ` / `MNQ` / `ES` / `MES` map to Schwab `/NQ`, `/MNQ`, `/ES`, `/MES`. Tradovate / MFF is not required for Analyzer or ML01.
+The futures desk scans like options: candles only. NQ / MNQ / ES / MES map to Yahoo continuous contracts (`NQ=F`, `MNQ=F`, `ES=F`, `MES=F`). Delayed ~10–15 minutes; no API key. Tradovate / MFF is for execution only — not required for Analyzer or ML01.

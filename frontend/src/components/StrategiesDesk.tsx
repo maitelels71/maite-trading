@@ -10,7 +10,13 @@ import {
 } from "react";
 
 import { DeskSession, DeskStack } from "@/components/DeskSession";
-import { fetchInstruments, scanStrategies, syncMarketData } from "@/lib/api";
+import {
+  brokerOpenOption,
+  fetchBrokerPositions,
+  fetchInstruments,
+  scanStrategies,
+  syncMarketData,
+} from "@/lib/api";
 import { useLocale } from "@/components/LocaleProvider";
 import {
   playbookByStrategyKey,
@@ -24,11 +30,14 @@ import {
   localizedPlaybookName,
 } from "@/lib/playbook-localize";
 import { buildOptionsEntryPlan } from "@/lib/options-premium-ranges";
+import { sizeLongOption } from "@/lib/option-sizing";
+import { groupInstrumentsForVenue } from "@/lib/instrument-groups";
 import {
   FALLBACK_INSTRUMENTS,
   TIMEFRAMES,
   sortFuturesInstruments,
   providerLabel,
+  type BrokerAccount,
   type Instrument,
   type ScanHit,
   type ScanResponse,
@@ -38,6 +47,7 @@ import {
 const AUTO_LIVE_MS = 150_000; // 2.5 minutes
 const AUTO_LIVE_KEY = "maite.strategies.autoLive";
 const AUTO_DESK_KEY = "maite.strategies.autoDesk";
+const ARM_OPENS_KEY = "maite.strategies.armOpens";
 const DESK_TOP_N = 5;
 const DESK_SYNC_TFS = ["1h", "1d"] as const;
 const DESK_LOOKBACK_DAYS = 60;
@@ -60,6 +70,25 @@ function hitSide(hit: ScanHit): "long" | "short" | null {
   if (hit.status.includes("long") || hit.status.includes("call")) return "long";
   if (hit.status.includes("short") || hit.status.includes("put")) return "short";
   return null;
+}
+
+/** Signals / active first, then watching, then everything else. */
+function scanStatusRank(status: string): number {
+  if (status.startsWith("signal_") || status.startsWith("active_")) return 0;
+  if (status === "watching") return 1;
+  if (status === "flat_after_trades") return 2;
+  if (status === "no_data" || status === "error") return 3;
+  return 4;
+}
+
+function sortScanBoard(hits: ScanHit[]): ScanHit[] {
+  return [...hits].sort((a, b) => {
+    const rank = scanStatusRank(a.status) - scanStatusRank(b.status);
+    if (rank !== 0) return rank;
+    const bySymbol = a.symbol.localeCompare(b.symbol);
+    if (bySymbol !== 0) return bySymbol;
+    return a.strategy.localeCompare(b.strategy);
+  });
 }
 
 /**
@@ -241,6 +270,21 @@ function readAutoDesk(): boolean {
   return window.localStorage.getItem(AUTO_DESK_KEY) === "1";
 }
 
+function readArmOpens(): boolean {
+  if (typeof window === "undefined") return false;
+  return window.localStorage.getItem(ARM_OPENS_KEY) === "1";
+}
+
+function moneyUsd(n: number | null | undefined): string {
+  if (n == null || !Number.isFinite(n)) return "—";
+  return n.toLocaleString(undefined, {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}
+
 type StrategiesDeskProps = {
   venue: Venue;
 };
@@ -266,6 +310,15 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
   const [autoLive, setAutoLive] = useState(false);
   const [autoDesk, setAutoDesk] = useState(false);
   const [instruments, setInstruments] = useState<Instrument[]>([]);
+  const [brokerAccounts, setBrokerAccounts] = useState<BrokerAccount[]>([]);
+  const [tradingEnabled, setTradingEnabled] = useState(false);
+  const [capitalNote, setCapitalNote] = useState<string | null>(null);
+  const [capitalError, setCapitalError] = useState<string | null>(null);
+  const [capitalPending, setCapitalPending] = useState(false);
+  const [armOpens, setArmOpens] = useState(false);
+  const [openNote, setOpenNote] = useState<string | null>(null);
+  const [openError, setOpenError] = useState<string | null>(null);
+  const [openingKey, setOpeningKey] = useState<string | null>(null);
   const runGen = useRef(0);
   const deskGen = useRef(0);
 
@@ -281,6 +334,7 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
       setAutoLive(live);
       setAutoDesk(desk);
     }
+    setArmOpens(readArmOpens());
   }, []);
 
   useEffect(() => {
@@ -306,6 +360,127 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
       cancelled = true;
     };
   }, []);
+
+  const primaryAccount = useMemo(() => {
+    if (brokerAccounts.length === 0) return null;
+    return [...brokerAccounts].sort(
+      (a, b) => (b.equity ?? 0) - (a.equity ?? 0),
+    )[0];
+  }, [brokerAccounts]);
+
+  const loadCapital = useCallback(async () => {
+    if (venue !== "schwab") return;
+    setCapitalPending(true);
+    setCapitalError(null);
+    try {
+      const res = await fetchBrokerPositions();
+      setBrokerAccounts(res.accounts ?? []);
+      setTradingEnabled(Boolean(res.trading_enabled));
+      const best = [...(res.accounts ?? [])].sort(
+        (a, b) => (b.equity ?? 0) - (a.equity ?? 0),
+      )[0];
+      if (best) {
+        setCapitalNote(
+          t("strategies.capitalEquity")
+            .replace("{eq}", moneyUsd(best.equity))
+            .replace("{risk}", moneyUsd(best.risk_budget))
+            .replace(
+              "{cash}",
+              moneyUsd(best.available_funds ?? best.cash_balance),
+            ),
+        );
+      } else {
+        setCapitalNote(t("strategies.capitalNeed"));
+      }
+    } catch (err) {
+      setCapitalError(
+        err instanceof Error ? err.message : t("strategies.openFail"),
+      );
+      setCapitalNote(null);
+    } finally {
+      setCapitalPending(false);
+    }
+  }, [venue, t]);
+
+  useEffect(() => {
+    if (venue === "schwab") {
+      void loadCapital();
+    }
+  }, [venue, loadCapital]);
+
+  const openFromPlan = useCallback(
+    async (
+      plan: NonNullable<ReturnType<typeof buildOptionsEntryPlan>>,
+      rowKey: string,
+    ) => {
+      if (!primaryAccount?.hashValue) {
+        setOpenError(t("strategies.capitalNeed"));
+        return;
+      }
+      if (!tradingEnabled) {
+        setOpenError(t("strategies.openNeedTrading"));
+        return;
+      }
+      if (!armOpens) {
+        setOpenError(t("strategies.openNeedArm"));
+        return;
+      }
+      const sizing = sizeLongOption({
+        entryPremium: plan.entryPremium,
+        equity: primaryAccount.equity ?? 0,
+        cashAvailable:
+          primaryAccount.available_funds ?? primaryAccount.cash_balance ?? 0,
+      });
+      if (!sizing.canOpen) {
+        setOpenError(
+          t("strategies.openTooRich")
+            .replace("{cost}", moneyUsd(sizing.costPerContract))
+            .replace("{risk}", moneyUsd(sizing.riskBudget)),
+        );
+        return;
+      }
+      const ok = window.confirm(
+        t("strategies.openConfirm")
+          .replace("{n}", String(sizing.contracts))
+          .replace("{sym}", plan.symbol)
+          .replace("{type}", plan.optionType)
+          .replace("{strike}", moneyUsd(plan.strike))
+          .replace("{exp}", plan.expLabel)
+          .replace("{px}", moneyUsd(plan.entryPremium))
+          .replace("{cost}", moneyUsd(sizing.costPerContract * sizing.contracts))
+          .replace("{risk}", moneyUsd(sizing.riskBudget)),
+      );
+      if (!ok) return;
+      setOpeningKey(rowKey);
+      setOpenError(null);
+      setOpenNote(null);
+      try {
+        const res = await brokerOpenOption({
+          account_hash: primaryAccount.hashValue,
+          underlying: plan.symbol,
+          option_type: plan.optionType,
+          strike: plan.strike,
+          exp_iso: plan.expIso,
+          entry_premium: plan.entryPremium,
+          quantity: sizing.contracts,
+          confirm_live: true,
+        });
+        setOpenNote(
+          t("strategies.openOk")
+            .replace("{sym}", res.option_symbol || plan.symbol)
+            .replace("{id}", res.order_id || "—"),
+        );
+        void loadCapital();
+      } catch (err) {
+        setOpenError(
+          err instanceof Error ? err.message : t("strategies.openFail"),
+        );
+      } finally {
+        setOpeningKey(null);
+      }
+    },
+    [primaryAccount, tradingEnabled, armOpens, t, loadCapital],
+  );
 
   useEffect(() => {
     if (!books.some((p) => p.id === selectedId)) {
@@ -336,13 +511,13 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
     if (playbook?.preferredTimeframe) return [playbook.preferredTimeframe];
     return [effectiveTf];
   }, [playbook?.syncTimeframes, playbook?.preferredTimeframe, effectiveTf]);
-  const lookbackDays = playbook?.syncLookbackDays ?? 7;
 
   const venueInstruments = useMemo(() => {
     const filtered = instruments.filter((i) => i.data_provider === venue);
-    return venue === "tradeadvocate"
-      ? sortFuturesInstruments(filtered)
-      : filtered;
+    if (venue === "tradeadvocate") {
+      return sortFuturesInstruments(filtered);
+    }
+    return groupInstrumentsForVenue(filtered, "schwab").flatMap((g) => g.items);
   }, [instruments, venue]);
 
   const deskStrategyKeys = useMemo(
@@ -393,53 +568,58 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
     return { syncedBars, syncErrors };
   }
 
-  const syncAndScan = useCallback(async () => {
-    if (!playbook?.strategyKey) {
-      setError(t("strategies.draftError"));
-      setScan(null);
-      return;
-    }
-    const day = operativeSessionNyIso();
-    setSessionDate(day);
-    const gen = ++runGen.current;
-    setError(null);
-    setSyncNote(t("strategies.syncing"));
+  const syncAndScan = useCallback(
+    async (override?: StrategyPlaybook) => {
+      const pb = override ?? playbook;
+      if (!pb?.strategyKey) {
+        setError(t("strategies.draftError"));
+        setScan(null);
+        return;
+      }
+      const day = operativeSessionNyIso();
+      setSessionDate(day);
+      const gen = ++runGen.current;
+      setError(null);
+      setSyncNote(t("strategies.syncing"));
 
-    const synced = await syncUniverse(syncTfs, lookbackDays, gen, runGen, day);
-    if (!synced) return;
+      const scanTf = pb.preferredTimeframe ?? timeframe;
+      const tfs =
+        pb.syncTimeframes?.length
+          ? pb.syncTimeframes
+          : pb.preferredTimeframe
+            ? [pb.preferredTimeframe]
+            : [scanTf];
+      const lookback = pb.syncLookbackDays ?? 7;
 
-    setSyncNote(
-      t("strategies.syncDone")
-        .replace("{bars}", String(synced.syncedBars))
-        .replace("{symbols}", String(universe.length))
-        .replace("{errors}", String(synced.syncErrors)),
-    );
+      const synced = await syncUniverse(tfs, lookback, gen, runGen, day);
+      if (!synced) return;
 
-    try {
-      const res = await scanStrategies({
-        strategies: [playbook.strategyKey],
-        timeframe: effectiveTf,
-        session_date: day,
-        data_provider: venue,
-        matches_only: false,
-      });
-      if (gen !== runGen.current) return;
-      setScan(res);
-      if (res.session_date) setSessionDate(res.session_date);
-    } catch (err) {
-      if (gen !== runGen.current) return;
-      setError(err instanceof Error ? err.message : "Scan failed");
-      setScan(null);
-    }
-  }, [
-    playbook,
-    lookbackDays,
-    syncTfs,
-    universe,
-    venue,
-    effectiveTf,
-    t,
-  ]);
+      setSyncNote(
+        t("strategies.syncDone")
+          .replace("{bars}", String(synced.syncedBars))
+          .replace("{symbols}", String(universe.length))
+          .replace("{errors}", String(synced.syncErrors)),
+      );
+
+      try {
+        const res = await scanStrategies({
+          strategies: [pb.strategyKey],
+          timeframe: scanTf,
+          session_date: day,
+          data_provider: venue,
+          matches_only: false,
+        });
+        if (gen !== runGen.current) return;
+        setScan(res);
+        if (res.session_date) setSessionDate(res.session_date);
+      } catch (err) {
+        if (gen !== runGen.current) return;
+        setError(err instanceof Error ? err.message : "Scan failed");
+        setScan(null);
+      }
+    },
+    [playbook, timeframe, universe, venue, t],
+  );
 
   const runDeskTop5 = useCallback(async () => {
     if (deskStrategyKeys.length === 0) {
@@ -488,14 +668,6 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
       if (gen !== deskGen.current) return;
       const ranked = rankByConfluence(allMatches, DESK_TOP_N);
       setDeskGroups(ranked);
-      // Keep Focus checkbox across auto refreshes when the row is still in TOP 5
-      setDeskFocusKey((prev) => {
-        if (!prev) return null;
-        const stillThere = ranked.some((g) =>
-          g.hits.some((h) => `${h.symbol}::${h.strategy}` === prev),
-        );
-        return stillThere ? prev : null;
-      });
       const strategyHits = ranked.reduce((n, g) => n + g.confluence, 0);
       setDeskNote(
         t("strategies.deskTopSummary")
@@ -504,12 +676,26 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
           .replace("{session}", day)
           .replace("{when}", formatNyDateTime(new Date(), locale)),
       );
+
+      // Routine: Focus the first TOP 5 strategy row, then Sync & Scan that playbook.
+      const firstHit = ranked[0]?.hits[0];
+      const focusPb = firstHit
+        ? playbookByStrategyKey(firstHit.strategy)
+        : undefined;
+      if (firstHit && focusPb?.strategyKey) {
+        setDeskFocusKey(`${firstHit.symbol}::${firstHit.strategy}`);
+        setSelectedId(focusPb.id);
+        if (gen !== deskGen.current) return;
+        await syncAndScan(focusPb);
+      } else {
+        setDeskFocusKey(null);
+      }
     } catch (err) {
       if (gen !== deskGen.current) return;
       setDeskError(err instanceof Error ? err.message : "Desk scan failed");
       setDeskGroups([]);
     }
-  }, [deskStrategyKeys, universe, venue, t, locale]);
+  }, [deskStrategyKeys, universe, venue, t, locale, syncAndScan]);
 
   const runSyncAndScan = useCallback(() => {
     startTransition(async () => {
@@ -577,17 +763,18 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
   }, [autoDesk, deskStrategyKeys.length, venue, runDeskTop5]);
 
   const matches = useMemo(
-    () => (scan?.hits ?? []).filter((h) => h.matched),
+    () => sortScanBoard((scan?.hits ?? []).filter((h) => h.matched)),
     [scan],
   );
-  const board = scan?.hits ?? [];
+  const board = useMemo(() => sortScanBoard(scan?.hits ?? []), [scan]);
 
   function toggleStep(id: string) {
     setCheckedSteps((prev) => ({ ...prev, [id]: !prev[id] }));
   }
 
   const titleKey = "strategies.title";
-  const dataViaKey = "strategies.dataViaSchwab";
+  const dataViaKey =
+    venue === "schwab" ? "strategies.dataViaSchwab" : "strategies.dataViaTa";
 
   const field =
     "w-full rounded-md border border-[var(--border-strong)] bg-[var(--surface)] px-2.5 py-1.5 text-xs";
@@ -635,6 +822,70 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
           {venue === "schwab" ? t("about.modeOptions") : t("about.modeFutures")}
         </span>
       </div>
+
+      {venue === "schwab" ? (
+        <div className="rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <p className="text-[10px] font-semibold uppercase tracking-[0.06em] text-[var(--muted)]">
+                {t("strategies.capitalTitle")}
+              </p>
+              <p className="mt-0.5 text-[11px] text-[var(--muted)]">
+                {t("strategies.capitalHint")}
+              </p>
+            </div>
+            <button
+              type="button"
+              disabled={capitalPending}
+              onClick={() => void loadCapital()}
+              className="rounded-md border border-[var(--border)] px-2.5 py-1 text-[11px] font-medium hover:bg-[var(--hover)] disabled:opacity-50"
+            >
+              {capitalPending
+                ? t("strategies.capitalLoading")
+                : t("strategies.capitalLoad")}
+            </button>
+          </div>
+          {capitalNote ? (
+            <p className="mt-1.5 text-[12px] font-medium text-[var(--foreground)]">
+              {capitalNote}
+            </p>
+          ) : null}
+          {capitalError ? (
+            <p className="mt-1 text-[11px] text-[var(--danger)]">{capitalError}</p>
+          ) : null}
+          {!tradingEnabled && brokerAccounts.length > 0 ? (
+            <p className="mt-1 text-[11px] text-[var(--warn)]">
+              {t("strategies.openNeedTrading")}
+            </p>
+          ) : null}
+          <label className="mt-2 flex cursor-pointer items-start gap-2 rounded-md border border-[var(--border)] bg-[var(--surface-muted)] px-2.5 py-1.5 text-[11px] leading-snug">
+            <input
+              type="checkbox"
+              className="mt-0.5 h-3.5 w-3.5 accent-[var(--accent)]"
+              checked={armOpens}
+              onChange={(e) => {
+                const on = e.target.checked;
+                setArmOpens(on);
+                window.localStorage.setItem(ARM_OPENS_KEY, on ? "1" : "0");
+              }}
+            />
+            <span>
+              <span className="font-semibold text-[var(--foreground)]">
+                {t("strategies.armOpens")}
+              </span>
+              <span className="mt-0.5 block text-[var(--muted)]">
+                {t("strategies.armOpensBody")}
+              </span>
+            </span>
+          </label>
+          {openNote ? (
+            <p className="mt-1.5 text-[11px] text-[var(--ok)]">{openNote}</p>
+          ) : null}
+          {openError ? (
+            <p className="mt-1 text-[11px] text-[var(--danger)]">{openError}</p>
+          ) : null}
+        </div>
+      ) : null}
 
       <DeskSession
         first
@@ -751,6 +1002,9 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
                               if (!pb) return;
                               setDeskFocusKey(rowKey);
                               setSelectedId(pb.id);
+                              startTransition(async () => {
+                                await syncAndScan(pb);
+                              });
                             }}
                           />
                         </td>
@@ -805,12 +1059,25 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
                                   hit.last_signal.price,
                                 );
                                 if (!plan) return null;
+                                const rowOpenKey = `${hit.symbol}::${hit.strategy}::open`;
                                 return (
-                                  <div className="text-[10px] leading-snug text-[var(--foreground)]">
-                                    {plan.optionType} strike ≈ {plan.strike}
-                                    {plan.hasRange
-                                      ? ` · prima ${plan.rangeLabel} · TP 10/20/35: $${plan.tp10}/$${plan.tp20}/$${plan.tp35}`
-                                      : ""}
+                                  <div className="space-y-1 text-[10px] leading-snug text-[var(--foreground)]">
+                                    <div>
+                                      {plan.optionType} strike ≈ {plan.strike}
+                                      {` · Exp ${plan.expLabel}${plan.expIsToday ? " (hoy)" : ""}`}
+                                      {plan.hasRange
+                                        ? ` · prima ${plan.rangeLabel} · TP 10/20/35: $${plan.tp10}/$${plan.tp20}/$${plan.tp35}`
+                                        : ""}
+                                    </div>
+                                    <OpenPlanButton
+                                      plan={plan}
+                                      rowKey={rowOpenKey}
+                                      account={primaryAccount}
+                                      tradingEnabled={tradingEnabled}
+                                      armOpens={armOpens}
+                                      opening={openingKey === rowOpenKey}
+                                      onOpen={openFromPlan}
+                                    />
                                   </div>
                                 );
                               })()
@@ -937,7 +1204,11 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
             </span>
           ) : null}
           <span className="text-[10px] text-[var(--muted)]">
-            {t("strategies.syncHint").replace("{tfs}", syncTfs.join(" + "))}
+            {t(
+              venue === "schwab"
+                ? "strategies.syncHint"
+                : "strategies.syncHintFutures",
+            ).replace("{tfs}", syncTfs.join(" + "))}
           </span>
         </div>
 
@@ -978,6 +1249,11 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
                 hit={hit}
                 priorSession={premarket}
                 showOptionsPlan={venue === "schwab"}
+                account={primaryAccount}
+                tradingEnabled={tradingEnabled}
+                armOpens={armOpens}
+                openingKey={openingKey}
+                onOpen={openFromPlan}
               />
             ))}
           </div>
@@ -1273,10 +1549,23 @@ function HitCard({
   hit,
   priorSession = false,
   showOptionsPlan = false,
+  account = null,
+  tradingEnabled = false,
+  armOpens = false,
+  openingKey = null,
+  onOpen,
 }: {
   hit: ScanHit;
   priorSession?: boolean;
   showOptionsPlan?: boolean;
+  account?: BrokerAccount | null;
+  tradingEnabled?: boolean;
+  armOpens?: boolean;
+  openingKey?: string | null;
+  onOpen?: (
+    plan: NonNullable<ReturnType<typeof buildOptionsEntryPlan>>,
+    rowKey: string,
+  ) => void;
 }) {
   const { locale, t } = useLocale();
   const pb = playbookByStrategyKey(hit.strategy);
@@ -1294,6 +1583,7 @@ function HitCard({
           hit.last_signal.price,
         )
       : null;
+  const rowKey = `${hit.symbol}::${hit.strategy}::open`;
   return (
     <div
       className={`rounded-lg border px-3 py-2 ${
@@ -1326,15 +1616,105 @@ function HitCard({
       <p className="mt-1 text-[12px] leading-snug text-[var(--muted)]">
         {hit.detail}
       </p>
-      {plan ? <OptionsPlanBlock plan={plan} /> : null}
+      {plan ? (
+        <OptionsPlanBlock
+          plan={plan}
+          account={account}
+          tradingEnabled={tradingEnabled}
+          armOpens={armOpens}
+          opening={openingKey === rowKey}
+          onOpen={onOpen}
+          rowKey={rowKey}
+        />
+      ) : null}
     </div>
+  );
+}
+
+function OpenPlanButton({
+  plan,
+  rowKey,
+  account,
+  tradingEnabled,
+  armOpens,
+  opening,
+  onOpen,
+}: {
+  plan: NonNullable<ReturnType<typeof buildOptionsEntryPlan>>;
+  rowKey: string;
+  account: BrokerAccount | null;
+  tradingEnabled: boolean;
+  armOpens: boolean;
+  opening: boolean;
+  onOpen: (
+    plan: NonNullable<ReturnType<typeof buildOptionsEntryPlan>>,
+    rowKey: string,
+  ) => void;
+}) {
+  const { t } = useLocale();
+  if (!plan.hasRange || plan.entryPremium <= 0) return null;
+  if (!account) {
+    return (
+      <p className="text-[10px] text-[var(--muted)]">{t("strategies.capitalNeed")}</p>
+    );
+  }
+  const sizing = sizeLongOption({
+    entryPremium: plan.entryPremium,
+    equity: account.equity ?? 0,
+    cashAvailable: account.available_funds ?? account.cash_balance ?? 0,
+  });
+  if (!sizing.canOpen) {
+    return (
+      <p className="text-[10px] text-[var(--warn)]">
+        {t("strategies.openTooRich")
+          .replace("{cost}", moneyUsd(sizing.costPerContract))
+          .replace("{risk}", moneyUsd(sizing.riskBudget))}
+      </p>
+    );
+  }
+  if (!tradingEnabled) {
+    return (
+      <p className="text-[10px] text-[var(--muted)]">
+        {t("strategies.tradingDisabledShort")}
+      </p>
+    );
+  }
+  return (
+    <button
+      type="button"
+      disabled={opening || !armOpens}
+      title={!armOpens ? t("strategies.openNeedArm") : undefined}
+      onClick={() => onOpen(plan, rowKey)}
+      className="rounded border border-[var(--ok)]/40 bg-[var(--ok-soft)] px-2 py-0.5 text-[10px] font-medium text-[var(--ok)] hover:bg-[var(--hover)] disabled:opacity-40"
+    >
+      {opening
+        ? "…"
+        : t("strategies.openSchwab")
+            .replace("{n}", String(sizing.contracts))
+            .replace("{px}", moneyUsd(plan.entryPremium))}
+    </button>
   );
 }
 
 function OptionsPlanBlock({
   plan,
+  account = null,
+  tradingEnabled = false,
+  armOpens = false,
+  opening = false,
+  onOpen,
+  rowKey,
 }: {
   plan: NonNullable<ReturnType<typeof buildOptionsEntryPlan>>;
+  account?: BrokerAccount | null;
+  tradingEnabled?: boolean;
+  armOpens?: boolean;
+  opening?: boolean;
+  onOpen?: (
+    plan: NonNullable<ReturnType<typeof buildOptionsEntryPlan>>,
+    rowKey: string,
+  ) => void;
+  rowKey?: string;
 }) {
   const { t } = useLocale();
   const money = (n: number) =>
@@ -1357,6 +1737,15 @@ function OptionsPlanBlock({
       <p className="mt-0.5 text-[11px] leading-snug text-[var(--foreground)]">
         Spot {money(plan.spot)} → {t("strategies.optionsStrike")}{" "}
         <span className="font-semibold tabular-nums">{money(plan.strike)}</span>
+        {" · "}
+        {t("strategies.optionsExp")}{" "}
+        <span className="font-semibold tabular-nums">{plan.expLabel}</span>
+        {plan.expIsToday ? (
+          <span className="text-[var(--muted)]">
+            {" "}
+            ({t("strategies.optionsExpHoy")})
+          </span>
+        ) : null}
       </p>
       {plan.hasRange ? (
         <>
@@ -1376,6 +1765,19 @@ function OptionsPlanBlock({
               35% {money(plan.tp35)}
             </span>
           </p>
+          {onOpen && rowKey ? (
+            <div className="mt-1.5">
+              <OpenPlanButton
+                plan={plan}
+                rowKey={rowKey}
+                account={account}
+                tradingEnabled={tradingEnabled}
+                armOpens={armOpens}
+                opening={opening}
+                onOpen={onOpen}
+              />
+            </div>
+          ) : null}
         </>
       ) : (
         <p className="mt-0.5 text-[10px] leading-snug text-[var(--muted)]">

@@ -28,15 +28,17 @@ import {
   FALLBACK_INSTRUMENTS,
   TIMEFRAMES,
   VENUE_META,
-  sortFuturesInstruments,
   type BacktestResponse,
   type Candle,
   type EvaluateResponse,
   type Instrument,
+  type Metrics,
   type Signal,
   type Strategy,
   type Trade,
+  type Venue,
 } from "@/lib/types";
+import { groupInstrumentsForVenue } from "@/lib/instrument-groups";
 
 type Mode = "evaluate" | "backtest";
 
@@ -126,10 +128,13 @@ export function Dashboard() {
     const filtered = instruments.filter(
       (i) => i.data_provider === venue && i.active,
     );
-    return venue === "tradeadvocate"
-      ? sortFuturesInstruments(filtered)
-      : filtered;
+    return filtered;
   }, [instruments, venue]);
+
+  const instrumentGroups = useMemo(
+    () => groupInstrumentsForVenue(venueInstruments, venue),
+    [venueInstruments, venue],
+  );
 
   const selected = useMemo(
     () => venueInstruments.find((i) => i.symbol === symbol) ?? null,
@@ -436,10 +441,17 @@ export function Dashboard() {
                 value={symbol}
                 onChange={(e) => setSymbol(e.target.value)}
               >
-                {venueInstruments.map((i) => (
-                  <option key={`${i.symbol}-${i.market_type}`} value={i.symbol}>
-                    {i.symbol} · {i.name}
-                  </option>
+                {instrumentGroups.map((g) => (
+                  <optgroup key={g.id} label={t(g.labelKey)}>
+                    {g.items.map((i) => (
+                      <option
+                        key={`${i.symbol}-${i.market_type}`}
+                        value={i.symbol}
+                      >
+                        {i.symbol} · {i.name}
+                      </option>
+                    ))}
+                  </optgroup>
                 ))}
               </select>
             </label>

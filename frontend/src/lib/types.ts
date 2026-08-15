@@ -1,6 +1,6 @@
 export type MarketType = "stock" | "etf" | "future";
 export type DataProvider = "schwab" | "tradeadvocate";
-/** Dashboard workspace venue (options vs futures). Both desks pull candles from Schwab. */
+/** Dashboard workspace venue (options vs futures). Options = Schwab; futures candles = Yahoo. */
 export type Venue = DataProvider;
 export type Side = "long" | "short" | "flat";
 
@@ -12,11 +12,11 @@ export const VENUE_META: Record<
     label: "Equities / Options",
     shortLabel: "Schwab",
     defaultSymbol: "SPY",
-    hint: "SPY · QQQ · AAPL · MSFT · AMZN · GOOGL · META · NVDA · TSLA · NFLX",
+    hint: "SPY · QQQ · AAPL · MSFT · AMZN · GOOGL · META · NVDA · TSLA · NFLX · IOVA · IWM · USAR · UUUU · ONDS",
   },
   tradeadvocate: {
     label: "Futures",
-    shortLabel: "Schwab",
+    shortLabel: "Tradovate",
     defaultSymbol: "NQ",
     hint: "NQ · MNQ · ES · MES",
   },
@@ -265,7 +265,8 @@ export type AdminOverview = {
 export const FUTURES_TICKERS = ["NQ", "MNQ", "ES", "MES"] as const;
 
 export function providerLabel(provider: string | null | undefined): string {
-  if (provider === "schwab" || provider === "tradeadvocate") return "Schwab";
+  if (provider === "schwab") return "Schwab";
+  if (provider === "tradeadvocate") return "Yahoo";
   return provider?.trim() || "—";
 }
 
@@ -285,16 +286,122 @@ export const FALLBACK_INSTRUMENTS: Instrument[] = [
   { symbol: "MNQ", name: "Micro E-mini Nasdaq-100", market_type: "future", data_provider: "tradeadvocate", active: true },
   { symbol: "ES", name: "E-mini S&P 500", market_type: "future", data_provider: "tradeadvocate", active: true },
   { symbol: "MES", name: "Micro E-mini S&P 500", market_type: "future", data_provider: "tradeadvocate", active: true },
-  { symbol: "SPY", name: "SPDR S&P 500 ETF", market_type: "etf", data_provider: "schwab", active: true },
+  // Indices / ETFs
+  { symbol: "IWM", name: "iShares Russell 2000 ETF", market_type: "etf", data_provider: "schwab", active: true },
   { symbol: "QQQ", name: "Invesco QQQ Trust", market_type: "etf", data_provider: "schwab", active: true },
+  { symbol: "SPY", name: "SPDR S&P 500 ETF", market_type: "etf", data_provider: "schwab", active: true },
+  // Stocks
   { symbol: "AAPL", name: "Apple Inc", market_type: "stock", data_provider: "schwab", active: true },
-  { symbol: "MSFT", name: "Microsoft Corp", market_type: "stock", data_provider: "schwab", active: true },
   { symbol: "AMZN", name: "Amazon.com Inc", market_type: "stock", data_provider: "schwab", active: true },
   { symbol: "GOOGL", name: "Alphabet Inc Class A", market_type: "stock", data_provider: "schwab", active: true },
+  { symbol: "IOVA", name: "Iovance Biotherapeutics Inc", market_type: "stock", data_provider: "schwab", active: true },
   { symbol: "META", name: "Meta Platforms Inc", market_type: "stock", data_provider: "schwab", active: true },
+  { symbol: "MSFT", name: "Microsoft Corp", market_type: "stock", data_provider: "schwab", active: true },
+  { symbol: "NFLX", name: "Netflix Inc", market_type: "stock", data_provider: "schwab", active: true },
   { symbol: "NVDA", name: "NVIDIA Corp", market_type: "stock", data_provider: "schwab", active: true },
   { symbol: "TSLA", name: "Tesla Inc", market_type: "stock", data_provider: "schwab", active: true },
-  { symbol: "NFLX", name: "Netflix Inc", market_type: "stock", data_provider: "schwab", active: true },
+  // Watch
+  { symbol: "USAR", name: "USA Rare Earth Inc", market_type: "stock", data_provider: "schwab", active: true },
+  { symbol: "UUUU", name: "Energy Fuels Inc", market_type: "stock", data_provider: "schwab", active: true },
+  { symbol: "ONDS", name: "Ondas Holdings Inc", market_type: "stock", data_provider: "schwab", active: true },
 ];
 
 export const TIMEFRAMES = ["1m", "3m", "5m", "15m", "30m", "1h", "4h", "1d"] as const;
+
+export type BrokerAccount = {
+  accountNumber?: string;
+  hashValue?: string;
+  equity?: number;
+  cash_balance?: number;
+  available_funds?: number;
+  buying_power?: number;
+  risk_pct?: number;
+  risk_budget?: number;
+};
+
+export type BrokerPosition = {
+  account_hash: string;
+  account_number: string;
+  symbol: string;
+  underlying: string;
+  description: string;
+  asset_type: string;
+  quantity: number;
+  average_price: number;
+  market_value: number;
+  mark: number | null;
+  pnl_pct: number | null;
+  day_pnl: number | null;
+  day_pnl_pct: number | null;
+  close_instruction: string;
+  multiplier: number;
+};
+
+export type BrokerPositionsResponse = {
+  trading_enabled: boolean;
+  accounts: BrokerAccount[];
+  positions: BrokerPosition[];
+  orders?: BrokerOrder[];
+  risk_pct?: number;
+  error?: string | null;
+};
+
+export type BrokerOrder = {
+  account_hash: string;
+  account_number?: string;
+  order_id: string;
+  status: string;
+  order_type: string;
+  duration: string;
+  price: number | null;
+  quantity: number | null;
+  filled_quantity: number | null;
+  instruction: string | null;
+  symbol: string;
+  asset_type: string | null;
+  entered_time: string | null;
+};
+
+export type TpLadderLeg = {
+  pct: number;
+  quantity: number;
+  limit_price: number;
+  order_id: string | null;
+  ok: boolean;
+  message: string;
+};
+
+export type TpLadderResponse = {
+  ok: boolean;
+  symbol: string;
+  legs: TpLadderLeg[];
+  message: string;
+};
+
+export type TpWatch = {
+  id: string;
+  accountHash: string;
+  symbol: string;
+  quantity: number;
+  assetType: string;
+  instruction: string;
+  averagePrice: number;
+  targetPct: number;
+  alertOn: boolean;
+  autoClose: boolean;
+  lastPnlPct: number | null;
+  lastMark: number | null;
+  lastStatus: string | null;
+  firedAt: string | null;
+};
+
+export type TpCheckResponse = {
+  symbol: string;
+  mark: number | null;
+  pnl_pct: number | null;
+  target_pct: number;
+  hit: boolean;
+  closed: boolean;
+  order_id: string | null;
+  message: string;
+};

@@ -22,7 +22,7 @@ from app.schemas.news_api import (
 
 logger = get_logger(__name__)
 
-WATCHLIST = ("SPY", "QQQ", "AAPL", "MSFT", "AMZN", "GOOGL", "META", "NVDA", "TSLA", "NFLX", "ES", "NQ")
+WATCHLIST = ("SPY", "QQQ", "AAPL", "MSFT", "AMZN", "GOOGL", "META", "NVDA", "TSLA", "NFLX", "IOVA", "IWM", "USAR", "UUUU", "ONDS", "ES", "NQ")
 
 AWARE_KEYWORDS = (
     "fed",
@@ -599,7 +599,7 @@ def _static_awareness_checklist(day: date) -> list[NewsItemOut]:
         (
             "orange",
             "Futures desk: note inventory (oil/gold) and Fed speakers overlapping RTH",
-            "Avoid size into speeches if TradeAdvocate data is delayed",
+            "Avoid size into speeches if Tradovate data is delayed",
         ),
         (
             "yellow",
