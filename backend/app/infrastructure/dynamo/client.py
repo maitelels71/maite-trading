@@ -40,12 +40,17 @@ def trades_table():
     return table("TABLE_TRADES")
 
 
+def alerts_table():
+    return table("TABLE_ALERTS")
+
+
 def put_item(tbl, item: dict[str, Any]) -> None:
     tbl.put_item(Item=item)
 
 
 __all__ = [
     "Key",
+    "alerts_table",
     "backtest_runs_table",
     "candles_table",
     "get_dynamodb_resource",

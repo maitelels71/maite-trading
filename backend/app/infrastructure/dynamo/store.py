@@ -292,3 +292,29 @@ class DynamoStore:
             return None
         payload = item.get("payload")
         return payload if isinstance(payload, dict) else None
+
+    def try_claim_alert(self, fingerprint: str, payload: dict[str, Any]) -> bool:
+        """Insert SMS fingerprint if new. True = first time (send it)."""
+        from botocore.exceptions import ClientError
+
+        now = datetime.now(UTC)
+        expires = int(now.timestamp()) + 3 * 24 * 60 * 60
+        item = _dynamo_safe(
+            {
+                "pk": fingerprint,
+                "sent_at": _iso(now),
+                "expires_at": expires,
+                **(payload or {}),
+            }
+        )
+        try:
+            ddb.alerts_table().put_item(
+                Item=item,
+                ConditionExpression="attribute_not_exists(pk)",
+            )
+            return True
+        except ClientError as exc:
+            code = exc.response.get("Error", {}).get("Code", "")
+            if code == "ConditionalCheckFailedException":
+                return False
+            raise

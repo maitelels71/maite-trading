@@ -160,11 +160,13 @@ def test_strategy_scan(client: TestClient) -> None:
     assert res.status_code == 200, res.text
     body = res.json()
     assert body["total_checked"] == 1
-    assert body["match_count"] >= 1
     hit = body["hits"][0]
     assert hit["symbol"] == "SPY"
-    assert hit["matched"] is True
     assert hit["status"] != "no_data"
+    # Historical session: ORB closes same day → flat_after_trades (not a live match).
+    assert hit["status"] == "flat_after_trades"
+    assert hit["matched"] is False
+    assert body["match_count"] == 0
 
     empty = client.post(
         "/strategy/scan",

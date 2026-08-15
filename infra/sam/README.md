@@ -13,6 +13,7 @@
 | UI Options | S3 + CloudFront + Basic Auth | cents |
 | UI Futures | S3 + CloudFront + Basic Auth | cents |
 | Secrets | Secrets Manager | ~$0.40/secret |
+| SMS alerts | Lambda + EventBridge + SNS | cents when sending |
 | NAT / RDS / App Runner | **Not included** | $0 |
 
 One API serves both frontends. Build mode is set with `NEXT_PUBLIC_APP_MODE=options|futures`.
@@ -56,8 +57,18 @@ aws s3 sync out/ s3://<FuturesWebBucketName>/ --delete
 ## After deploy
 
 1. Fill Schwab/TradeAdvocate keys in Secrets Manager: `maite-trading/staging/app`
-2. Bookmark Options + Futures URLs (browser will prompt for Basic Auth)
-3. API health: `{ApiUrl}/health`
+2. SMS alerts (optional): set `SMS_ALERT_PHONE` (+E.164) in that same secret, e.g.
+   `python -m scripts.update_sms_secret +1XXXXXXXXXX` from `backend/`
+3. Bookmark Options + Futures URLs (browser will prompt for Basic Auth)
+4. API health: `{ApiUrl}/health`
+
+### SMS ready-to-enter alerts
+
+`AlertsFunction` runs every 5 minutes:
+
+- **Options:** TOP 5 by confluence (≥2 playbooks same CALL/PUT) and 1 contract fits 10% equity risk
+- **Futures:** every ready ML01 hit (no capital filter)
+- Dedup in DynamoDB `*-alerts` so the same setup is not re-texted all day
 
 ## Expensive stack
 

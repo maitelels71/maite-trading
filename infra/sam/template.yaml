@@ -54,6 +54,7 @@ Globals:
         TABLE_STRATEGIES: !Ref StrategiesTable
         TABLE_BACKTEST_RUNS: !Ref BacktestRunsTable
         TABLE_TRADES: !Ref TradesTable
+        TABLE_ALERTS: !Ref AlertsTable
         APP_SECRETS_ARN: !Ref AppSecrets
         CORS_ORIGINS: !Ref CorsOrigins
         DEFAULT_TIMEZONE: America/New_York
@@ -96,6 +97,8 @@ Resources:
             TableName: !Ref BacktestRunsTable
         - DynamoDBCrudPolicy:
             TableName: !Ref TradesTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref AlertsTable
         - Statement:
             - Effect: Allow
               Action:
@@ -115,6 +118,47 @@ Resources:
             ApiId: !Ref HttpApi
             Path: /
             Method: ANY
+    Metadata:
+      BuildMethod: python3.12
+
+  AlertsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${ProjectName}-${EnvironmentName}-alerts"
+      CodeUri: ../../backend/
+      Handler: app.lambda_alerts.handler
+      Description: Scan playbooks and SMS ready-to-enter setups (SNS)
+      Timeout: 300
+      MemorySize: 1024
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref InstrumentsTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref CandlesTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref StrategiesTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref BacktestRunsTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref TradesTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref AlertsTable
+        - Statement:
+            - Effect: Allow
+              Action:
+                - secretsmanager:GetSecretValue
+              Resource: !Ref AppSecrets
+            - Effect: Allow
+              Action:
+                - sns:Publish
+              Resource: "*"
+      Events:
+        EveryFiveMinutes:
+          Type: Schedule
+          Properties:
+            Schedule: rate(5 minutes)
+            Enabled: true
+            Description: Options TOP5 + Futures ready-to-enter SMS
     Metadata:
       BuildMethod: python3.12
 
@@ -185,6 +229,21 @@ Resources:
           KeyType: HASH
         - AttributeName: sk
           KeyType: RANGE
+
+  AlertsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "${ProjectName}-${EnvironmentName}-alerts"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: pk
+          AttributeType: S
+      KeySchema:
+        - AttributeName: pk
+          KeyType: HASH
+      TimeToLiveSpecification:
+        AttributeName: expires_at
+        Enabled: true
 
   AppSecrets:
     Type: AWS::SecretsManager::Secret
@@ -436,6 +495,9 @@ Outputs:
     Value: !Ref FuturesWebDistribution
   AppSecretsArn:
     Value: !Ref AppSecrets
+  AlertsFunctionName:
+    Description: EventBridge SMS scanner (every 5 minutes)
+    Value: !Ref AlertsFunction
   StackMode:
     Value: cheap-serverless
     Description: No NAT / RDS / App Runner
