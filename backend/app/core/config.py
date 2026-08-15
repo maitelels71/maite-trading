@@ -92,9 +92,16 @@ class Settings(BaseSettings):
         alias="NOTION_JOURNAL_DATABASE_ID",
     )
 
-    # SMS ready-to-enter alerts (Amazon SNS). Phone lives in Secrets Manager.
+    # Signal alerts: prefer Gmail when ALERT_EMAIL_TO is set; SMS optional fallback.
     sms_alert_phone: str = Field(default="", alias="SMS_ALERT_PHONE")
     sms_alerts_enabled: bool = Field(default=True, alias="SMS_ALERTS_ENABLED")
+    twilio_account_sid: str = Field(default="", alias="TWILIO_ACCOUNT_SID")
+    twilio_auth_token: str = Field(default="", alias="TWILIO_AUTH_TOKEN")
+    twilio_from_number: str = Field(default="", alias="TWILIO_FROM_NUMBER")
+    alert_email_to: str = Field(default="", alias="ALERT_EMAIL_TO")
+    alert_email_from: str = Field(default="", alias="ALERT_EMAIL_FROM")
+    gmail_user: str = Field(default="", alias="GMAIL_USER")
+    gmail_app_password: str = Field(default="", alias="GMAIL_APP_PASSWORD")
 
     # Market session defaults
     default_timezone: str = Field(

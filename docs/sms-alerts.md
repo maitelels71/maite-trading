@@ -1,6 +1,8 @@
-# SMS ready-to-enter alerts
-
 Server-side poll (Lambda + EventBridge every 5 minutes) that texts setups you can act on — not browser notifications.
+
+**Preferred channel is now Gmail.** See [signal-alerts.md](signal-alerts.md) and [twilio-cancel.md](twilio-cancel.md).
+
+This file is kept for older SMS notes.
 
 ## Rules
 
@@ -27,14 +29,23 @@ In Secrets Manager `maite-trading/<env>/app`:
 | `SMS_ALERT_PHONE` | `+1XXXXXXXXXX` |
 | `SMS_ALERTS_ENABLED` | `true` (or `false` to pause) |
 
+AWS account must allow SNS SMS in the region (us-east-1) **or** set Twilio
+(`TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM_NUMBER`) in Secrets.
+Twilio is preferred when configured (US A2P / no SNS origination required).
+
 Local / one-shot:
 
 ```powershell
 cd backend
-.\.venv\Scripts\python.exe -m scripts.update_sms_secret +1XXXXXXXXXX
+.\.venv\Scripts\python.exe -m scripts.update_twilio_secret `
+  --sid ACxxxx --token xxxx --from +1TWILIO --to +1YOURPHONE
 ```
 
-AWS account must allow SNS SMS in the region (us-east-1). First numbers may need SNS sandbox opt-in until the account is in production SMS mode.
+Legacy phone-only (SNS):
+
+```powershell
+.\.venv\Scripts\python.exe -m scripts.update_sms_secret +1XXXXXXXXXX
+```
 
 ## Ops
 

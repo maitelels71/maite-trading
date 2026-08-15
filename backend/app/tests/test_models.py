@@ -77,14 +77,14 @@ def test_seed_mvp_instruments_and_orb(db_session: Session) -> None:
     assert mes is not None
     assert mes.data_provider == "tradeadvocate"
 
-    eurusd = db_session.scalar(
+    six_e = db_session.scalar(
         select(Instrument).where(
-            Instrument.symbol == "EURUSD",
+            Instrument.symbol == "6E",
             Instrument.market_type == "future",
         )
     )
-    assert eurusd is not None
-    assert eurusd.data_provider == "tradeadvocate"
+    assert six_e is not None
+    assert six_e.data_provider == "tradeadvocate"
 
     orb = db_session.scalar(
         select(Strategy).where(Strategy.name == "opening_range_breakout")

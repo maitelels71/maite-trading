@@ -19,8 +19,11 @@ logger = get_logger(__name__)
 
 YAHOO_CHART_BASE = "https://query1.finance.yahoo.com"
 
-# Desk aliases → Yahoo continuous futures.
+# Desk aliases → Yahoo continuous futures (legacy FX pair names still map).
 _YAHOO_FUTURES_ALIASES: dict[str, str] = {
+    "6E": "6E=F",
+    "6A": "6A=F",
+    "6B": "6B=F",
     "EURUSD": "6E=F",
     "EUR": "6E=F",
     "GBPUSD": "6B=F",

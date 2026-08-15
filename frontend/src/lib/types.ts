@@ -18,7 +18,7 @@ export const VENUE_META: Record<
     label: "Futures",
     shortLabel: "Tradovate",
     defaultSymbol: "MNQ",
-    hint: "MNQ · MES · EURUSD · GBPUSD · AUDUSD · GC",
+    hint: "MNQ · MES · 6E · 6A · 6B · GC",
   },
 };
 
@@ -265,9 +265,9 @@ export type AdminOverview = {
 export const FUTURES_TICKERS = [
   "MNQ",
   "MES",
-  "EURUSD",
-  "GBPUSD",
-  "AUDUSD",
+  "6E",
+  "6A",
+  "6B",
   "GC",
 ] as const;
 
@@ -291,9 +291,9 @@ export function sortFuturesInstruments<T extends { symbol: string }>(items: T[])
 export const FALLBACK_INSTRUMENTS: Instrument[] = [
   { symbol: "MNQ", name: "Micro E-mini Nasdaq-100", market_type: "future", data_provider: "tradeadvocate", active: true },
   { symbol: "MES", name: "Micro E-mini S&P 500", market_type: "future", data_provider: "tradeadvocate", active: true },
-  { symbol: "EURUSD", name: "Euro FX Futures", market_type: "future", data_provider: "tradeadvocate", active: true },
-  { symbol: "GBPUSD", name: "British Pound Futures", market_type: "future", data_provider: "tradeadvocate", active: true },
-  { symbol: "AUDUSD", name: "Australian Dollar Futures", market_type: "future", data_provider: "tradeadvocate", active: true },
+  { symbol: "6E", name: "Euro FX Futures", market_type: "future", data_provider: "tradeadvocate", active: true },
+  { symbol: "6A", name: "Australian Dollar Futures", market_type: "future", data_provider: "tradeadvocate", active: true },
+  { symbol: "6B", name: "British Pound Futures", market_type: "future", data_provider: "tradeadvocate", active: true },
   { symbol: "GC", name: "Gold Futures", market_type: "future", data_provider: "tradeadvocate", active: true },
   // Indices / ETFs
   { symbol: "IWM", name: "iShares Russell 2000 ETF", market_type: "etf", data_provider: "schwab", active: true },

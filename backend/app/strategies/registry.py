@@ -5,6 +5,9 @@ from app.strategies.creando_riquezas import ALL_CR_STRATEGIES
 from app.strategies.daily_mid_bounce import DailyMidBounceStrategy
 from app.strategies.magnet_ma20_gap import MagnetMa20GapStrategy
 from app.strategies.ml01_structure_choch_bos import Ml01StructureChochBosStrategy
+from app.strategies.ml02_single_candle_mitigation import (
+    Ml02SingleCandleMitigationStrategy,
+)
 from app.strategies.opening_range_breakout import OpeningRangeBreakoutStrategy
 
 
@@ -34,6 +37,7 @@ def build_default_registry() -> StrategyRegistry:
     registry.register(DailyMidBounceStrategy())
     registry.register(BbTrendFlipHStrategy())
     registry.register(Ml01StructureChochBosStrategy())
+    registry.register(Ml02SingleCandleMitigationStrategy())
     for strategy in ALL_CR_STRATEGIES:
         registry.register(strategy)
     return registry

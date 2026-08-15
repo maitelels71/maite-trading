@@ -19,14 +19,14 @@ function ml02Playbook(venue: Venue, id: string): StrategyPlaybook {
     venue,
     group: "Maylels",
     setupImage: "/brand/ml02-scm-setup.png",
-    strategyKey: null,
+    strategyKey: "ml02_single_candle_mitigation",
     preferredTimeframe: isFutures ? "15m" : "15m",
     syncTimeframes: isFutures ? ["15m", "5m", "1m"] : ["1h", "15m", "5m"],
     syncLookbackDays: 14,
     name: "Single Candle Mitigation",
     shortName: "ML02",
     markets: isFutures
-      ? "Futuros LONG/SHORT · MNQ · MES · EURUSD · GBPUSD · AUDUSD · GC · OB HTF 15m + SCM 1m/3m"
+      ? "Futuros LONG/SHORT · MNQ · MES · 6E · 6A · 6B · GC · OB HTF 15m + SCM 1m/3m"
       : "Opciones CALL/PUT · OB HTF 15m/1H + SCM LTF · plan ≤35%",
     summary:
       "Mitigar el Order Block HTF (oferta/demanda del impulso del BOS). " +

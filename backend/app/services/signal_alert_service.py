@@ -1,4 +1,4 @@
-"""Scan Options + Futures desks and SMS ready-to-enter setups."""
+"""Scan Options + Futures desks and notify ready-to-enter setups (email preferred)."""
 
 from __future__ import annotations
 
@@ -15,6 +15,7 @@ from app.domain.enums import DataProviderName
 from app.domain.session_calendar import resolve_operative_session_date
 from app.schemas.strategy_api import StrategyScanRequest
 from app.services.alert_dedup import claim_alert
+from app.services.email_sender import EmailSendError, publish_email
 from app.services.signal_candidates import (
     AlertCandidate,
     format_sms,
@@ -28,28 +29,34 @@ logger = get_logger(__name__)
 
 _OPTIONS_PROVIDER = DataProviderName.SCHWAB.value
 _FUTURES_PROVIDER = DataProviderName.TRADEADVOCATE.value
-_MAX_SMS_PER_TICK = 8
+_MAX_ALERTS_PER_TICK = 8
 
 
 def run_signal_alerts(
     *,
     db: Any = None,
     sns_client: Any | None = None,
+    email_client: Any | None = None,
     sync: bool = True,
 ) -> dict[str, Any]:
-    """One poll: sync candles, scan, filter, SMS new fingerprints."""
-    phone = (settings.sms_alert_phone or "").strip()
+    """One poll: sync candles, scan, filter, email (or SMS) new fingerprints."""
     enabled = bool(settings.sms_alerts_enabled)
+    email_to = (settings.alert_email_to or "").strip()
+    phone = (settings.sms_alert_phone or "").strip()
+    use_email = bool(email_to)
+    use_sms = bool(phone) and not use_email
+
     if not enabled:
         return {"ok": True, "skipped": "disabled", "sent": 0}
-    if not phone:
-        return {"ok": True, "skipped": "no_phone", "sent": 0}
+    if not use_email and not use_sms:
+        return {"ok": True, "skipped": "no_destination", "sent": 0}
 
     session = resolve_operative_session_date()
     session_s = session.isoformat()
     summary: dict[str, Any] = {
         "ok": True,
         "session": session_s,
+        "channel": "email" if use_email else "sms",
         "sent": 0,
         "skipped_dup": 0,
         "options_candidates": 0,
@@ -123,7 +130,7 @@ def run_signal_alerts(
     summary["futures_candidates"] = len(fut)
     candidates.extend(fut)
 
-    for cand in candidates[:_MAX_SMS_PER_TICK]:
+    for cand in candidates[:_MAX_ALERTS_PER_TICK]:
         if not claim_alert(
             cand.fingerprint,
             payload={
@@ -131,20 +138,33 @@ def run_signal_alerts(
                 "symbol": cand.symbol,
                 "side": cand.side_label,
                 "strategies": list(cand.strategies),
+                "channel": summary["channel"],
             },
         ):
             summary["skipped_dup"] += 1
             continue
         text = format_sms(cand)
         try:
-            publish_sms(phone, text, client=sns_client)
+            if use_email:
+                publish_email(
+                    email_to,
+                    subject=f"Maite alert · {text}",
+                    body=(
+                        f"{text}\n\n"
+                        f"Session {session_s}\n"
+                        f"Desk: {cand.venue}\n"
+                        f"Detail: {cand.detail or '—'}\n"
+                    ),
+                    client=email_client,
+                )
+            else:
+                publish_sms(phone, text, client=sns_client)
             summary["sent"] += 1
             summary["messages"].append(text)
-        except SmsSendError as exc:
-            summary["errors"].append(f"sms {cand.symbol}: {exc}")
+        except (EmailSendError, SmsSendError) as exc:
+            summary["errors"].append(f"notify {cand.symbol}: {exc}")
 
     return summary
-
 
 def _load_options_capital() -> dict[str, Any] | None:
     try:

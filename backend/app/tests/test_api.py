@@ -90,7 +90,7 @@ def test_list_instruments_and_strategies(client: TestClient) -> None:
     instruments = client.get("/instruments")
     assert instruments.status_code == 200
     symbols = {i["symbol"] for i in instruments.json()["items"]}
-    assert {"SPY", "MNQ", "MES", "EURUSD", "GBPUSD", "AUDUSD", "GC"} <= symbols
+    assert {"SPY", "MNQ", "MES", "6E", "6A", "6B", "GC"} <= symbols
     assert "NQ" not in symbols
     assert "ES" not in symbols
 

@@ -12,7 +12,7 @@ import {
 import { localizedPlaybookLabel } from "@/lib/playbook-localize";
 import { STRATEGY_PLAYBOOKS } from "@/lib/playbooks";
 
-const ACTIVOS = ["MNQ", "MES", "EURUSD", "GBPUSD", "AUDUSD", "GC", "NQ", "ES", "Other"] as const;
+const ACTIVOS = ["MNQ", "MES", "6E", "6A", "6B", "GC", "NQ", "ES", "Other"] as const;
 const SESSIONS = ["Asia", "London", "NY AM", "NY PM", "Overnight"] as const;
 const TFS = ["1H", "15m", "5m", "3m", "1m"] as const;
 const STATUSES = ["Open", "Closed", "Scratched"] as const;

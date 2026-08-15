@@ -102,7 +102,7 @@ def test_futures_sends_every_ready_signal() -> None:
     hits = [
         _hit("MNQ", STRATEGY_ML01_STRUCTURE, side="long"),
         _hit("MES", STRATEGY_ML01_STRUCTURE, side="short"),
-        _hit("EURUSD", STRATEGY_ML01_STRUCTURE, status="watching", matched=False),
+        _hit("6E", STRATEGY_ML01_STRUCTURE, status="watching", matched=False),
     ]
     out = futures_candidates(hits, session="2026-08-15")
     assert [(c.symbol, c.side_label) for c in out] == [
@@ -140,7 +140,7 @@ def test_claim_alert_dedup() -> None:
     clear_memory()
 
 
-def test_publish_sms_mock_client() -> None:
+def test_publish_sms_mock_sns_client() -> None:
     class FakeSns:
         def __init__(self) -> None:
             self.calls: list[dict] = []
@@ -158,11 +158,61 @@ def test_publish_sms_mock_client() -> None:
     )
 
 
-def test_run_skips_without_phone(monkeypatch) -> None:
+def test_publish_sms_twilio_http(monkeypatch) -> None:
+    from app.core import config as config_mod
+    from app.services import sms_sender as sender_mod
+
+    monkeypatch.setattr(config_mod.settings, "twilio_account_sid", "ACtest")
+    monkeypatch.setattr(config_mod.settings, "twilio_auth_token", "tokentest")
+    monkeypatch.setattr(config_mod.settings, "twilio_from_number", "+15551112222")
+
+    class FakeResp:
+        status_code = 201
+
+        def json(self):
+            return {"sid": "SMabc"}
+
+    def fake_post(url, data=None, auth=None, timeout=None):  # noqa: ANN001
+        assert "ACtest" in url
+        assert data["To"] == "+15555550100"
+        assert data["From"] == "+15551112222"
+        assert auth == ("ACtest", "tokentest")
+        return FakeResp()
+
+    monkeypatch.setattr(sender_mod.httpx, "post", fake_post)
+    mid = publish_sms("+15555550100", "test twilio")
+    assert mid == "SMabc"
+
+
+def test_run_skips_without_destination(monkeypatch) -> None:
     from app.core import config as config_mod
 
     monkeypatch.setattr(config_mod.settings, "sms_alert_phone", "")
+    monkeypatch.setattr(config_mod.settings, "alert_email_to", "")
     monkeypatch.setattr(config_mod.settings, "sms_alerts_enabled", True)
     result = run_signal_alerts(sync=False)
-    assert result["skipped"] == "no_phone"
+    assert result["skipped"] == "no_destination"
     assert result["sent"] == 0
+
+
+def test_publish_email_dry_run_and_mock(monkeypatch) -> None:
+    from app.core import config as config_mod
+    from app.services.email_sender import publish_email
+
+    monkeypatch.setattr(config_mod.settings, "gmail_user", "maylels@gmail.com")
+    monkeypatch.setattr(config_mod.settings, "gmail_app_password", "abcd efgh ijkl mnop")
+    monkeypatch.setattr(config_mod.settings, "alert_email_from", "maylels@gmail.com")
+
+    assert publish_email("maylels@gmail.com", "subj", "body", client="dry-run") == "dry-run"
+
+    class FakeSmtp:
+        def __init__(self) -> None:
+            self.msgs: list = []
+
+        def send_message(self, msg) -> None:  # noqa: ANN001
+            self.msgs.append(msg)
+
+    fake = FakeSmtp()
+    assert publish_email("maylels@gmail.com", "Maite alert", "OPT SPY CALL", client=fake) == "ok"
+    assert fake.msgs[0]["To"] == "maylels@gmail.com"
+    assert "OPT SPY CALL" in fake.msgs[0].get_content()

@@ -952,7 +952,7 @@ export const PLAYBOOK_EN: Record<string, PlaybookEnOverlay> = {
 
   ml01: {
     name: "ChoCh + BOS Structure",
-    markets: "Futures LONG/SHORT · MNQ · MES · EURUSD · GBPUSD · AUDUSD · GC · HTF zones + 3m entry",
+    markets: "Futures LONG/SHORT · MNQ · MES · 6E · 6A · 6B · GC · HTF zones + 3m entry",
     summary:
       "Real pullback in HTF zone (15m/1H). ChoCh = alert; BOS = entry confirmation. BUY at HTF demand · SELL at supply after break. No BOS, no entry.",
     sessionWindow: "Intraday · 15m/1H zones · 3m confirmation/entry",
@@ -1026,7 +1026,7 @@ export const PLAYBOOK_EN: Record<string, PlaybookEnOverlay> = {
 
   ml02: {
     name: "Single Candle Mitigation",
-    markets: "Futures LONG/SHORT · MNQ · MES · EURUSD · GBPUSD · AUDUSD · GC · HTF OB 15m + SCM 1m/3m",
+    markets: "Futures LONG/SHORT · MNQ · MES · 6E · 6A · 6B · GC · HTF OB 15m + SCM 1m/3m",
     summary:
       "Mitigate the HTF Order Block (supply/demand from the BOS impulse). Mark bias + HTF OB · sweep inducement · price returns into the OB · SCM inside the OB = entry trigger (sweeps prior candle extreme and closes back). SCM alone mid-range / without HTF OB = no trade. Candle color does not matter.",
     sessionWindow: "Intraday · OB / bias 15m · SCM entry 1m–3m",

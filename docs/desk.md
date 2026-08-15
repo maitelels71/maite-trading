@@ -58,4 +58,4 @@ No playbooks in the desk yet (ORB FUT removed). Add futures books when ready.
 
 ### Futures data (analysis)
 
-The futures desk scans like options: candles only. Universe: **MNQ · MES · EURUSD · GBPUSD · AUDUSD · GC** via Yahoo (`MNQ=F`, `MES=F`, `6E=F`, `6B=F`, `6A=F`, `GC=F`). Delayed ~10–15 minutes; no API key. Tradovate / MFF is for execution only — not required for Analyzer or ML01.
+The futures desk scans like options: candles only. Universe: **MNQ · MES · 6E · 6A · 6B · GC** via Yahoo (`MNQ=F`, `MES=F`, `6E=F`, `6A=F`, `6B=F`, `GC=F`). Delayed ~10–15 minutes; no API key. Tradovate / MFF is for execution only — not required for Analyzer or ML01.

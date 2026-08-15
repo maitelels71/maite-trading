@@ -32,22 +32,22 @@ MVP_INSTRUMENTS: tuple[dict[str, str], ...] = (
         "name": "Micro E-mini S&P 500",
     },
     {
-        "symbol": "EURUSD",
+        "symbol": "6E",
         "market_type": MarketType.FUTURE.value,
         "data_provider": DataProviderName.TRADEADVOCATE.value,
         "name": "Euro FX Futures",
     },
     {
-        "symbol": "GBPUSD",
-        "market_type": MarketType.FUTURE.value,
-        "data_provider": DataProviderName.TRADEADVOCATE.value,
-        "name": "British Pound Futures",
-    },
-    {
-        "symbol": "AUDUSD",
+        "symbol": "6A",
         "market_type": MarketType.FUTURE.value,
         "data_provider": DataProviderName.TRADEADVOCATE.value,
         "name": "Australian Dollar Futures",
+    },
+    {
+        "symbol": "6B",
+        "market_type": MarketType.FUTURE.value,
+        "data_provider": DataProviderName.TRADEADVOCATE.value,
+        "name": "British Pound Futures",
     },
     {
         "symbol": "GC",
@@ -153,6 +153,7 @@ STRATEGY_E03_MAGNET = "magnet_ma20_gap"
 STRATEGY_E02_DAILY_MID = "daily_mid_bounce"
 STRATEGY_E01_BB_FLIP = "bb_trend_flip_h"
 STRATEGY_ML01_STRUCTURE = "ml01_structure_choch_bos"
+STRATEGY_ML02_SCM = "ml02_single_candle_mitigation"
 STRATEGY_CR01_MA40 = "cr01_ma40_bounce"
 STRATEGY_CR02_DROP = "cr02_drop_green"
 STRATEGY_CR03_CHANNEL = "cr03_channel_break"
@@ -185,9 +186,13 @@ OPTIONS_ALERT_STRATEGIES: tuple[str, ...] = (
     STRATEGY_CR09_GAP_FLOOR,
     STRATEGY_CR10_HANGER,
     STRATEGY_CR11_EARNINGS,
+    STRATEGY_ML02_SCM,
 )
 
-FUTURES_ALERT_STRATEGIES: tuple[str, ...] = (STRATEGY_ML01_STRUCTURE,)
+FUTURES_ALERT_STRATEGIES: tuple[str, ...] = (
+    STRATEGY_ML01_STRUCTURE,
+    STRATEGY_ML02_SCM,
+)
 
 STRATEGY_SHORT_LABEL: dict[str, str] = {
     STRATEGY_E01_BB_FLIP: "E01",
@@ -195,6 +200,7 @@ STRATEGY_SHORT_LABEL: dict[str, str] = {
     STRATEGY_E03_MAGNET: "E03",
     STRATEGY_E04_BB15_GAP: "E04",
     STRATEGY_ML01_STRUCTURE: "ML01",
+    STRATEGY_ML02_SCM: "ML02",
     STRATEGY_CR01_MA40: "CR01",
     STRATEGY_CR02_DROP: "CR02",
     STRATEGY_CR03_CHANNEL: "CR03",
