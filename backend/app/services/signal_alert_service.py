@@ -212,6 +212,10 @@ def _lookback_days(strategy_names: tuple[str, ...]) -> int:
     return days
 
 
+# Leave headroom for scan + Gmail send inside the Lambda timeout.
+_ALERT_SYNC_BUDGET_SEC = 90.0
+
+
 def _sync_for_alerts(*, db: Any = None) -> None:
     """Refresh candles the scanners need (best-effort per symbol/TF)."""
     from app.api.storage import get_dynamo_store, using_dynamo
@@ -220,6 +224,7 @@ def _sync_for_alerts(*, db: Any = None) -> None:
     from app.services.market_data_service import MarketDataService, validate_candles
 
     end = datetime.now(UTC)
+    deadline = end.timestamp() + _ALERT_SYNC_BUDGET_SEC
     factory = get_provider_factory()
 
     jobs: list[tuple[str, tuple[str, ...]]] = [
@@ -236,11 +241,19 @@ def _sync_for_alerts(*, db: Any = None) -> None:
             symbols=None,
         )
         for inst in instruments:
+            if datetime.now(UTC).timestamp() >= deadline:
+                logger.warning("Alert sync budget exhausted; scanning with cached candles")
+                return
             try:
                 provider = factory.get(DataProviderName(inst["data_provider"]))
             except Exception:  # noqa: BLE001
                 continue
             for tf in tfs:
+                if datetime.now(UTC).timestamp() >= deadline:
+                    logger.warning(
+                        "Alert sync budget exhausted; scanning with cached candles"
+                    )
+                    return
                 try:
                     candles = provider.get_historical_candles(
                         inst["symbol"], tf, start, end
@@ -261,10 +274,10 @@ def _sync_for_alerts(*, db: Any = None) -> None:
                         )
                         mds.save_candles(row.id, tf, candles)
                         db.commit()
-                except Exception:  # noqa: BLE001
+                except Exception as exc:  # noqa: BLE001
                     logger.warning(
-                        "Alert sync failed %s %s",
+                        "Alert sync failed %s %s: %s",
                         inst["symbol"],
                         tf,
-                        exc_info=True,
+                        exc,
                     )
