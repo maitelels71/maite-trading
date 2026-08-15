@@ -83,11 +83,14 @@ class SchwabProvider:
         # Schwab has no native 60m bar — fetch 30m and aggregate to 1h.
         fetch_tf = "30m" if timeframe == "1h" else timeframe
         freq_type, frequency = _schwab_frequency_params(fetch_tf)
+        # Schwab matrix: periodType=day only allows frequencyType=minute;
+        # daily/weekly need month|year|ytd.
+        period_type = _schwab_period_type(freq_type)
         # Index futures need Globex hours; cash equities stay RTH-only.
         extended = "true" if symbol.startswith("/") else "false"
         params: dict[str, Any] = {
             "symbol": symbol,
-            "periodType": "day",
+            "periodType": period_type,
             "frequencyType": freq_type,
             "frequency": frequency,
             "startDate": int(start.timestamp() * 1000),
@@ -122,6 +125,13 @@ def _schwab_frequency_params(timeframe: str) -> tuple[str, int]:
         "Daily": ("daily", 1),
     }
     return mapping.get(timeframe, ("minute", 5))
+
+
+def _schwab_period_type(frequency_type: str) -> str:
+    if frequency_type == "minute":
+        return "day"
+    # daily/weekly/monthly: use year so startDate/endDate lookbacks fit.
+    return "year"
 
 
 def _extract_schwab_candles(payload: dict[str, Any]) -> list[dict[str, Any]]:
