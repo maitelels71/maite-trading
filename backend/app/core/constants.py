@@ -17,14 +17,8 @@ SUPPORTED_TIMEFRAMES: tuple[Timeframe, ...] = (
 
 # Seed universe for MVP (persisted in Prompt 3).
 # Options desk (Schwab): index ETFs + liquid megacaps for CR/E options scans.
-# Futures desk: analysis candles come from Yahoo (NQ=F / MNQ=F / ES=F / MES=F).
+# Futures desk: micros + FX + gold via Yahoo (MNQ=F, MES=F, 6E/6B/6A=F, GC=F).
 MVP_INSTRUMENTS: tuple[dict[str, str], ...] = (
-    {
-        "symbol": "NQ",
-        "market_type": MarketType.FUTURE.value,
-        "data_provider": DataProviderName.TRADEADVOCATE.value,
-        "name": "E-mini Nasdaq-100",
-    },
     {
         "symbol": "MNQ",
         "market_type": MarketType.FUTURE.value,
@@ -32,16 +26,34 @@ MVP_INSTRUMENTS: tuple[dict[str, str], ...] = (
         "name": "Micro E-mini Nasdaq-100",
     },
     {
-        "symbol": "ES",
-        "market_type": MarketType.FUTURE.value,
-        "data_provider": DataProviderName.TRADEADVOCATE.value,
-        "name": "E-mini S&P 500",
-    },
-    {
         "symbol": "MES",
         "market_type": MarketType.FUTURE.value,
         "data_provider": DataProviderName.TRADEADVOCATE.value,
         "name": "Micro E-mini S&P 500",
+    },
+    {
+        "symbol": "EURUSD",
+        "market_type": MarketType.FUTURE.value,
+        "data_provider": DataProviderName.TRADEADVOCATE.value,
+        "name": "Euro FX Futures",
+    },
+    {
+        "symbol": "GBPUSD",
+        "market_type": MarketType.FUTURE.value,
+        "data_provider": DataProviderName.TRADEADVOCATE.value,
+        "name": "British Pound Futures",
+    },
+    {
+        "symbol": "AUDUSD",
+        "market_type": MarketType.FUTURE.value,
+        "data_provider": DataProviderName.TRADEADVOCATE.value,
+        "name": "Australian Dollar Futures",
+    },
+    {
+        "symbol": "GC",
+        "market_type": MarketType.FUTURE.value,
+        "data_provider": DataProviderName.TRADEADVOCATE.value,
+        "name": "Gold Futures",
     },
     {
         "symbol": "SPY",

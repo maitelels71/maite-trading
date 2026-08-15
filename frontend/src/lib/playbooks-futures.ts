@@ -19,7 +19,7 @@ export const FUTURES_PLAYBOOKS: StrategyPlaybook[] = [
     syncLookbackDays: 20,
     name: "Estructura ChoCh + BOS",
     shortName: "ML01",
-    markets: "Futuros LONG/SHORT · NQ/MNQ · ES/MES · zonas HTF + entrada 3m",
+    markets: "Futuros LONG/SHORT · MNQ · MES · EURUSD · GBPUSD · AUDUSD · GC · zonas HTF + entrada 3m",
     summary:
       "Pullback real en zona HTF (15m/1H). ChoCh = alerta; BOS = confirmación de entrada. COMPRA en demanda HTF · VENTA en oferta tras ruptura. Sin BOS no entrar.",
     sessionWindow: "Intradía · zonas 15m/1H · confirmación/entrada en 3m",

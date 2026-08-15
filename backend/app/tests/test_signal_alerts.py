@@ -101,12 +101,12 @@ def test_options_requires_multiple_confluence_and_capital() -> None:
 def test_futures_sends_every_ready_signal() -> None:
     hits = [
         _hit("MNQ", STRATEGY_ML01_STRUCTURE, side="long"),
-        _hit("ES", STRATEGY_ML01_STRUCTURE, side="short"),
-        _hit("NQ", STRATEGY_ML01_STRUCTURE, status="watching", matched=False),
+        _hit("MES", STRATEGY_ML01_STRUCTURE, side="short"),
+        _hit("EURUSD", STRATEGY_ML01_STRUCTURE, status="watching", matched=False),
     ]
     out = futures_candidates(hits, session="2026-08-15")
     assert [(c.symbol, c.side_label) for c in out] == [
-        ("ES", "SHORT"),
+        ("MES", "SHORT"),
         ("MNQ", "LONG"),
     ]
     text = format_sms(out[1])

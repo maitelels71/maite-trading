@@ -12,7 +12,7 @@ import {
 import { localizedPlaybookLabel } from "@/lib/playbook-localize";
 import { STRATEGY_PLAYBOOKS } from "@/lib/playbooks";
 
-const ACTIVOS = ["NQ", "MNQ", "ES", "MES", "YM", "RTY", "GC", "CL", "Other"] as const;
+const ACTIVOS = ["MNQ", "MES", "EURUSD", "GBPUSD", "AUDUSD", "GC", "NQ", "ES", "Other"] as const;
 const SESSIONS = ["Asia", "London", "NY AM", "NY PM", "Overnight"] as const;
 const TFS = ["1H", "15m", "5m", "3m", "1m"] as const;
 const STATUSES = ["Open", "Closed", "Scratched"] as const;
@@ -166,7 +166,7 @@ export function JournalDesk() {
   );
 
   const [date, setDate] = useState(nowNyDateTimeLocal);
-  const [activo, setActivo] = useState<string>("NQ");
+  const [activo, setActivo] = useState<string>("MNQ");
   const [side, setSide] = useState<"Compra" | "Venta">("Compra");
   const [session, setSession] = useState<string>("NY AM");
   const [playbook, setPlaybook] = useState<string>("E01");

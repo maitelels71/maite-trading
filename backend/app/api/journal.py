@@ -26,7 +26,7 @@ class TradeJournalIn(BaseModel):
         description="NY session datetime YYYY-MM-DD or YYYY-MM-DDTHH:mm[:ss]"
     )
     title: str = ""
-    activo: str = "NQ"
+    activo: str = "MNQ"
     side: Literal["Compra", "Venta"] = "Compra"
     session: str = "NY AM"
     playbook: str = "SBC"

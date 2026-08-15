@@ -19,6 +19,18 @@ logger = get_logger(__name__)
 
 YAHOO_CHART_BASE = "https://query1.finance.yahoo.com"
 
+# Desk aliases → Yahoo continuous futures.
+_YAHOO_FUTURES_ALIASES: dict[str, str] = {
+    "EURUSD": "6E=F",
+    "EUR": "6E=F",
+    "GBPUSD": "6B=F",
+    "GBP": "6B=F",
+    "AUDUSD": "6A=F",
+    "AUD": "6A=F",
+    "GOLD": "GC=F",
+    "XAUUSD": "GC=F",
+}
+
 # Longest roots first so MNQ does not collapse to NQ.
 _YAHOO_FUTURES_ROOTS: tuple[str, ...] = (
     "MNQ",
@@ -34,6 +46,8 @@ _YAHOO_FUTURES_ROOTS: tuple[str, ...] = (
     "CL",
     "RTY",
     "6E",
+    "6B",
+    "6A",
 )
 
 _INTERVAL = {
@@ -62,6 +76,9 @@ def yahoo_futures_symbol(symbol: str) -> str:
         return raw
     if raw.startswith("/"):
         raw = raw[1:]
+    alias = _YAHOO_FUTURES_ALIASES.get(raw)
+    if alias:
+        return alias
     for root in _YAHOO_FUTURES_ROOTS:
         if raw == root or raw.startswith(root):
             return f"{root}=F"

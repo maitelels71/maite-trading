@@ -61,7 +61,7 @@ def test_seed_mvp_instruments_and_orb(db_session: Session) -> None:
 
     nq = db_session.scalar(
         select(Instrument).where(
-            Instrument.symbol == "NQ",
+            Instrument.symbol == "MNQ",
             Instrument.market_type == "future",
         )
     )
@@ -77,6 +77,15 @@ def test_seed_mvp_instruments_and_orb(db_session: Session) -> None:
     assert mes is not None
     assert mes.data_provider == "tradeadvocate"
 
+    eurusd = db_session.scalar(
+        select(Instrument).where(
+            Instrument.symbol == "EURUSD",
+            Instrument.market_type == "future",
+        )
+    )
+    assert eurusd is not None
+    assert eurusd.data_provider == "tradeadvocate"
+
     orb = db_session.scalar(
         select(Strategy).where(Strategy.name == "opening_range_breakout")
     )
@@ -87,8 +96,8 @@ def test_seed_mvp_instruments_and_orb(db_session: Session) -> None:
 def test_seed_deactivates_dropped_futures(db_session: Session) -> None:
     db_session.add(
         Instrument(
-            symbol="GC",
-            name="Gold Futures",
+            symbol="NQ",
+            name="E-mini Nasdaq-100",
             market_type="future",
             data_provider="tradeadvocate",
             active=True,
@@ -96,14 +105,14 @@ def test_seed_deactivates_dropped_futures(db_session: Session) -> None:
     )
     db_session.commit()
     seed_all(db_session)
-    gc = db_session.scalar(
+    nq = db_session.scalar(
         select(Instrument).where(
-            Instrument.symbol == "GC",
+            Instrument.symbol == "NQ",
             Instrument.market_type == "future",
         )
     )
-    assert gc is not None
-    assert gc.active is False
+    assert nq is not None
+    assert nq.active is False
 
 
 def test_unique_instrument_symbol_market(db_session: Session) -> None:

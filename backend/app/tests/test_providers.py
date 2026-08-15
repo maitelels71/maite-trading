@@ -148,6 +148,11 @@ def test_yahoo_futures_symbol_maps_roots_and_contracts() -> None:
     assert yahoo_futures_symbol("NQU6") == "NQ=F"
     assert yahoo_futures_symbol("/ES") == "ES=F"
     assert yahoo_futures_symbol("ES=F") == "ES=F"
+    assert yahoo_futures_symbol("EURUSD") == "6E=F"
+    assert yahoo_futures_symbol("GBPUSD") == "6B=F"
+    assert yahoo_futures_symbol("AUDUSD") == "6A=F"
+    assert yahoo_futures_symbol("GC") == "GC=F"
+    assert yahoo_futures_symbol("GOLD") == "GC=F"
 
 
 def test_yahoo_parses_chart_and_keeps_desk_ticker() -> None:

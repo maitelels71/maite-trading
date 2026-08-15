@@ -26,7 +26,7 @@ function ml02Playbook(venue: Venue, id: string): StrategyPlaybook {
     name: "Single Candle Mitigation",
     shortName: "ML02",
     markets: isFutures
-      ? "Futuros LONG/SHORT · NQ/MNQ · ES/MES · OB HTF 15m + SCM 1m/3m"
+      ? "Futuros LONG/SHORT · MNQ · MES · EURUSD · GBPUSD · AUDUSD · GC · OB HTF 15m + SCM 1m/3m"
       : "Opciones CALL/PUT · OB HTF 15m/1H + SCM LTF · plan ≤35%",
     summary:
       "Mitigar el Order Block HTF (oferta/demanda del impulso del BOS). " +
