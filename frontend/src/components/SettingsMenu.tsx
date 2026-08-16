@@ -56,7 +56,7 @@ export function SettingsMenu({
         aria-expanded={open}
         aria-controls={menuId}
         onClick={() => setOpen((v) => !v)}
-        className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-2 text-xs font-semibold transition sm:text-sm ${
+        className={`inline-flex shrink-0 items-center gap-1 rounded-md px-2.5 py-1 text-xs font-semibold transition ${
           open || adminActive
             ? "bg-[var(--accent)] text-[var(--on-accent)]"
             : "text-[var(--muted)] hover:bg-[var(--hover)] hover:text-[var(--foreground)]"

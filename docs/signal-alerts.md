@@ -12,8 +12,17 @@ Server-side poll (Lambda + EventBridge every 5 minutes). Prefer **Gmail**; SMS i
 Example subject/body:
 
 ```
-Maite alert · OPT SPY CALL · E01+E03 · 2 conf · 1ct
+[MAITE-ALERT] OPT SPY CALL · E01+E03 · 2 conf · 1ct
 ```
+
+### Gmail filter (folder / label)
+
+1. Gmail → **Settings** → **See all settings** → **Filters and Blocked Addresses** → **Create a new filter**
+2. **Subject** contains: `[MAITE-ALERT]`
+3. Create filter → **Apply the label** (create e.g. `Trading/Alerts`) → optionally **Skip the Inbox (Archive it)**
+4. Create filter
+
+All future signal emails matching that subject token land in that label/folder.
 
 ## Config (Secrets Manager `maite-trading/<env>/app`)
 

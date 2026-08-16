@@ -30,6 +30,8 @@ logger = get_logger(__name__)
 _OPTIONS_PROVIDER = DataProviderName.SCHWAB.value
 _FUTURES_PROVIDER = DataProviderName.TRADEADVOCATE.value
 _MAX_ALERTS_PER_TICK = 8
+# Stable subject token for Gmail filters (Subject contains → label/folder).
+ALERT_EMAIL_SUBJECT_TAG = "[MAITE-ALERT]"
 
 
 def run_signal_alerts(
@@ -148,7 +150,7 @@ def run_signal_alerts(
             if use_email:
                 publish_email(
                     email_to,
-                    subject=f"Maite alert · {text}",
+                    subject=f"{ALERT_EMAIL_SUBJECT_TAG} {text}",
                     body=(
                         f"{text}\n\n"
                         f"Session {session_s}\n"

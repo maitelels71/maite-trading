@@ -90,7 +90,7 @@ function AppShellInner() {
   return (
     <div className="min-h-screen text-[var(--foreground)]">
       <header className="sticky top-0 z-40 border-b border-[var(--border-strong)] bg-[var(--surface)] shadow-[0_1px_0_rgba(0,0,0,0.06)]">
-        <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-x-3 gap-y-2 px-4 py-2.5 sm:px-6">
+        <div className="mx-auto flex max-w-7xl flex-col gap-2 px-4 py-2.5 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-3 sm:px-6">
           <button
             type="button"
             onClick={() => setView("strategies")}
@@ -116,7 +116,7 @@ function AppShellInner() {
           </button>
 
           <nav
-            className="flex min-w-0 flex-1 flex-wrap items-center gap-1"
+            className="flex min-w-0 w-full flex-wrap items-center gap-1 sm:w-auto sm:flex-1"
             aria-label="Trading flow"
           >
             {FLOW.map((item, index) => {
@@ -142,14 +142,6 @@ function AppShellInner() {
               );
             })}
           </nav>
-
-          <div className="ml-auto flex flex-wrap items-center gap-2">
-            <SettingsMenu
-              adminActive={view === "admin"}
-              onAdmin={() => setView("admin")}
-              onAbout={() => setAboutOpen(true)}
-            />
-          </div>
         </div>
 
         <div
@@ -162,7 +154,7 @@ function AppShellInner() {
               {t("nav.deskTools")}
             </span>
             <nav
-              className="flex flex-wrap items-center gap-1"
+              className="flex min-w-0 flex-1 flex-wrap items-center gap-1"
               aria-label={t("nav.deskTools")}
             >
               {DESK_TOOLS.map((item) => {
@@ -183,6 +175,11 @@ function AppShellInner() {
                 );
               })}
             </nav>
+            <SettingsMenu
+              adminActive={view === "admin"}
+              onAdmin={() => setView("admin")}
+              onAbout={() => setAboutOpen(true)}
+            />
           </div>
         </div>
       </header>
