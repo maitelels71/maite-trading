@@ -16,5 +16,19 @@ export const APP_MODE_LABEL =
 
 export const APP_MODE_HINT = VENUE_META[APP_VENUE].hint;
 
+/** Short brand mark for icons / tab (Maylels Options / Futures). */
+export const APP_ICON_MARK = APP_MODE === "futures" ? "MLF" : "MLo";
+
+/** Favicon + header icon paths (public/). */
+export const APP_ICON_SVG =
+  APP_MODE === "futures"
+    ? "/brand/icon-mlf-futures.svg"
+    : "/brand/icon-mlo-options.svg";
+
+export const APP_ICON_PNG =
+  APP_MODE === "futures"
+    ? "/brand/icon-mlf-futures.png"
+    : "/brand/icon-mlo-options.png";
+
 /** Browser tab + brand title (mode first so truncated tabs stay clear). */
 export const APP_DOCUMENT_TITLE = `${APP_MODE_LABEL} | Trading Like a Boss`;

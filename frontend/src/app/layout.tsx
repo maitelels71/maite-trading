@@ -3,6 +3,8 @@ import { IBM_Plex_Mono, Source_Sans_3 } from "next/font/google";
 
 import {
   APP_DOCUMENT_TITLE,
+  APP_ICON_PNG,
+  APP_ICON_SVG,
   APP_MODE_HINT,
   APP_MODE_LABEL,
 } from "@/lib/app-mode";
@@ -24,6 +26,10 @@ const ibmPlexMono = IBM_Plex_Mono({
 export const metadata: Metadata = {
   title: APP_DOCUMENT_TITLE,
   description: `${APP_MODE_LABEL} trading desk — ${APP_MODE_HINT}`,
+  icons: {
+    icon: [{ url: APP_ICON_SVG, type: "image/svg+xml" }],
+    apple: [{ url: APP_ICON_PNG }],
+  },
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

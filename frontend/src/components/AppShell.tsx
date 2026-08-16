@@ -16,7 +16,7 @@ import { SettingsMenu } from "@/components/SettingsMenu";
 import { StickyNotesDesk } from "@/components/StickyNotesDesk";
 import { StrategiesDesk } from "@/components/StrategiesDesk";
 import { ThemeProvider } from "@/components/ThemeProvider";
-import { APP_DOCUMENT_TITLE, APP_MODE, APP_MODE_LABEL, APP_VENUE } from "@/lib/app-mode";
+import { APP_DOCUMENT_TITLE, APP_ICON_SVG, APP_MODE, APP_MODE_LABEL, APP_VENUE } from "@/lib/app-mode";
 
 type AppView =
   | "analyzer"
@@ -97,12 +97,12 @@ function AppShellInner() {
             className="group mr-1 flex min-w-0 items-center gap-3 rounded-lg py-1 pr-2 text-left transition hover:bg-[var(--hover)]"
             aria-label={APP_DOCUMENT_TITLE}
           >
-            <span className="flex h-11 w-11 shrink-0 overflow-hidden rounded-lg ring-1 ring-[#c9893a]/55 shadow-sm">
+            <span className="flex h-11 w-11 shrink-0 overflow-hidden rounded-lg ring-1 ring-[var(--border)] shadow-sm bg-[#1c1917]">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
-                src="/brand/charging-bull.png"
+                src={APP_ICON_SVG}
                 alt=""
-                className="h-full w-full object-cover object-[50%_35%]"
+                className="h-full w-full object-contain"
               />
             </span>
             <span className="min-w-0">
