@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime, time
+from datetime import date, time
 from decimal import Decimal
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -11,9 +11,13 @@ from app.core.constants import STRATEGY_E04_BB15_GAP
 from app.domain.candles import Candle
 from app.domain.enums import Side
 from app.domain.rth_bars import bar_is_complete
-from app.domain.signals import Signal
-from app.domain.strategy_types import StrategyContext, StrategyMetrics, StrategyResult
+from app.domain.strategy_types import StrategyContext, StrategyResult
 from app.indicators import bollinger
+from app.strategies.backtest_utils import (
+    evaluate_each_session_day,
+    local_ts,
+    signal_and_session_trade,
+)
 from app.strategies.base import BaseStrategy
 
 RTH_OPEN = time(9, 30)
@@ -29,6 +33,8 @@ class Bb15GapOpenStrategy(BaseStrategy):
 
     Note: live trading uses a 5-minute entry window; with 15m bars the first RTH
     bar is the scan proxy. Manual checklist still owns ATM/spread/expiry.
+
+    Evaluate / scan: scores session days in [context.start, context.end].
     """
 
     @property
@@ -77,11 +83,10 @@ class Bb15GapOpenStrategy(BaseStrategy):
         if not candles:
             return StrategyResult()
 
-        session_day = _as_date(context.end)
         rth = [
             c
             for c in sorted(candles, key=lambda x: x.timestamp)
-            if RTH_OPEN <= _local(c.timestamp, tz).time() < RTH_CLOSE
+            if RTH_OPEN <= local_ts(c.timestamp, tz).time() < RTH_CLOSE
         ]
         if len(rth) < bb_period + lateral_bars:
             return StrategyResult()
@@ -91,94 +96,83 @@ class Bb15GapOpenStrategy(BaseStrategy):
 
         by_day: dict[date, list[int]] = {}
         for i, c in enumerate(rth):
-            d = _local(c.timestamp, tz).date()
+            d = local_ts(c.timestamp, tz).date()
             by_day.setdefault(d, []).append(i)
 
-        prior_days = [d for d in sorted(by_day) if d < session_day]
-        if not prior_days or session_day not in by_day:
-            return StrategyResult()
+        def score(session_day: date) -> StrategyResult | None:
+            prior_days = [d for d in sorted(by_day) if d < session_day]
+            if not prior_days or session_day not in by_day:
+                return None
 
-        prior_idxs = by_day[prior_days[-1]]
-        today_idxs = by_day[session_day]
-        if len(prior_idxs) < lateral_bars or not today_idxs:
-            return StrategyResult()
+            prior_idxs = by_day[prior_days[-1]]
+            today_idxs = by_day[session_day]
+            if len(prior_idxs) < lateral_bars or not today_idxs:
+                return None
 
-        lateral_idxs = prior_idxs[-lateral_bars:]
-        lateral_mids = [bands[i].mid for i in lateral_idxs]
-        lateral_bw = [bands[i].bandwidth for i in lateral_idxs]
-        if any(m is None or b is None for m, b in zip(lateral_mids, lateral_bw)):
-            return StrategyResult()
+            lateral_idxs = prior_idxs[-lateral_bars:]
+            lateral_mids = [bands[i].mid for i in lateral_idxs]
+            lateral_bw = [bands[i].bandwidth for i in lateral_idxs]
+            if any(m is None or b is None for m, b in zip(lateral_mids, lateral_bw)):
+                return None
 
-        mid0 = lateral_mids[0]
-        mid1 = lateral_mids[-1]
-        assert mid0 is not None and mid1 is not None
-        mid_change = abs(mid1 - mid0) / mid0 if mid0 != 0 else Decimal("1")
-        avg_bw = sum((b for b in lateral_bw if b is not None), Decimal("0")) / len(
-            lateral_bw
-        )
-        if mid_change > lateral_max or avg_bw > squeeze_max:
-            return StrategyResult()
-
-        # Prior BB at last prior bar — gap measured vs this envelope
-        prior_last = prior_idxs[-1]
-        prior_band = bands[prior_last]
-        if prior_band.upper is None or prior_band.lower is None or prior_band.mid is None:
-            return StrategyResult()
-
-        first_i = today_idxs[0]
-        first = rth[first_i]
-        # First RTH bar should start at/near 9:30
-        first_local = _local(first.timestamp, tz)
-        if first_local.time() != RTH_OPEN and first_local.hour == 9 and first_local.minute > 30:
-            # Allow slight offset but reject if clearly after open window proxy
-            if first_local.time() >= time(9, 45):
-                return StrategyResult()
-        if not bar_is_complete(first, rth, tz=tz, bar_minutes=15):
-            return StrategyResult()
-
-        fully_below = first.high < prior_band.lower
-        fully_above = first.low > prior_band.upper
-        rising = first.close > first.open
-        falling = first.close < first.open
-
-        side: Side | None = None
-        reason = ""
-        if fully_below and rising:
-            side = Side.LONG
-            reason = (
-                "E04 CALL setup: prior BB15 squeeze + first 15m fully below lower "
-                "band and closing up toward mid"
+            mid0 = lateral_mids[0]
+            mid1 = lateral_mids[-1]
+            assert mid0 is not None and mid1 is not None
+            mid_change = abs(mid1 - mid0) / mid0 if mid0 != 0 else Decimal("1")
+            avg_bw = sum((b for b in lateral_bw if b is not None), Decimal("0")) / len(
+                lateral_bw
             )
-        elif fully_above and falling:
-            side = Side.SHORT
-            reason = (
-                "E04 PUT setup: prior BB15 squeeze + first 15m fully above upper "
-                "band and closing down toward mid"
+            if mid_change > lateral_max or avg_bw > squeeze_max:
+                return None
+
+            # Prior BB at last prior bar — gap measured vs this envelope
+            prior_last = prior_idxs[-1]
+            prior_band = bands[prior_last]
+            if prior_band.upper is None or prior_band.lower is None or prior_band.mid is None:
+                return None
+
+            first_i = today_idxs[0]
+            first = rth[first_i]
+            # First RTH bar should start at/near 9:30
+            first_local = local_ts(first.timestamp, tz)
+            if first_local.time() != RTH_OPEN and first_local.hour == 9 and first_local.minute > 30:
+                # Allow slight offset but reject if clearly after open window proxy
+                if first_local.time() >= time(9, 45):
+                    return None
+            if not bar_is_complete(first, rth, tz=tz, bar_minutes=15):
+                return None
+
+            fully_below = first.high < prior_band.lower
+            fully_above = first.low > prior_band.upper
+            rising = first.close > first.open
+            falling = first.close < first.open
+
+            side: Side | None = None
+            reason = ""
+            if fully_below and rising:
+                side = Side.LONG
+                reason = (
+                    "E04 CALL setup: prior BB15 squeeze + first 15m fully below lower "
+                    "band and closing up toward mid"
+                )
+            elif fully_above and falling:
+                side = Side.SHORT
+                reason = (
+                    "E04 PUT setup: prior BB15 squeeze + first 15m fully above upper "
+                    "band and closing down toward mid"
+                )
+            else:
+                return None
+
+            today_bars = [rth[i] for i in today_idxs]
+            return signal_and_session_trade(
+                bar=first,
+                side=side,
+                reason=reason,
+                ticker=context.ticker,
+                day_bars=today_bars,
             )
-        else:
-            return StrategyResult()
 
-        signal = Signal(
-            timestamp=first.timestamp,
-            side=side,
-            price=first.close,
-            reason=reason,
-            ticker=context.ticker,
+        return evaluate_each_session_day(
+            context, tz=tz, candles_for_days=rth, score_day=score
         )
-        return StrategyResult(
-            signals=[signal],
-            trades=[],
-            metrics=StrategyMetrics(),
-        )
-
-
-def _local(ts: datetime, tz: ZoneInfo) -> datetime:
-    if ts.tzinfo is None:
-        return ts.replace(tzinfo=tz)
-    return ts.astimezone(tz)
-
-
-def _as_date(value: date | datetime) -> date:
-    if isinstance(value, datetime):
-        return value.date()
-    return value

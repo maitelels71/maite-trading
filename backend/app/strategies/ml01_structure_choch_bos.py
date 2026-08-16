@@ -3,25 +3,21 @@
 from __future__ import annotations
 
 from datetime import date, datetime
-from decimal import Decimal
 from typing import Any, Literal
 from zoneinfo import ZoneInfo
 
 from app.core.constants import STRATEGY_ML01_STRUCTURE
 from app.domain.candles import Candle
 from app.domain.enums import Side
-from app.domain.signals import Signal
-from app.domain.strategy_types import StrategyContext, StrategyMetrics, StrategyResult
-from app.domain.trades import Trade
+from app.domain.strategy_types import StrategyContext, StrategyResult
+from app.strategies.backtest_utils import (
+    evaluate_each_session_day,
+    local_ts,
+    signal_and_session_trade,
+)
 from app.strategies.base import BaseStrategy
 
 Bias = Literal["bull", "bear", "range"]
-
-
-def _local(ts: datetime, tz: ZoneInfo) -> datetime:
-    if ts.tzinfo is None:
-        return ts.replace(tzinfo=tz)
-    return ts.astimezone(tz)
 
 
 def _swing_highs(candles: list[Candle], left: int = 2, right: int = 2) -> list[int]:
@@ -75,7 +71,6 @@ def _major_bias(h1: list[Candle], *, left: int, right: int) -> tuple[Bias, str]:
         choch_hl = h1[lows[-1]].low
         last_hl_i = lows[-1]
     else:
-        # Fallback: use lowest low before the HH
         prior = h1[: last_hh_i + 1]
         choch_hl = min(c.low for c in prior)
         last_hl_i = min(range(last_hh_i + 1), key=lambda i: h1[i].low)
@@ -103,7 +98,7 @@ def _ltf_choch_bos(
     left: int,
     right: int,
 ) -> tuple[bool, str]:
-    """Detect recent ChoCh + BOS on 15m in bias direction (heuristic)."""
+    """Detect recent ChoCh + BOS on LTF in bias direction (heuristic)."""
     if bias == "range" or len(m15) < left + right + 8:
         return False, "no_ltf"
 
@@ -112,7 +107,6 @@ def _ltf_choch_bos(
     if len(highs) < 2 or len(lows) < 2:
         return False, "few_swings"
 
-    # Look at last ~24 bars for confirmation
     window = m15[-24:]
     w_highs = _swing_highs(window, left=1, right=1)
     w_lows = _swing_lows(window, left=1, right=1)
@@ -120,14 +114,12 @@ def _ltf_choch_bos(
         return False, "no_window_swings"
 
     if bias == "bull":
-        # ChoCh: break last LH (prior swing high that was making lower highs)
         lh_i = w_highs[-1]
         lh = window[lh_i].high
         after = window[lh_i + 1 :]
         choch = any(c.close > lh for c in after)
         if not choch:
             return False, f"no_choch_lh@{lh}"
-        # BOS: after ChoCh, break a subsequent higher swing high
         post = [c for c in after if c.close > lh]
         if len(post) < 2:
             return False, "choch_only"
@@ -135,7 +127,6 @@ def _ltf_choch_bos(
         bos = post[-1].close > peak or window[-1].close > lh
         return bos, f"bull_choch_bos@{lh}"
 
-    # bear
     hl_i = w_lows[-1]
     hl = window[hl_i].low
     after = window[hl_i + 1 :]
@@ -155,8 +146,11 @@ class Ml01StructureChochBosStrategy(BaseStrategy):
     ML01 heuristics (v1):
 
     1. 1H major bias from last HH / HL breaks (user major rule).
-    2. 15m ChoCh + BOS aligned with that bias.
+    2. LTF ChoCh + BOS aligned with that bias.
     3. Manual: OB/FVG/retest remains playbook checklist.
+
+    Backtest walks each session day in [start, end] and closes at the day's
+    last HTF bar. Live scan uses start=end=session_day.
     """
 
     @property
@@ -206,71 +200,50 @@ class Ml01StructureChochBosStrategy(BaseStrategy):
                 context.extra_candles.get("5m")
                 or context.extra_candles.get("3m")
                 or context.extra_candles.get("15m")
+                or context.extra_candles.get("1m")
                 or []
             ),
             key=lambda c: c.timestamp,
         )
 
-        # Restrict to session window for scoring day(s)
-        start_d: date = context.start
-        end_d: date = context.end
-        h1_win = [
-            c
-            for c in h1
-            if start_d <= _local(c.timestamp, tz).date() <= end_d
-        ] or h1[-48:]
-        # Need lookback swings: include bars before window
-        h1_for_bias = h1
-        bias, bias_note = _major_bias(h1_for_bias, left=left, right=right)
+        def score(session_day: date) -> StrategyResult | None:
+            h1_asof = [
+                c for c in h1 if local_ts(c.timestamp, tz).date() <= session_day
+            ]
+            h1_day = [
+                c for c in h1 if local_ts(c.timestamp, tz).date() == session_day
+            ]
+            if len(h1_asof) < left + right + 5 or not h1_day:
+                return None
 
-        m15_win = [
-            c
-            for c in m15
-            if start_d <= _local(c.timestamp, tz).date() <= end_d
-        ] or m15[-32:]
-        aligned, ltf_note = _ltf_choch_bos(
-            m15_win or m15,
-            bias,
-            left=max(1, left - 1),
-            right=max(1, right - 1),
-        )
+            bias, bias_note = _major_bias(h1_asof, left=left, right=right)
+            m15_asof = [
+                c for c in m15 if local_ts(c.timestamp, tz).date() <= session_day
+            ][-48:]
+            aligned, ltf_note = _ltf_choch_bos(
+                m15_asof,
+                bias,
+                left=max(1, left - 1),
+                right=max(1, right - 1),
+            )
+            if bias not in ("bull", "bear") or not aligned:
+                return None
 
-        signals: list[Signal] = []
-        trades: list[Trade] = []
-        matched = bias in ("bull", "bear") and aligned
-
-        if matched:
             side = Side.LONG if bias == "bull" else Side.SHORT
-            ref = h1_win[-1] if h1_win else h1[-1]
+            ref = h1_day[-1]
             reason = f"ML01 {bias} | {bias_note} | {ltf_note}"
-            signals.append(
-                Signal(
-                    timestamp=ref.timestamp,
-                    side=side,
-                    price=ref.close,
-                    reason=reason,
-                    ticker=context.ticker,
-                )
-            )
-            trades.append(
-                Trade(
-                    side=side,
-                    entry_time=ref.timestamp,
-                    entry_price=ref.close,
-                    signal=reason,
-                    notes="Heuristic scan — confirm HH/HL + 15m BOS on chart",
-                )
+            return signal_and_session_trade(
+                bar=ref,
+                side=side,
+                reason=reason,
+                ticker=context.ticker,
+                day_bars=h1_day,
+                notes="ML01 session snapshot — confirm HH/HL + LTF BOS on chart",
             )
 
-        return StrategyResult(
-            signals=signals,
-            trades=trades,
-            metrics=StrategyMetrics(
-                total_trades=len(trades),
-                winning_trades=0,
-                losing_trades=0,
-                win_rate=0.0,
-                profit_loss=Decimal("0"),
-                max_drawdown=Decimal("0"),
-            ),
+        return evaluate_each_session_day(
+            context,
+            tz=tz,
+            candles_for_days=h1,
+            score_day=score,
         )

@@ -14,6 +14,7 @@ from app.domain.enums import Side
 from app.domain.signals import Signal
 from app.domain.strategy_types import StrategyContext, StrategyMetrics, StrategyResult
 from app.domain.trades import Trade
+from app.strategies.backtest_utils import metrics_from_trades
 from app.strategies.base import BaseStrategy
 
 Bias = Literal["bull", "bear", "range"]
@@ -96,11 +97,16 @@ def _htf_bias_and_ob(
     *,
     left: int,
     right: int,
+    end_index: int | None = None,
 ) -> tuple[Bias, OrderBlock | None, str]:
     """
     Bias from last close beyond a swing (BOS).
     OB = last opposing candle before the impulsive move into that BOS.
+
+    When ``end_index`` is set, only bars ``0..end_index`` are used (causal as-of).
     """
+    if end_index is not None:
+        htf = htf[: max(0, end_index) + 1]
     if len(htf) < left + right + 8:
         return "range", None, "insufficient_htf"
 
@@ -216,13 +222,19 @@ def find_scm_in_ob(
     ltf: list[Candle],
     ob: OrderBlock,
     *,
-    lookback: int = 12,
+    lookback: int | None = 12,
+    start_index: int = 1,
+    end_index: int | None = None,
 ) -> ScmHit | None:
-    """Most recent SCM candle that overlaps the HTF OB."""
+    """Most recent SCM candle that overlaps the HTF OB (optional lookback window)."""
     if len(ltf) < 2:
         return None
-    start = max(1, len(ltf) - lookback)
-    for i in range(len(ltf) - 1, start - 1, -1):
+    last = len(ltf) - 1 if end_index is None else min(end_index, len(ltf) - 1)
+    if lookback is None:
+        first = max(1, start_index)
+    else:
+        first = max(1, start_index, last - lookback + 1)
+    for i in range(last, first - 1, -1):
         prior, curr = ltf[i - 1], ltf[i]
         if not overlaps_ob(curr, ob):
             continue
@@ -247,6 +259,70 @@ def _map_ltf_index_to_htf(
     return idx
 
 
+def _resolve_ltf(
+    context: StrategyContext,
+    *,
+    start_d: date,
+    end_d: date,
+    tz: ZoneInfo,
+) -> tuple[list[Candle], list[Candle]]:
+    """Pick LTF with enough bars inside the requested window; return (window, full)."""
+    extras = context.extra_candles or {}
+    candidates = [
+        sorted(list(extras.get("1m") or []), key=lambda c: c.timestamp),
+        sorted(list(extras.get("5m") or []), key=lambda c: c.timestamp),
+        sorted(list(extras.get("3m") or []), key=lambda c: c.timestamp),
+        sorted(list(extras.get("15m") or []), key=lambda c: c.timestamp),
+    ]
+    for full in candidates:
+        win = [
+            c
+            for c in full
+            if start_d <= _local(c.timestamp, tz).date() <= end_d
+        ]
+        if len(win) >= 4:
+            return win, full
+    # Fallback: best available full series (may be empty)
+    for full in candidates:
+        if full:
+            win = [
+                c
+                for c in full
+                if start_d <= _local(c.timestamp, tz).date() <= end_d
+            ]
+            return (win or full), full
+    return [], []
+
+
+def _close_trade_on_ltf(
+    *,
+    side: Bias,
+    entry: Candle,
+    ltf: list[Candle],
+    entry_index: int,
+    sl: Decimal,
+    tp: Decimal,
+) -> tuple[datetime, Decimal, Decimal]:
+    """Walk forward to SL/TP; else exit on last available LTF bar."""
+    for j in range(entry_index + 1, len(ltf)):
+        bar = ltf[j]
+        if side == "bull":
+            if bar.low <= sl:
+                return bar.timestamp, sl, sl - entry.close
+            if bar.high >= tp:
+                return bar.timestamp, tp, tp - entry.close
+        else:
+            if bar.high >= sl:
+                return bar.timestamp, sl, entry.close - sl
+            if bar.low <= tp:
+                return bar.timestamp, tp, entry.close - tp
+    last = ltf[-1]
+    pnl = (
+        (last.close - entry.close) if side == "bull" else (entry.close - last.close)
+    )
+    return last.timestamp, last.close, pnl
+
+
 class Ml02SingleCandleMitigationStrategy(BaseStrategy):
     """
     ML02 heuristics (v1):
@@ -254,6 +330,9 @@ class Ml02SingleCandleMitigationStrategy(BaseStrategy):
     1. HTF (15m) BOS → bias + Order Block (last opposing candle before impulse).
     2. Inducement / eng. liquidity swept on the path back.
     3. LTF Single Candle Mitigation inside/at the HTF OB = entry trigger.
+
+    Backtest walks the full date range on LTF (not only the last N bars).
+    Live/scan still uses the same walk restricted to ``context.start..end``.
     """
 
     @property
@@ -285,8 +364,11 @@ class Ml02SingleCandleMitigationStrategy(BaseStrategy):
         return {
             "swing_left": 2,
             "swing_right": 2,
-            "scm_lookback": 12,
+            # None = walk full LTF window (backtest). Set an int for live-only tail scan.
+            "scm_lookback": None,
             "require_inducement": True,
+            "rr_target": "1.5",
+            "max_trades": 50,
             "timezone": "America/New_York",
         }
 
@@ -299,140 +381,115 @@ class Ml02SingleCandleMitigationStrategy(BaseStrategy):
         tz = ZoneInfo(str(params.get("timezone") or context.timezone))
         left = int(params.get("swing_left") or 2)
         right = int(params.get("swing_right") or 2)
-        lookback = int(params.get("scm_lookback") or 12)
+        raw_lb = params.get("scm_lookback", None)
+        lookback = None if raw_lb in (None, "", "none") else int(raw_lb)
         require_ind = bool(params.get("require_inducement", True))
+        rr = Decimal(str(params.get("rr_target") or "1.5"))
+        max_trades = int(params.get("max_trades") or 50)
 
         htf = sorted(candles, key=lambda c: c.timestamp)
-        ltf = sorted(
-            list(
-                context.extra_candles.get("1m")
-                or context.extra_candles.get("5m")
-                or context.extra_candles.get("3m")
-                or context.extra_candles.get("15m")
-                or []
-            ),
-            key=lambda c: c.timestamp,
-        )
-        # Prefer finer TF when both present
-        if context.extra_candles.get("1m") and context.extra_candles.get("5m"):
-            # Use 1m for futures-style entry; if empty fall back already handled
-            one = sorted(context.extra_candles["1m"], key=lambda c: c.timestamp)
-            if len(one) >= 4:
-                ltf = one
-            else:
-                ltf = sorted(context.extra_candles["5m"], key=lambda c: c.timestamp)
-
         start_d: date = context.start
         end_d: date = context.end
-        htf_day = [
-            c
-            for c in htf
-            if start_d <= _local(c.timestamp, tz).date() <= end_d
-        ]
-        ltf_day = [
-            c
-            for c in ltf
-            if start_d <= _local(c.timestamp, tz).date() <= end_d
-        ]
+        series, ltf = _resolve_ltf(context, start_d=start_d, end_d=end_d, tz=tz)
 
-        bias, ob, bias_note = _htf_bias_and_ob(htf, left=left, right=right)
         signals: list[Signal] = []
         trades: list[Trade] = []
 
-        if bias == "range" or ob is None or not ltf:
+        if len(htf) < left + right + 8 or len(series) < 2:
             return StrategyResult(
                 signals=signals,
                 trades=trades,
-                metrics=StrategyMetrics(
-                    total_trades=0,
-                    winning_trades=0,
-                    losing_trades=0,
-                    win_rate=0.0,
-                    profit_loss=Decimal("0"),
-                    max_drawdown=Decimal("0"),
-                ),
+                metrics=metrics_from_trades(trades),
             )
 
-        series = ltf_day or ltf
-        hit = find_scm_in_ob(series, ob, lookback=lookback)
-        if hit is None:
-            return StrategyResult(
-                signals=signals,
-                trades=trades,
-                metrics=StrategyMetrics(
-                    total_trades=0,
-                    winning_trades=0,
-                    losing_trades=0,
-                    win_rate=0.0,
-                    profit_loss=Decimal("0"),
-                    max_drawdown=Decimal("0"),
-                ),
+        # Indices into full `ltf` for forward exits; search window on `series`.
+        ltf_by_ts = {c.timestamp: i for i, c in enumerate(ltf)}
+
+        search_start = 1
+        if lookback is not None:
+            search_start = max(1, len(series) - lookback)
+
+        last_entry_i = -10_000
+        cooldown = 3  # LTF bars between entries
+
+        for i in range(search_start, len(series)):
+            if len(trades) >= max_trades:
+                break
+            if i - last_entry_i < cooldown:
+                continue
+            prior, curr = series[i - 1], series[i]
+            htf_i = _map_ltf_index_to_htf(curr.timestamp, htf)
+            bias, ob, bias_note = _htf_bias_and_ob(
+                htf, left=left, right=right, end_index=htf_i
+            )
+            if bias == "range" or ob is None:
+                continue
+            if not overlaps_ob(curr, ob):
+                continue
+            is_scm = (
+                (ob.side == "bear" and is_bearish_scm(prior, curr))
+                or (ob.side == "bull" and is_bullish_scm(prior, curr))
+            )
+            if not is_scm:
+                continue
+
+            indu_ok, indu_note = _inducement_swept(htf, ob, before_index=htf_i)
+            if require_ind and not indu_ok:
+                continue
+
+            side = Side.LONG if ob.side == "bull" else Side.SHORT
+            hit_side: Bias = ob.side
+            reason = (
+                f"ML02 {hit_side} SCM@OB | {bias_note} | {indu_note} | "
+                f"ob[{ob.bottom}-{ob.top}]"
+            )
+            signals.append(
+                Signal(
+                    timestamp=curr.timestamp,
+                    side=side,
+                    price=curr.close,
+                    reason=reason,
+                    ticker=context.ticker,
+                )
             )
 
-        # Inducement checked on HTF path up to SCM time
-        htf_i = _map_ltf_index_to_htf(hit.candle.timestamp, htf)
-        indu_ok, indu_note = _inducement_swept(htf, ob, before_index=htf_i)
-        if require_ind and not indu_ok:
-            return StrategyResult(
-                signals=signals,
-                trades=trades,
-                metrics=StrategyMetrics(
-                    total_trades=0,
-                    winning_trades=0,
-                    losing_trades=0,
-                    win_rate=0.0,
-                    profit_loss=Decimal("0"),
-                    max_drawdown=Decimal("0"),
-                ),
-            )
+            sl = curr.high if hit_side == "bear" else curr.low
+            risk = abs(curr.close - sl)
+            if risk <= 0:
+                risk = abs(ob.top - ob.bottom) or Decimal("1")
+            if hit_side == "bull":
+                tp = curr.close + (risk * rr)
+            else:
+                tp = curr.close - (risk * rr)
 
-        # Prefer hits on the requested session date
-        hit_day = _local(hit.candle.timestamp, tz).date()
-        if not (start_d <= hit_day <= end_d) and htf_day:
-            # still allow if evaluating with lookback-only data
-            pass
-
-        side = Side.LONG if hit.side == "bull" else Side.SHORT
-        reason = (
-            f"ML02 {hit.side} SCM@OB | {bias_note} | {indu_note} | "
-            f"ob[{ob.bottom}-{ob.top}]"
-        )
-        signals.append(
-            Signal(
-                timestamp=hit.candle.timestamp,
-                side=side,
-                price=hit.candle.close,
-                reason=reason,
-                ticker=context.ticker,
+            full_i = ltf_by_ts.get(curr.timestamp, i)
+            exit_t, exit_px, pnl = _close_trade_on_ltf(
+                side=hit_side,
+                entry=curr,
+                ltf=ltf if ltf else series,
+                entry_index=full_i if ltf else i,
+                sl=sl,
+                tp=tp,
             )
-        )
-        sl = (
-            hit.candle.high
-            if hit.side == "bear"
-            else hit.candle.low
-        )
-        trades.append(
-            Trade(
-                side=side,
-                entry_time=hit.candle.timestamp,
-                entry_price=hit.candle.close,
-                signal=reason,
-                notes=(
-                    f"Heuristic — confirm HTF OB mitigation + SCM on chart; "
-                    f"SL beyond {'high' if hit.side == 'bear' else 'low'} {sl}"
-                ),
+            trades.append(
+                Trade(
+                    side=side,
+                    entry_time=curr.timestamp,
+                    entry_price=curr.close,
+                    signal=reason,
+                    exit_time=exit_t,
+                    exit_price=exit_px,
+                    profit_loss=pnl,
+                    notes=(
+                        f"SCM entry; SL={sl} TP={tp} ({rr}R); "
+                        f"confirm HTF OB mitigation on chart"
+                    ),
+                )
             )
-        )
+            last_entry_i = i
 
         return StrategyResult(
             signals=signals,
             trades=trades,
-            metrics=StrategyMetrics(
-                total_trades=len(trades),
-                winning_trades=0,
-                losing_trades=0,
-                win_rate=0.0,
-                profit_loss=Decimal("0"),
-                max_drawdown=Decimal("0"),
-            ),
+            metrics=metrics_from_trades(trades),
         )

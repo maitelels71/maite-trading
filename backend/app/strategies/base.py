@@ -8,7 +8,14 @@ from app.domain.strategy_types import StrategyContext, StrategyResult
 
 
 class BaseStrategy(ABC):
-    """Convenience ABC that satisfies the Strategy protocol."""
+    """Convenience ABC that satisfies the Strategy protocol.
+
+    Historical backtest contract (Futures + Options Analyzer):
+    - ``evaluate`` should walk every session day in ``[context.start, context.end]``
+    - Live scan passes ``start=end=session_day`` (one day)
+    - Prefer closed ``Trade`` rows (exit + profit_loss) so win-rate/PnL populate
+    - Use helpers in ``app.strategies.backtest_utils`` for new strategies
+    """
 
     @property
     @abstractmethod

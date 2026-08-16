@@ -23,9 +23,13 @@ from app.core.constants import (
 from app.domain.candles import Candle
 from app.domain.enums import Side
 from app.domain.rth_bars import bar_is_complete
-from app.domain.signals import Signal
-from app.domain.strategy_types import StrategyContext, StrategyMetrics, StrategyResult
+from app.domain.strategy_types import StrategyContext, StrategyResult
 from app.indicators import sma
+from app.strategies.backtest_utils import (
+    evaluate_each_session_day,
+    local_ts,
+    signal_and_session_trade,
+)
 from app.strategies.base import BaseStrategy
 
 RTH_OPEN = time(9, 30)
@@ -33,23 +37,11 @@ RTH_CLOSE = time(16, 0)
 HOUR_11 = time(11, 0)
 
 
-def _local(ts: datetime, tz: ZoneInfo) -> datetime:
-    if ts.tzinfo is None:
-        return ts.replace(tzinfo=tz)
-    return ts.astimezone(tz)
-
-
-def _as_date(value: date | datetime) -> date:
-    if isinstance(value, datetime):
-        return value.date()
-    return value
-
-
 def _rth(candles: list[Candle], tz: ZoneInfo) -> list[Candle]:
     return [
         c
         for c in sorted(candles, key=lambda x: x.timestamp)
-        if RTH_OPEN <= _local(c.timestamp, tz).time() < RTH_CLOSE
+        if RTH_OPEN <= local_ts(c.timestamp, tz).time() < RTH_CLOSE
     ]
 
 
@@ -59,19 +51,14 @@ def _signal(
     side: Side,
     reason: str,
     ticker: str,
+    day_bars: list[Candle],
 ) -> StrategyResult:
-    return StrategyResult(
-        signals=[
-            Signal(
-                timestamp=bar.timestamp,
-                side=side,
-                price=bar.close,
-                reason=reason,
-                ticker=ticker,
-            )
-        ],
-        trades=[],
-        metrics=StrategyMetrics(),
+    return signal_and_session_trade(
+        bar=bar,
+        side=side,
+        reason=reason,
+        ticker=ticker,
+        day_bars=day_bars,
     )
 
 
@@ -94,12 +81,12 @@ def _prior_session_last(
     tz: ZoneInfo,
     session_day: date,
 ) -> Candle | None:
-    prior = [c for c in h1 if _local(c.timestamp, tz).date() < session_day]
+    prior = [c for c in h1 if local_ts(c.timestamp, tz).date() < session_day]
     return prior[-1] if prior else None
 
 
 def _today(h1: list[Candle], tz: ZoneInfo, session_day: date) -> list[Candle]:
-    return [c for c in h1 if _local(c.timestamp, tz).date() == session_day]
+    return [c for c in h1 if local_ts(c.timestamp, tz).date() == session_day]
 
 
 def _sma_at(closes: list[Decimal], period: int, idx: int) -> Decimal | None:
@@ -144,53 +131,60 @@ class Cr01Ma40BounceStrategy(BaseStrategy):
     def evaluate(self, candles: list[Candle], context: StrategyContext) -> StrategyResult:
         params = {**self.default_parameters, **(context.parameters or {})}
         tz = ZoneInfo(str(params.get("timezone") or context.timezone))
-        session_day = _as_date(context.end)
         h1 = _rth(candles, tz)
         ma_f, ma_s = int(params["ma_fast"]), int(params["ma_slow"])
         if len(h1) < ma_s + 5:
             return StrategyResult()
 
         closes = [c.close for c in h1]
-        today = _today(h1, tz, session_day)
-        if not today:
-            return StrategyResult()
 
-        # Use last completed prior index for MA context
-        prior_idxs = [i for i, c in enumerate(h1) if _local(c.timestamp, tz).date() < session_day]
-        if len(prior_idxs) < ma_s:
-            return StrategyResult()
-        pi = prior_idxs[-1]
-        fast = _sma_at(closes, ma_f, pi)
-        slow = _sma_at(closes, ma_s, pi)
-        if fast is None or slow is None or fast <= slow:
-            return StrategyResult()
+        def score(session_day: date) -> StrategyResult | None:
+            today = _today(h1, tz, session_day)
+            if not today:
+                return None
 
-        touch = Decimal(str(params["touch_pct"]))
-        recent = h1[max(0, pi - 12) : pi + 1]
-        touched = any(
-            slow > 0 and abs(c.low - slow) / slow <= touch for c in recent
+            prior_idxs = [
+                i for i, c in enumerate(h1) if local_ts(c.timestamp, tz).date() < session_day
+            ]
+            if len(prior_idxs) < ma_s:
+                return None
+            pi = prior_idxs[-1]
+            fast = _sma_at(closes, ma_f, pi)
+            slow = _sma_at(closes, ma_s, pi)
+            if fast is None or slow is None or fast <= slow:
+                return None
+
+            touch = Decimal(str(params["touch_pct"]))
+            recent = h1[max(0, pi - 12) : pi + 1]
+            touched = any(
+                slow > 0 and abs(c.low - slow) / slow <= touch for c in recent
+            )
+            if not touched:
+                return None
+
+            swing_high = max(c.high for c in recent[-6:])
+            min_body = Decimal(str(params["min_body_pct"]))
+            for bar in today:
+                if not bar_is_complete(bar, h1, tz=tz):
+                    continue
+                if (
+                    _is_green(bar)
+                    and _body_pct(bar) >= min_body
+                    and bar.close > swing_high
+                    and local_ts(bar.timestamp, tz).time() >= HOUR_11
+                ):
+                    return _signal(
+                        bar=bar,
+                        side=Side.LONG,
+                        reason="CR01 CALL: MA20>MA40 + MA40 touch + break recent highs",
+                        ticker=context.ticker,
+                        day_bars=today,
+                    )
+            return None
+
+        return evaluate_each_session_day(
+            context, tz=tz, candles_for_days=h1, score_day=score
         )
-        if not touched:
-            return StrategyResult()
-
-        swing_high = max(c.high for c in recent[-6:])
-        min_body = Decimal(str(params["min_body_pct"]))
-        for bar in today:
-            if not bar_is_complete(bar, h1, tz=tz):
-                continue
-            if (
-                _is_green(bar)
-                and _body_pct(bar) >= min_body
-                and bar.close > swing_high
-                and _local(bar.timestamp, tz).time() >= HOUR_11
-            ):
-                return _signal(
-                    bar=bar,
-                    side=Side.LONG,
-                    reason="CR01 CALL: MA20>MA40 + MA40 touch + break recent highs",
-                    ticker=context.ticker,
-                )
-        return StrategyResult()
 
 
 # ── CR02 ──────────────────────────────────────────────────────────────────────
@@ -227,46 +221,52 @@ class Cr02DropGreenStrategy(BaseStrategy):
     def evaluate(self, candles: list[Candle], context: StrategyContext) -> StrategyResult:
         params = {**self.default_parameters, **(context.parameters or {})}
         tz = ZoneInfo(str(params.get("timezone") or context.timezone))
-        session_day = _as_date(context.end)
         h1 = _rth(candles, tz)
         ma_s = int(params["ma_slow"])
         if len(h1) < ma_s + 8:
             return StrategyResult()
 
         closes = [c.close for c in h1]
-        today = _today(h1, tz, session_day)
-        if not today:
-            return StrategyResult()
 
-        prior = [c for c in h1 if _local(c.timestamp, tz).date() < session_day]
-        if len(prior) < 8:
-            return StrategyResult()
-        window = prior[-10:]
-        hi = max(c.high for c in window)
-        lo = min(c.low for c in window)
-        if hi == 0:
-            return StrategyResult()
-        drop = (hi - lo) / hi
-        if drop < Decimal(str(params["min_drop_pct"])):
-            return StrategyResult()
+        def score(session_day: date) -> StrategyResult | None:
+            today = _today(h1, tz, session_day)
+            if not today:
+                return None
 
-        pi = len(prior) - 1
-        slow = _sma_at(closes, ma_s, pi)
-        if slow is None or prior[-1].close >= slow:
-            return StrategyResult()
+            prior = [c for c in h1 if local_ts(c.timestamp, tz).date() < session_day]
+            if len(prior) < 8:
+                return None
+            window = prior[-10:]
+            hi = max(c.high for c in window)
+            lo = min(c.low for c in window)
+            if hi == 0:
+                return None
+            drop = (hi - lo) / hi
+            if drop < Decimal(str(params["min_drop_pct"])):
+                return None
 
-        min_body = Decimal(str(params["min_body_pct"]))
-        for bar in today:
-            if not bar_is_complete(bar, h1, tz=tz):
-                continue
-            if _is_green(bar) and _body_pct(bar) >= min_body:
-                return _signal(
-                    bar=bar,
-                    side=Side.LONG,
-                    reason="CR02 CALL: strong drop past MA40 + solid green Hora",
-                    ticker=context.ticker,
-                )
-        return StrategyResult()
+            pi = len(prior) - 1
+            slow = _sma_at(closes, ma_s, pi)
+            if slow is None or prior[-1].close >= slow:
+                return None
+
+            min_body = Decimal(str(params["min_body_pct"]))
+            for bar in today:
+                if not bar_is_complete(bar, h1, tz=tz):
+                    continue
+                if _is_green(bar) and _body_pct(bar) >= min_body:
+                    return _signal(
+                        bar=bar,
+                        side=Side.LONG,
+                        reason="CR02 CALL: strong drop past MA40 + solid green Hora",
+                        ticker=context.ticker,
+                        day_bars=today,
+                    )
+            return None
+
+        return evaluate_each_session_day(
+            context, tz=tz, candles_for_days=h1, score_day=score
+        )
 
 
 # ── CR03 ──────────────────────────────────────────────────────────────────────
@@ -298,40 +298,44 @@ class Cr03ChannelBreakStrategy(BaseStrategy):
     def evaluate(self, candles: list[Candle], context: StrategyContext) -> StrategyResult:
         params = {**self.default_parameters, **(context.parameters or {})}
         tz = ZoneInfo(str(params.get("timezone") or context.timezone))
-        session_day = _as_date(context.end)
         h1 = _rth(candles, tz)
         look = int(params["lookback"])
         if len(h1) < look + 3:
             return StrategyResult()
 
-        prior = [c for c in h1 if _local(c.timestamp, tz).date() < session_day]
-        today = _today(h1, tz, session_day)
-        if len(prior) < look or not today:
-            return StrategyResult()
+        def score(session_day: date) -> StrategyResult | None:
+            prior = [c for c in h1 if local_ts(c.timestamp, tz).date() < session_day]
+            today = _today(h1, tz, session_day)
+            if len(prior) < look or not today:
+                return None
 
-        win = prior[-look:]
-        # Descending highs: first half max high > second half max high
-        mid = len(win) // 2
-        if max(c.high for c in win[:mid]) <= max(c.high for c in win[mid:]):
-            return StrategyResult()
-        ceiling = max(c.high for c in win[-5:])
-        min_body = Decimal(str(params["min_body_pct"]))
-        for bar in today:
-            if not bar_is_complete(bar, h1, tz=tz):
-                continue
-            if (
-                _is_green(bar)
-                and _body_pct(bar) >= min_body
-                and bar.close > ceiling
-                and _local(bar.timestamp, tz).time() >= HOUR_11
-            ):
-                return _signal(
-                    bar=bar,
-                    side=Side.LONG,
-                    reason="CR03 CALL: break descending-channel ceiling",
-                    ticker=context.ticker,
-                )
-        return StrategyResult()
+            win = prior[-look:]
+            mid = len(win) // 2
+            if max(c.high for c in win[:mid]) <= max(c.high for c in win[mid:]):
+                return None
+            ceiling = max(c.high for c in win[-5:])
+            min_body = Decimal(str(params["min_body_pct"]))
+            for bar in today:
+                if not bar_is_complete(bar, h1, tz=tz):
+                    continue
+                if (
+                    _is_green(bar)
+                    and _body_pct(bar) >= min_body
+                    and bar.close > ceiling
+                    and local_ts(bar.timestamp, tz).time() >= HOUR_11
+                ):
+                    return _signal(
+                        bar=bar,
+                        side=Side.LONG,
+                        reason="CR03 CALL: break descending-channel ceiling",
+                        ticker=context.ticker,
+                        day_bars=today,
+                    )
+            return None
+
+        return evaluate_each_session_day(
+            context, tz=tz, candles_for_days=h1, score_day=score
+        )
 
 
 # ── CR04 / CR05 ───────────────────────────────────────────────────────────────
@@ -361,12 +365,22 @@ class Cr04GapUpGreenStrategy(BaseStrategy):
         return {"min_gap_pct": 0.002, "timezone": "America/New_York"}
 
     def evaluate(self, candles: list[Candle], context: StrategyContext) -> StrategyResult:
-        return _gap_two_green(
-            candles,
-            context,
-            {**self.default_parameters, **(context.parameters or {})},
-            gap_up=True,
-            reason="CR04 CALL: gap up + verde + verde",
+        params = {**self.default_parameters, **(context.parameters or {})}
+        tz = ZoneInfo(str(params.get("timezone") or context.timezone))
+        h1 = _rth(candles, tz)
+
+        def score(session_day: date) -> StrategyResult | None:
+            return _gap_two_green_day(
+                h1,
+                context,
+                params,
+                session_day,
+                gap_up=True,
+                reason="CR04 CALL: gap up + verde + verde",
+            )
+
+        return evaluate_each_session_day(
+            context, tz=tz, candles_for_days=h1, score_day=score
         )
 
 
@@ -394,48 +408,63 @@ class Cr05GapDownGreenStrategy(BaseStrategy):
         return {"min_gap_pct": 0.002, "timezone": "America/New_York"}
 
     def evaluate(self, candles: list[Candle], context: StrategyContext) -> StrategyResult:
-        return _gap_two_green(
-            candles,
-            context,
-            {**self.default_parameters, **(context.parameters or {})},
-            gap_up=False,
-            reason="CR05 CALL: gap down + verde + verde",
+        params = {**self.default_parameters, **(context.parameters or {})}
+        tz = ZoneInfo(str(params.get("timezone") or context.timezone))
+        h1 = _rth(candles, tz)
+
+        def score(session_day: date) -> StrategyResult | None:
+            return _gap_two_green_day(
+                h1,
+                context,
+                params,
+                session_day,
+                gap_up=False,
+                reason="CR05 CALL: gap down + verde + verde",
+            )
+
+        return evaluate_each_session_day(
+            context, tz=tz, candles_for_days=h1, score_day=score
         )
 
 
-def _gap_two_green(
-    candles: list[Candle],
+def _gap_two_green_day(
+    h1: list[Candle],
     context: StrategyContext,
     params: dict[str, Any],
+    session_day: date,
     *,
     gap_up: bool,
     reason: str,
-) -> StrategyResult:
+) -> StrategyResult | None:
     tz = ZoneInfo(str(params.get("timezone") or context.timezone))
-    session_day = _as_date(context.end)
-    h1 = _rth(candles, tz)
     today = _today(h1, tz, session_day)
     prev = _prior_session_last(h1, tz, session_day)
     if not today or prev is None or len(today) < 2:
-        return StrategyResult()
+        return None
 
     first, second = today[0], today[1]
     # Must be true open (9:30) + next Hora (10:00–11:00); never clock-hour 10:00 as "first"
-    if _local(first.timestamp, tz).time() != RTH_OPEN:
-        return StrategyResult()
+    if local_ts(first.timestamp, tz).time() != RTH_OPEN:
+        return None
     if not bar_is_complete(first, h1, tz=tz) or not bar_is_complete(second, h1, tz=tz):
-        return StrategyResult()
+        return None
     if prev.close == 0:
-        return StrategyResult()
+        return None
     gap = (first.open - prev.close) / prev.close
     min_gap = Decimal(str(params["min_gap_pct"]))
     if gap_up and gap < min_gap:
-        return StrategyResult()
+        return None
     if not gap_up and gap > -min_gap:
-        return StrategyResult()
+        return None
     if not (_is_green(first) and _is_green(second)):
-        return StrategyResult()
-    return _signal(bar=second, side=Side.LONG, reason=reason, ticker=context.ticker)
+        return None
+    return _signal(
+        bar=second,
+        side=Side.LONG,
+        reason=reason,
+        ticker=context.ticker,
+        day_bars=today,
+    )
 
 
 # ── CR06 ──────────────────────────────────────────────────────────────────────
@@ -476,49 +505,54 @@ class Cr06StrongFloorStrategy(BaseStrategy):
     def evaluate(self, candles: list[Candle], context: StrategyContext) -> StrategyResult:
         params = {**self.default_parameters, **(context.parameters or {})}
         tz = ZoneInfo(str(params.get("timezone") or context.timezone))
-        session_day = _as_date(context.end)
         d1 = sorted(context.extra_candles.get("1d", []), key=lambda x: x.timestamp)
         h1 = _rth(candles, tz)
         ma_a, ma_b = int(params["ma_a"]), int(params["ma_b"])
         if len(d1) < ma_b + 2 or len(h1) < 20:
             return StrategyResult()
 
-        d_prior = [c for c in d1 if _local(c.timestamp, tz).date() < session_day]
-        if len(d_prior) < ma_b:
-            return StrategyResult()
-        d_closes = [c.close for c in d_prior]
-        i = len(d_closes) - 1
-        m100 = _sma_at(d_closes, ma_a, i)
-        m200 = _sma_at(d_closes, ma_b, i)
-        px = d_closes[i]
-        touch = Decimal(str(params["touch_pct"]))
-        near = False
-        for m in (m100, m200):
-            if m and m > 0 and abs(px - m) / m <= touch:
-                near = True
-        if not near:
-            return StrategyResult()
+        def score(session_day: date) -> StrategyResult | None:
+            d_prior = [c for c in d1 if local_ts(c.timestamp, tz).date() < session_day]
+            if len(d_prior) < ma_b:
+                return None
+            d_closes = [c.close for c in d_prior]
+            i = len(d_closes) - 1
+            m100 = _sma_at(d_closes, ma_a, i)
+            m200 = _sma_at(d_closes, ma_b, i)
+            px = d_closes[i]
+            touch = Decimal(str(params["touch_pct"]))
+            near = False
+            for m in (m100, m200):
+                if m and m > 0 and abs(px - m) / m <= touch:
+                    near = True
+            if not near:
+                return None
 
-        prior_h = [c for c in h1 if _local(c.timestamp, tz).date() < session_day]
-        today = _today(h1, tz, session_day)
-        if len(prior_h) < 6 or not today:
-            return StrategyResult()
-        ceiling = max(c.high for c in prior_h[-8:])
-        for bar in today:
-            if not bar_is_complete(bar, h1, tz=tz):
-                continue
-            if (
-                _is_green(bar)
-                and bar.close > ceiling
-                and _local(bar.timestamp, tz).time() >= HOUR_11
-            ):
-                return _signal(
-                    bar=bar,
-                    side=Side.LONG,
-                    reason="CR06 CALL: daily MA100/200 floor + Hora ceiling break",
-                    ticker=context.ticker,
-                )
-        return StrategyResult()
+            prior_h = [c for c in h1 if local_ts(c.timestamp, tz).date() < session_day]
+            today = _today(h1, tz, session_day)
+            if len(prior_h) < 6 or not today:
+                return None
+            ceiling = max(c.high for c in prior_h[-8:])
+            for bar in today:
+                if not bar_is_complete(bar, h1, tz=tz):
+                    continue
+                if (
+                    _is_green(bar)
+                    and bar.close > ceiling
+                    and local_ts(bar.timestamp, tz).time() >= HOUR_11
+                ):
+                    return _signal(
+                        bar=bar,
+                        side=Side.LONG,
+                        reason="CR06 CALL: daily MA100/200 floor + Hora ceiling break",
+                        ticker=context.ticker,
+                        day_bars=today,
+                    )
+            return None
+
+        return evaluate_each_session_day(
+            context, tz=tz, candles_for_days=h1, score_day=score
+        )
 
 
 # ── CR07 ──────────────────────────────────────────────────────────────────────
@@ -550,39 +584,45 @@ class Cr07PutChannelStrategy(BaseStrategy):
     def evaluate(self, candles: list[Candle], context: StrategyContext) -> StrategyResult:
         params = {**self.default_parameters, **(context.parameters or {})}
         tz = ZoneInfo(str(params.get("timezone") or context.timezone))
-        session_day = _as_date(context.end)
         h1 = _rth(candles, tz)
         look = int(params["lookback"])
-        prior = [c for c in h1 if _local(c.timestamp, tz).date() < session_day]
-        today = _today(h1, tz, session_day)
-        if len(prior) < look or not today:
-            return StrategyResult()
 
-        win = prior[-look:]
-        mid = len(win) // 2
-        if max(c.high for c in win[:mid]) <= max(c.high for c in win[mid:]):
-            return StrategyResult()
-        top = max(c.high for c in win)
-        bounce = win[-4:]
-        floor = min(c.low for c in bounce)
-        near = Decimal(str(params["near_top_pct"]))
-        for bar in today:
-            if not bar_is_complete(bar, h1, tz=tz):
-                continue
-            if _local(bar.timestamp, tz).time() < HOUR_11:
-                continue
-            if top == 0:
-                continue
-            if abs(bar.high - top) / top > near and bar.open < top * (1 - near):
-                continue
-            if _is_red(bar) and bar.close < floor:
-                return _signal(
-                    bar=bar,
-                    side=Side.SHORT,
-                    reason="CR07 PUT: channel top zone + red breaks bounce floor",
-                    ticker=context.ticker,
-                )
-        return StrategyResult()
+        def score(session_day: date) -> StrategyResult | None:
+            prior = [c for c in h1 if local_ts(c.timestamp, tz).date() < session_day]
+            today = _today(h1, tz, session_day)
+            if len(prior) < look or not today:
+                return None
+
+            win = prior[-look:]
+            mid = len(win) // 2
+            if max(c.high for c in win[:mid]) <= max(c.high for c in win[mid:]):
+                return None
+            top = max(c.high for c in win)
+            bounce = win[-4:]
+            floor = min(c.low for c in bounce)
+            near = Decimal(str(params["near_top_pct"]))
+            for bar in today:
+                if not bar_is_complete(bar, h1, tz=tz):
+                    continue
+                if local_ts(bar.timestamp, tz).time() < HOUR_11:
+                    continue
+                if top == 0:
+                    continue
+                if abs(bar.high - top) / top > near and bar.open < top * (1 - near):
+                    continue
+                if _is_red(bar) and bar.close < floor:
+                    return _signal(
+                        bar=bar,
+                        side=Side.SHORT,
+                        reason="CR07 PUT: channel top zone + red breaks bounce floor",
+                        ticker=context.ticker,
+                        day_bars=today,
+                    )
+            return None
+
+        return evaluate_each_session_day(
+            context, tz=tz, candles_for_days=h1, score_day=score
+        )
 
 
 # ── CR08 ──────────────────────────────────────────────────────────────────────
@@ -623,31 +663,39 @@ class Cr08FirstRedStrategy(BaseStrategy):
     def evaluate(self, candles: list[Candle], context: StrategyContext) -> StrategyResult:
         params = {**self.default_parameters, **(context.parameters or {})}
         tz = ZoneInfo(str(params.get("timezone") or context.timezone))
-        session_day = _as_date(context.end)
-        opening = _opening_half_hour(candles, tz, session_day)
-        if opening is None:
-            return StrategyResult()
-        if not _half_hour_complete(opening, candles, tz, session_day):
-            return StrategyResult()
-        if not _is_red(opening):
-            return StrategyResult()
-
+        m30 = _rth(candles, tz)
         d1 = sorted(context.extra_candles.get("1d", []), key=lambda x: x.timestamp)
-        d_prior = [c for c in d1 if _local(c.timestamp, tz).date() < session_day]
-        ma_n = int(params["ma_floor"])
-        if len(d_prior) >= ma_n:
-            closes = [c.close for c in d_prior]
-            m200 = _sma_at(closes, ma_n, len(closes) - 1)
-            px = closes[-1]
-            floor_pct = Decimal(str(params["floor_pct"]))
-            if m200 and m200 > 0 and abs(px - m200) / m200 <= floor_pct:
-                return StrategyResult()
 
-        return _signal(
-            bar=opening,
-            side=Side.SHORT,
-            reason="CR08 PUT: 9:30–10:00 half-hour red (not near daily MA200)",
-            ticker=context.ticker,
+        def score(session_day: date) -> StrategyResult | None:
+            opening = _opening_half_hour(candles, tz, session_day)
+            if opening is None:
+                return None
+            if not _half_hour_complete(opening, candles, tz, session_day):
+                return None
+            if not _is_red(opening):
+                return None
+
+            d_prior = [c for c in d1 if local_ts(c.timestamp, tz).date() < session_day]
+            ma_n = int(params["ma_floor"])
+            if len(d_prior) >= ma_n:
+                closes = [c.close for c in d_prior]
+                m200 = _sma_at(closes, ma_n, len(closes) - 1)
+                px = closes[-1]
+                floor_pct = Decimal(str(params["floor_pct"]))
+                if m200 and m200 > 0 and abs(px - m200) / m200 <= floor_pct:
+                    return None
+
+            today = _today(m30, tz, session_day)
+            return _signal(
+                bar=opening,
+                side=Side.SHORT,
+                reason="CR08 PUT: 9:30–10:00 half-hour red (not near daily MA200)",
+                ticker=context.ticker,
+                day_bars=today or [opening],
+            )
+
+        return evaluate_each_session_day(
+            context, tz=tz, candles_for_days=m30, score_day=score
         )
 
 
@@ -658,7 +706,7 @@ def _opening_half_hour(
 ) -> Candle | None:
     """Exact RTH open bar (9:30 ET) — the CR08 'primera vela'."""
     for c in sorted(candles, key=lambda x: x.timestamp):
-        lt = _local(c.timestamp, tz)
+        lt = local_ts(c.timestamp, tz)
         if lt.date() == session_day and lt.time() == RTH_OPEN:
             return c
     return None
@@ -671,9 +719,9 @@ def _half_hour_complete(
     session_day: date,
 ) -> bool:
     """Playbook requires the 9:30–10:00 candle fully closed before PUT at 10:00."""
-    open_local = _local(opening.timestamp, tz)
+    open_local = local_ts(opening.timestamp, tz)
     for c in candles:
-        lt = _local(c.timestamp, tz)
+        lt = local_ts(c.timestamp, tz)
         if lt.date() == session_day and lt > open_local:
             return True
     now = datetime.now(tz)
@@ -713,35 +761,41 @@ class Cr09GapFloorPutStrategy(BaseStrategy):
     def evaluate(self, candles: list[Candle], context: StrategyContext) -> StrategyResult:
         params = {**self.default_parameters, **(context.parameters or {})}
         tz = ZoneInfo(str(params.get("timezone") or context.timezone))
-        session_day = _as_date(context.end)
         h1 = _rth(candles, tz)
-        today = _today(h1, tz, session_day)
-        prev = _prior_session_last(h1, tz, session_day)
-        if not today or prev is None:
-            return StrategyResult()
-        first = today[0]
-        if _local(first.timestamp, tz).time() != RTH_OPEN:
-            return StrategyResult()
-        if prev.close == 0:
-            return StrategyResult()
-        gap = abs(first.open - prev.close) / prev.close
-        if gap < Decimal(str(params["min_gap_pct"])):
-            return StrategyResult()
-        # Gap floor = min(prior close, open) for up/down gaps
-        gap_floor = min(prev.close, first.open)
-        for bar in today:
-            if not bar_is_complete(bar, h1, tz=tz):
-                continue
-            if _local(bar.timestamp, tz).time() < HOUR_11:
-                continue
-            if _is_red(bar) and bar.close < gap_floor:
-                return _signal(
-                    bar=bar,
-                    side=Side.SHORT,
-                    reason="CR09 PUT: red breaks gap floor",
-                    ticker=context.ticker,
-                )
-        return StrategyResult()
+
+        def score(session_day: date) -> StrategyResult | None:
+            today = _today(h1, tz, session_day)
+            prev = _prior_session_last(h1, tz, session_day)
+            if not today or prev is None:
+                return None
+            first = today[0]
+            if local_ts(first.timestamp, tz).time() != RTH_OPEN:
+                return None
+            if prev.close == 0:
+                return None
+            gap = abs(first.open - prev.close) / prev.close
+            if gap < Decimal(str(params["min_gap_pct"])):
+                return None
+            # Gap floor = min(prior close, open) for up/down gaps
+            gap_floor = min(prev.close, first.open)
+            for bar in today:
+                if not bar_is_complete(bar, h1, tz=tz):
+                    continue
+                if local_ts(bar.timestamp, tz).time() < HOUR_11:
+                    continue
+                if _is_red(bar) and bar.close < gap_floor:
+                    return _signal(
+                        bar=bar,
+                        side=Side.SHORT,
+                        reason="CR09 PUT: red breaks gap floor",
+                        ticker=context.ticker,
+                        day_bars=today,
+                    )
+            return None
+
+        return evaluate_each_session_day(
+            context, tz=tz, candles_for_days=h1, score_day=score
+        )
 
 
 # ── CR10 ──────────────────────────────────────────────────────────────────────
@@ -777,35 +831,43 @@ class Cr10DailyHangerStrategy(BaseStrategy):
     def evaluate(self, candles: list[Candle], context: StrategyContext) -> StrategyResult:
         params = {**self.default_parameters, **(context.parameters or {})}
         tz = ZoneInfo(str(params.get("timezone") or context.timezone))
-        session_day = _as_date(context.end)
         d1 = sorted(candles, key=lambda x: x.timestamp)
-        # Prefer session day's daily bar if present, else last prior (late-day scan)
-        today = [c for c in d1 if _local(c.timestamp, tz).date() == session_day]
-        bar = today[-1] if today else None
-        if bar is None:
-            prior = [c for c in d1 if _local(c.timestamp, tz).date() < session_day]
-            if not prior:
-                return StrategyResult()
-            bar = prior[-1]
-        else:
-            # Playbook: confirm near close (~15:55) — don't fire midday on forming daily
-            now = datetime.now(tz)
-            if now.date() == session_day and now.time() < time(15, 55):
-                return StrategyResult()
 
-        body = abs(bar.close - bar.open)
-        upper = bar.high - max(bar.open, bar.close)
-        if bar.close == 0 or body == 0:
-            return StrategyResult()
-        if body / bar.close > Decimal(str(params["max_body_pct"])):
-            return StrategyResult()
-        if upper < body * Decimal(str(params["wick_body_mult"])):
-            return StrategyResult()
-        return _signal(
-            bar=bar,
-            side=Side.SHORT,
-            reason="CR10 PUT: daily hanger (upper wick) — confirm near close",
-            ticker=context.ticker,
+        def score(session_day: date) -> StrategyResult | None:
+            # Prefer session day's daily bar if present, else last prior (late-day scan)
+            today = [c for c in d1 if local_ts(c.timestamp, tz).date() == session_day]
+            bar = today[-1] if today else None
+            if bar is None:
+                prior = [c for c in d1 if local_ts(c.timestamp, tz).date() < session_day]
+                if not prior:
+                    return None
+                bar = prior[-1]
+                day_bars = [bar]
+            else:
+                # Playbook: confirm near close (~15:55) — don't fire midday on forming daily
+                now = datetime.now(tz)
+                if now.date() == session_day and now.time() < time(15, 55):
+                    return None
+                day_bars = today
+
+            body = abs(bar.close - bar.open)
+            upper = bar.high - max(bar.open, bar.close)
+            if bar.close == 0 or body == 0:
+                return None
+            if body / bar.close > Decimal(str(params["max_body_pct"])):
+                return None
+            if upper < body * Decimal(str(params["wick_body_mult"])):
+                return None
+            return _signal(
+                bar=bar,
+                side=Side.SHORT,
+                reason="CR10 PUT: daily hanger (upper wick) — confirm near close",
+                ticker=context.ticker,
+                day_bars=day_bars,
+            )
+
+        return evaluate_each_session_day(
+            context, tz=tz, candles_for_days=d1, score_day=score
         )
 
 
@@ -846,33 +908,41 @@ class Cr11EarningsFloorStrategy(BaseStrategy):
     def evaluate(self, candles: list[Candle], context: StrategyContext) -> StrategyResult:
         params = {**self.default_parameters, **(context.parameters or {})}
         tz = ZoneInfo(str(params.get("timezone") or context.timezone))
-        session_day = _as_date(context.end)
         d1 = sorted(candles, key=lambda x: x.timestamp)
-        prior = [c for c in d1 if _local(c.timestamp, tz).date() <= session_day]
         ma_b = int(params["ma_b"])
-        if len(prior) < ma_b + 5:
-            return StrategyResult()
-        closes = [c.close for c in prior]
-        i = len(closes) - 1
-        m100 = _sma_at(closes, int(params["ma_a"]), i)
-        m200 = _sma_at(closes, ma_b, i)
-        px = closes[i]
-        touch = Decimal(str(params["touch_pct"]))
-        near = any(m and m > 0 and abs(px - m) / m <= touch for m in (m100, m200))
-        if not near:
-            return StrategyResult()
-        look = prior[-15:]
-        hi = max(c.high for c in look)
-        if hi == 0 or (hi - px) / hi < Decimal(str(params["min_drop_pct"])):
-            return StrategyResult()
-        return _signal(
-            bar=prior[-1],
-            side=Side.LONG,
-            reason=(
-                "CR11 soft CALL bias: decline into MA100/200 — "
-                "verify earnings calendar / OptionSlam before entry"
-            ),
-            ticker=context.ticker,
+
+        def score(session_day: date) -> StrategyResult | None:
+            prior = [c for c in d1 if local_ts(c.timestamp, tz).date() <= session_day]
+            if len(prior) < ma_b + 5:
+                return None
+            closes = [c.close for c in prior]
+            i = len(closes) - 1
+            m100 = _sma_at(closes, int(params["ma_a"]), i)
+            m200 = _sma_at(closes, ma_b, i)
+            px = closes[i]
+            touch = Decimal(str(params["touch_pct"]))
+            near = any(m and m > 0 and abs(px - m) / m <= touch for m in (m100, m200))
+            if not near:
+                return None
+            look = prior[-15:]
+            hi = max(c.high for c in look)
+            if hi == 0 or (hi - px) / hi < Decimal(str(params["min_drop_pct"])):
+                return None
+            bar = prior[-1]
+            day_bars = [c for c in d1 if local_ts(c.timestamp, tz).date() == session_day]
+            return _signal(
+                bar=bar,
+                side=Side.LONG,
+                reason=(
+                    "CR11 soft CALL bias: decline into MA100/200 — "
+                    "verify earnings calendar / OptionSlam before entry"
+                ),
+                ticker=context.ticker,
+                day_bars=day_bars or [bar],
+            )
+
+        return evaluate_each_session_day(
+            context, tz=tz, candles_for_days=d1, score_day=score
         )
 
 

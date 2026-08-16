@@ -323,6 +323,10 @@ export function Dashboard() {
     startTransition(async () => {
       try {
         const { start, end } = rangeForCandles();
+        const lookback = playbook?.syncLookbackDays ?? 7;
+        const startDt = new Date(start);
+        startDt.setUTCDate(startDt.getUTCDate() - lookback);
+        const syncStart = startDt.toISOString();
         let bars = 0;
         let errs = 0;
         for (const tf of syncTfs) {
@@ -330,7 +334,7 @@ export function Dashboard() {
             const res = await syncMarketData({
               ticker: symbol,
               timeframe: tf,
-              start,
+              start: syncStart,
               end,
               market_type: selected?.market_type,
               force_refresh: true,
@@ -340,7 +344,9 @@ export function Dashboard() {
             errs += 1;
           }
         }
-        setStatus(`Synced ${bars} candles · ${syncTfs.join("+")} · ${errs} errors`);
+        setStatus(
+          `Synced ${bars} candles · ${syncTfs.join("+")} · lookback ${lookback}d · ${errs} errors`,
+        );
         await loadCandles();
       } catch (err) {
         setError(err instanceof Error ? err.message : "Sync failed");

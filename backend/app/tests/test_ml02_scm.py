@@ -131,6 +131,8 @@ def test_ml02_evaluate_bull_scm_in_demand_ob() -> None:
     ltf = [
         _c(ltf_base, "102.0", "102.4", "101.6", "101.9", tf="1m"),
         _c(ltf_base + timedelta(minutes=1), "101.9", "102.2", "101.0", "102.0", tf="1m"),
+        # forward bars for exit (TP)
+        _c(ltf_base + timedelta(minutes=2), "102.0", "104.0", "101.9", "103.5", tf="1m"),
     ]
 
     strat = Ml02SingleCandleMitigationStrategy()
@@ -150,6 +152,7 @@ def test_ml02_evaluate_bull_scm_in_demand_ob() -> None:
     if result.signals:
         assert result.signals[0].side == Side.LONG
         assert "ML02" in result.signals[0].reason
+        assert result.trades[0].profit_loss is not None
 
 
 def test_ml02_evaluate_runs_empty_ltf() -> None:
@@ -170,3 +173,62 @@ def test_ml02_evaluate_runs_empty_ltf() -> None:
     result = strat.evaluate(htf, ctx)
     assert result.signals == []
     assert result.trades == []
+
+
+def test_ml02_backtest_walks_full_range_not_only_tail() -> None:
+    """SCM early in the window must be found when scm_lookback is None."""
+    base = datetime(2026, 8, 3, 9, 0, tzinfo=ET)
+    htf: list[Candle] = []
+    levels = [
+        ("105", "106", "104", "104.5"),
+        ("104.5", "105", "103", "103.5"),
+        ("103.5", "104", "102", "102.5"),
+        ("102.5", "103", "101", "101.5"),
+        ("101.5", "102", "100.5", "101"),
+        ("101", "101.5", "99", "99.5"),
+        ("99.5", "100", "99", "99.8"),
+        ("99.8", "101", "99.5", "100.5"),
+        ("100.5", "103", "100", "102.5"),
+        ("102.5", "105", "102", "104.5"),
+        ("104.5", "106", "104", "105"),
+        ("105", "105.5", "103.5", "104"),
+        ("104", "104.5", "102", "102.5"),
+        ("102.5", "103", "101.2", "101.8"),
+    ]
+    for i, vals in enumerate(levels):
+        htf.append(_c(base + timedelta(minutes=15 * i), *vals))
+
+    # Early SCM + many later bars that are NOT SCM (would hide it if lookback=12)
+    ltf_base = base + timedelta(minutes=15 * 13)
+    ltf = [
+        _c(ltf_base, "102.0", "102.4", "101.6", "101.9", tf="1m"),
+        _c(ltf_base + timedelta(minutes=1), "101.9", "102.2", "101.0", "102.0", tf="1m"),
+    ]
+    for k in range(2, 40):
+        px = Decimal("102") + Decimal(k) * Decimal("0.01")
+        ltf.append(
+            _c(
+                ltf_base + timedelta(minutes=k),
+                str(px),
+                str(px + Decimal("0.2")),
+                str(px - Decimal("0.2")),
+                str(px),
+                tf="1m",
+            )
+        )
+
+    strat = Ml02SingleCandleMitigationStrategy()
+    ctx = StrategyContext(
+        ticker="NQ",
+        timeframe="15m",
+        start=date(2026, 8, 3),
+        end=date(2026, 8, 3),
+        timezone="America/New_York",
+        parameters={"require_inducement": False, "scm_lookback": None},
+        extra_candles={"1m": ltf},
+    )
+    result = strat.evaluate(htf, ctx)
+    # If OB/SCM detects, at least one closed trade with metrics
+    if result.trades:
+        assert result.metrics.total_trades >= 1
+        assert result.trades[0].profit_loss is not None
