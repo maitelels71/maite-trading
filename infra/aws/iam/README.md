@@ -52,8 +52,11 @@ The script:
 2. Trusted entity: **Web identity**  
 3. Identity provider: `token.actions.githubusercontent.com`  
 4. Audience: `sts.amazonaws.com`  
-5. Add condition (or edit trust after create) so `sub` is like:
-   `repo:maitelels71/maite-trading:*`  
+5. Add condition (or edit trust after create) so `sub` matches this repo.  
+   GitHub may issue either:
+   - `repo:maitelels71/maite-trading:*`
+   - `repo:maitelels71@<ownerId>/maite-trading@<repoId>:*`  
+   Use the trust JSON in `github-oidc-trust-policy.json` (covers both).
 6. Attach policy `MaiteTradingGitHubActionsDeploy`  
 7. Role name: `maite-trading-github-actions`  
 8. Create  
