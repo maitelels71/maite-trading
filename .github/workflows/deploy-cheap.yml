@@ -19,6 +19,7 @@ on:
       - "backend/**"
       - "frontend/**"
       - "infra/sam/**"
+      - "infra/aws/**"
       - ".github/workflows/deploy-cheap.yml"
 
 permissions:
