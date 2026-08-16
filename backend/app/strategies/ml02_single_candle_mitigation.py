@@ -1,4 +1,4 @@
-"""ML02 — Single Candle Mitigation at HTF Order Block (Options + Futures)."""
+"""ML02 — Single Candle Mitigation at HTF OB or imbalance (Options + Futures)."""
 
 from __future__ import annotations
 
@@ -18,17 +18,19 @@ from app.strategies.backtest_utils import metrics_from_trades
 from app.strategies.base import BaseStrategy
 
 Bias = Literal["bull", "bear", "range"]
+ZoneKind = Literal["ob", "fvg"]
 
 
 @dataclass(frozen=True, slots=True)
 class OrderBlock:
-    """HTF supply/demand zone from the impulse that caused BOS."""
+    """HTF mitigation zone: classic OB body or FVG / imbalance from the BOS impulse."""
 
     side: Bias  # bull = demand, bear = supply
     top: Decimal
     bottom: Decimal
     index: int
     bos_index: int
+    kind: ZoneKind = "ob"
 
 
 @dataclass(frozen=True, slots=True)
@@ -95,21 +97,23 @@ def is_bearish_scm(
     *,
     min_wick_frac: Decimal = Decimal("0.55"),
     min_sweep_frac: Decimal = Decimal("0.20"),
+    ref_high: Decimal | None = None,
 ) -> bool:
-    """SELL SCM: long upper wick sweeps prior high and closes back below it."""
+    """SELL SCM: long upper wick sweeps prior highs (liquidity) and rejects."""
     rng = _candle_range(curr)
     if rng <= 0:
         return False
     upper = _upper_wick(curr)
     if upper / rng < min_wick_frac:
         return False
-    if curr.high <= prior.high:
+    liq = ref_high if ref_high is not None else prior.high
+    if curr.high <= liq:
         return False
-    sweep = curr.high - prior.high
+    sweep = curr.high - liq
     if sweep / rng < min_sweep_frac:
         return False
-    # Rejection: close back below prior high and in lower half of the candle
-    if curr.close >= prior.high:
+    # Rejection: close back below taken liquidity and in lower half of the candle
+    if curr.close >= liq:
         return False
     if curr.close > curr.low + (rng * Decimal("0.50")):
         return False
@@ -122,84 +126,145 @@ def is_bullish_scm(
     *,
     min_wick_frac: Decimal = Decimal("0.55"),
     min_sweep_frac: Decimal = Decimal("0.20"),
+    ref_low: Decimal | None = None,
 ) -> bool:
-    """BUY SCM: long lower wick sweeps prior low and closes back above it."""
+    """BUY SCM: long lower wick sweeps prior lows (liquidity) and rejects."""
     rng = _candle_range(curr)
     if rng <= 0:
         return False
     lower = _lower_wick(curr)
     if lower / rng < min_wick_frac:
         return False
-    if curr.low >= prior.low:
+    liq = ref_low if ref_low is not None else prior.low
+    if curr.low >= liq:
         return False
-    sweep = prior.low - curr.low
+    sweep = liq - curr.low
     if sweep / rng < min_sweep_frac:
         return False
-    if curr.close <= prior.low:
+    if curr.close <= liq:
         return False
     if curr.close < curr.high - (rng * Decimal("0.50")):
         return False
     return True
 
 
+def prior_liquidity_high(candles: list[Candle], end_index: int, lookback: int) -> Decimal:
+    """Highest high of the N bars before ``end_index`` (liquidity to take on shorts)."""
+    first = max(0, end_index - lookback)
+    return max(c.high for c in candles[first:end_index])
+
+
+def prior_liquidity_low(candles: list[Candle], end_index: int, lookback: int) -> Decimal:
+    """Lowest low of the N bars before ``end_index`` (liquidity to take on longs)."""
+    first = max(0, end_index - lookback)
+    return min(c.low for c in candles[first:end_index])
+
+
 def overlaps_ob(c: Candle, ob: OrderBlock) -> bool:
-    """True if candle range intersects the HTF OB zone."""
+    """True if candle range intersects the HTF zone (OB or FVG)."""
     return c.low <= ob.top and c.high >= ob.bottom
 
 
 def mitigates_ob(c: Candle, ob: OrderBlock) -> bool:
     """
-    True mitigation: wick trades into the HTF OB and close rejects
+    True mitigation: wick trades into the HTF zone (OB or imbalance) and close rejects
     (does not close through the far side of the block).
     """
     if not overlaps_ob(c, ob):
         return False
     if ob.side == "bear":
-        # Supply: must wick into/above OB bottom; close must not stay above OB top
+        # Supply: must wick into/above zone bottom; close must not stay above zone top
         if c.high < ob.bottom:
             return False
         return c.close <= ob.top
-    # Demand: must wick into/below OB top; close must not stay below OB bottom
+    # Demand: must wick into/below zone top; close must not stay below zone bottom
     if c.low > ob.top:
         return False
     return c.close >= ob.bottom
 
 
-def _htf_bias_and_ob(
+def _find_impulse_fvg(
+    htf: list[Candle],
+    *,
+    side: Bias,
+    search_from: int,
+    search_to: int,
+    bos_index: int,
+) -> OrderBlock | None:
+    """
+    3-candle Fair Value Gap / imbalance created during the BOS impulse.
+
+    Bullish FVG (demand): candle[i-2].high < candle[i].low
+    Bearish FVG (supply): candle[i-2].low > candle[i].high
+    """
+    if side == "range":
+        return None
+    lo = max(2, search_from)
+    hi = min(search_to, len(htf) - 1)
+    best: OrderBlock | None = None
+    for i in range(lo, hi + 1):
+        a, _, c = htf[i - 2], htf[i - 1], htf[i]
+        if side == "bull" and a.high < c.low:
+            top, bottom = c.low, a.high
+            if top <= bottom:
+                continue
+            cand = OrderBlock(
+                side="bull",
+                top=top,
+                bottom=bottom,
+                index=i - 1,
+                bos_index=bos_index,
+                kind="fvg",
+            )
+            # Prefer the FVG closest to the BOS (last in impulse)
+            best = cand
+        elif side == "bear" and a.low > c.high:
+            top, bottom = a.low, c.high
+            if top <= bottom:
+                continue
+            cand = OrderBlock(
+                side="bear",
+                top=top,
+                bottom=bottom,
+                index=i - 1,
+                bos_index=bos_index,
+                kind="fvg",
+            )
+            best = cand
+    return best
+
+
+def _htf_bias_and_zones(
     htf: list[Candle],
     *,
     left: int,
     right: int,
     end_index: int | None = None,
-) -> tuple[Bias, OrderBlock | None, str]:
+) -> tuple[Bias, list[OrderBlock], str]:
     """
-    Bias from last close beyond a swing (BOS).
-    OB = last opposing candle before the impulsive move into that BOS.
+    Bias from last BOS + mitigation zones: classic OB and/or impulse FVG.
 
     When ``end_index`` is set, only bars ``0..end_index`` are used (causal as-of).
     """
     if end_index is not None:
         htf = htf[: max(0, end_index) + 1]
     if len(htf) < left + right + 8:
-        return "range", None, "insufficient_htf"
+        return "range", [], "insufficient_htf"
 
     highs = _swing_highs(htf, left, right)
     lows = _swing_lows(htf, left, right)
     if not highs and not lows:
-        return "range", None, "no_swings"
+        return "range", [], "no_swings"
 
-    # Find most recent BOS: close beyond a prior swing after that swing formed
     last_bos_i: int | None = None
     last_bias: Bias = "range"
     last_swing_i: int | None = None
 
     for i in range(left + right, len(htf)):
-        # bullish BOS: close above a swing high that formed earlier
         for sh in highs:
             if sh >= i:
                 break
             if htf[i].close > htf[sh].high:
-                # prefer later BOS
                 if last_bos_i is None or i >= last_bos_i:
                     last_bos_i = i
                     last_bias = "bull"
@@ -214,12 +279,11 @@ def _htf_bias_and_ob(
                     last_swing_i = sl
 
     if last_bos_i is None or last_swing_i is None or last_bias == "range":
-        return "range", None, "no_bos"
+        return "range", [], "no_bos"
 
-    # Opposing candle before BOS = OB (last bullish before bear BOS / last bearish before bull BOS)
-    ob_i: int | None = None
     search_from = last_swing_i
     search_to = last_bos_i
+    ob_i: int | None = None
     if last_bias == "bear":
         for j in range(search_to - 1, search_from - 1, -1):
             if j < 0:
@@ -228,7 +292,6 @@ def _htf_bias_and_ob(
                 ob_i = j
                 break
         if ob_i is None:
-            # fallback: swing high candle itself
             ob_i = last_swing_i if last_swing_i < last_bos_i else max(0, last_bos_i - 1)
     else:
         for j in range(search_to - 1, search_from - 1, -1):
@@ -249,8 +312,36 @@ def _htf_bias_and_ob(
         bottom=body_bot if body_top > body_bot else c.low,
         index=ob_i,
         bos_index=last_bos_i,
+        kind="ob",
     )
-    return last_bias, ob, f"bos@{last_bos_i}_ob@{ob_i}"
+    zones: list[OrderBlock] = [ob]
+    fvg = _find_impulse_fvg(
+        htf,
+        side=last_bias,
+        search_from=search_from,
+        search_to=search_to,
+        bos_index=last_bos_i,
+    )
+    if fvg is not None:
+        zones.append(fvg)
+    note = f"bos@{last_bos_i}_ob@{ob_i}"
+    if fvg is not None:
+        note += f"_fvg@{fvg.index}"
+    return last_bias, zones, note
+
+
+def _htf_bias_and_ob(
+    htf: list[Candle],
+    *,
+    left: int,
+    right: int,
+    end_index: int | None = None,
+) -> tuple[Bias, OrderBlock | None, str]:
+    """Backward-compatible: primary OB (first zone). Prefer ``_htf_bias_and_zones``."""
+    bias, zones, note = _htf_bias_and_zones(
+        htf, left=left, right=right, end_index=end_index
+    )
+    return bias, (zones[0] if zones else None), note
 
 
 def _inducement_swept(
@@ -300,8 +391,9 @@ def find_scm_in_ob(
     end_index: int | None = None,
     min_wick_frac: Decimal = Decimal("0.55"),
     min_sweep_frac: Decimal = Decimal("0.20"),
+    liq_lookback: int = 3,
 ) -> ScmHit | None:
-    """Most recent clear long-wick SCM that mitigates the HTF OB."""
+    """Most recent clear long-wick SCM that mitigates the HTF zone (OB or FVG)."""
     if len(ltf) < 2:
         return None
     last = len(ltf) - 1 if end_index is None else min(end_index, len(ltf) - 1)
@@ -313,14 +405,26 @@ def find_scm_in_ob(
         prior, curr = ltf[i - 1], ltf[i]
         if not mitigates_ob(curr, ob):
             continue
-        if ob.side == "bear" and is_bearish_scm(
-            prior, curr, min_wick_frac=min_wick_frac, min_sweep_frac=min_sweep_frac
-        ):
-            return ScmHit(index=i, side="bear", candle=curr, prior=prior)
-        if ob.side == "bull" and is_bullish_scm(
-            prior, curr, min_wick_frac=min_wick_frac, min_sweep_frac=min_sweep_frac
-        ):
-            return ScmHit(index=i, side="bull", candle=curr, prior=prior)
+        if ob.side == "bear":
+            ref = prior_liquidity_high(ltf, i, liq_lookback)
+            if is_bearish_scm(
+                prior,
+                curr,
+                min_wick_frac=min_wick_frac,
+                min_sweep_frac=min_sweep_frac,
+                ref_high=ref,
+            ):
+                return ScmHit(index=i, side="bear", candle=curr, prior=prior)
+        if ob.side == "bull":
+            ref = prior_liquidity_low(ltf, i, liq_lookback)
+            if is_bullish_scm(
+                prior,
+                curr,
+                min_wick_frac=min_wick_frac,
+                min_sweep_frac=min_sweep_frac,
+                ref_low=ref,
+            ):
+                return ScmHit(index=i, side="bull", candle=curr, prior=prior)
     return None
 
 
@@ -404,14 +508,13 @@ def _close_trade_on_ltf(
 
 class Ml02SingleCandleMitigationStrategy(BaseStrategy):
     """
-    ML02 heuristics (v1):
+    ML02 heuristics:
 
-    1. HTF (15m) BOS → bias + Order Block (last opposing candle before impulse).
+    1. HTF BOS → bias + mitigation zones: Order Block and/or impulse FVG (imbalance).
     2. Inducement / eng. liquidity swept on the path back.
-    3. LTF Single Candle Mitigation inside/at the HTF OB = entry trigger.
+    3. LTF SCM into the HTF zone while taking prior highs/lows = entry.
 
     Backtest walks the full date range on LTF (not only the last N bars).
-    Live/scan still uses the same walk restricted to ``context.start..end``.
     """
 
     @property
@@ -421,8 +524,8 @@ class Ml02SingleCandleMitigationStrategy(BaseStrategy):
     @property
     def description(self) -> str:
         return (
-            "ML02 SCM: mitigate HTF order block after inducement; "
-            "entry = single candle sweep+close-back inside the OB."
+            "ML02 SCM: mitigate HTF OB or imbalance (FVG) after inducement; "
+            "entry = long-wick sweep of prior highs/lows inside the HTF zone."
         )
 
     @property
@@ -449,6 +552,9 @@ class Ml02SingleCandleMitigationStrategy(BaseStrategy):
             # Clear liquidity: wick must dominate the candle + meaningful sweep.
             "min_wick_frac": "0.55",
             "min_sweep_frac": "0.20",
+            # SCM must take highs/lows of the previous N LTF bars (not only last bar).
+            "liq_lookback": 3,
+            "allow_fvg_mitigation": True,
             "rr_target": "1.5",
             "max_trades": 12,
             "cooldown_bars": 20,
@@ -474,6 +580,8 @@ class Ml02SingleCandleMitigationStrategy(BaseStrategy):
         one_per_ob = bool(params.get("one_trade_per_ob", True))
         min_wick = Decimal(str(params.get("min_wick_frac") or "0.55"))
         min_sweep = Decimal(str(params.get("min_sweep_frac") or "0.20"))
+        liq_lb = max(1, int(params.get("liq_lookback") or 3))
+        allow_fvg = bool(params.get("allow_fvg_mitigation", True))
 
         htf = sorted(candles, key=lambda c: c.timestamp)
         start_d: date = context.start
@@ -498,7 +606,7 @@ class Ml02SingleCandleMitigationStrategy(BaseStrategy):
             search_start = max(1, len(series) - lookback)
 
         last_entry_i = -10_000
-        used_ob_keys: set[tuple[int, int]] = set()
+        used_zone_keys: set[tuple[str, int, int]] = set()
 
         for i in range(search_start, len(series)):
             if len(trades) >= max_trades:
@@ -507,50 +615,60 @@ class Ml02SingleCandleMitigationStrategy(BaseStrategy):
                 continue
             prior, curr = series[i - 1], series[i]
             htf_i = _map_ltf_index_to_htf(curr.timestamp, htf)
-            bias, ob, bias_note = _htf_bias_and_ob(
+            bias, zones, bias_note = _htf_bias_and_zones(
                 htf, left=left, right=right, end_index=htf_i
             )
-            if bias == "range" or ob is None:
+            if bias == "range" or not zones:
                 continue
-            # Must mitigate the HTF OB (wick into zone + reject), not mid-range noise
-            if not mitigates_ob(curr, ob):
+            if not allow_fvg:
+                zones = [z for z in zones if z.kind == "ob"]
+            if not zones:
                 continue
-            is_scm = (
-                (
-                    ob.side == "bear"
-                    and is_bearish_scm(
-                        prior,
-                        curr,
-                        min_wick_frac=min_wick,
-                        min_sweep_frac=min_sweep,
-                    )
+
+            # Prefer FVG if mitigated, else OB (imbalance first when price tags it)
+            zone: OrderBlock | None = None
+            for candidate in sorted(zones, key=lambda z: 0 if z.kind == "fvg" else 1):
+                if mitigates_ob(curr, candidate):
+                    zone = candidate
+                    break
+            if zone is None:
+                continue
+
+            if zone.side == "bear":
+                ref_liq = prior_liquidity_high(series, i, liq_lb)
+                is_scm = is_bearish_scm(
+                    prior,
+                    curr,
+                    min_wick_frac=min_wick,
+                    min_sweep_frac=min_sweep,
+                    ref_high=ref_liq,
                 )
-                or (
-                    ob.side == "bull"
-                    and is_bullish_scm(
-                        prior,
-                        curr,
-                        min_wick_frac=min_wick,
-                        min_sweep_frac=min_sweep,
-                    )
+            else:
+                ref_liq = prior_liquidity_low(series, i, liq_lb)
+                is_scm = is_bullish_scm(
+                    prior,
+                    curr,
+                    min_wick_frac=min_wick,
+                    min_sweep_frac=min_sweep,
+                    ref_low=ref_liq,
                 )
-            )
             if not is_scm:
                 continue
 
-            indu_ok, indu_note = _inducement_swept(htf, ob, before_index=htf_i)
+            indu_ok, indu_note = _inducement_swept(htf, zone, before_index=htf_i)
             if require_ind and not indu_ok:
                 continue
 
-            ob_key = (ob.index, ob.bos_index)
-            if one_per_ob and ob_key in used_ob_keys:
+            zone_key = (zone.kind, zone.index, zone.bos_index)
+            if one_per_ob and zone_key in used_zone_keys:
                 continue
 
-            side = Side.LONG if ob.side == "bull" else Side.SHORT
-            hit_side: Bias = ob.side
+            side = Side.LONG if zone.side == "bull" else Side.SHORT
+            hit_side: Bias = zone.side
+            zone_label = "FVG" if zone.kind == "fvg" else "OB"
             reason = (
-                f"ML02 {hit_side} SCM@OB | {bias_note} | {indu_note} | "
-                f"ob[{ob.bottom}-{ob.top}]"
+                f"ML02 {hit_side} SCM@{zone_label} | {bias_note} | {indu_note} | "
+                f"{zone.kind}[{zone.bottom}-{zone.top}] liq={ref_liq}"
             )
             signals.append(
                 Signal(
@@ -565,7 +683,7 @@ class Ml02SingleCandleMitigationStrategy(BaseStrategy):
             sl = curr.high if hit_side == "bear" else curr.low
             risk = abs(curr.close - sl)
             if risk <= 0:
-                risk = abs(ob.top - ob.bottom) or Decimal("1")
+                risk = abs(zone.top - zone.bottom) or Decimal("1")
             if hit_side == "bull":
                 tp = curr.close + (risk * rr)
             else:
@@ -580,25 +698,30 @@ class Ml02SingleCandleMitigationStrategy(BaseStrategy):
                 sl=sl,
                 tp=tp,
             )
-            ob_candle = htf[ob.index] if 0 <= ob.index < len(htf) else curr
-            bos_candle = htf[ob.bos_index] if 0 <= ob.bos_index < len(htf) else curr
+            zone_candle = htf[zone.index] if 0 <= zone.index < len(htf) else curr
+            bos_candle = (
+                htf[zone.bos_index] if 0 <= zone.bos_index < len(htf) else curr
+            )
             if hit_side == "bear":
-                liq_price, liq_kind = prior.high, "buy_side"
+                liq_price, liq_kind = ref_liq, "buy_side"
             else:
-                liq_price, liq_kind = prior.low, "sell_side"
+                liq_price, liq_kind = ref_liq, "sell_side"
             setup = {
                 "kind": "ml02_scm",
                 "bias": hit_side,
+                "zone_kind": zone.kind,
                 "ob": {
-                    "top": str(ob.top),
-                    "bottom": str(ob.bottom),
-                    "time": ob_candle.timestamp.isoformat(),
+                    "top": str(zone.top),
+                    "bottom": str(zone.bottom),
+                    "time": zone_candle.timestamp.isoformat(),
                     "bos_time": bos_candle.timestamp.isoformat(),
+                    "kind": zone.kind,
                 },
                 "liquidity": {
                     "kind": liq_kind,
                     "price": str(liq_price),
                     "time": prior.timestamp.isoformat(),
+                    "lookback": liq_lb,
                 },
                 "scm": {
                     "time": curr.timestamp.isoformat(),
@@ -619,13 +742,15 @@ class Ml02SingleCandleMitigationStrategy(BaseStrategy):
                     exit_price=exit_px,
                     profit_loss=pnl,
                     notes=(
-                        f"Long-wick SCM mitigating HTF OB; SL={sl} TP={tp} ({rr}R)"
+                        f"Long-wick SCM mitigating HTF {zone_label}; "
+                        f"took prior {'highs' if hit_side == 'bear' else 'lows'}; "
+                        f"SL={sl} TP={tp} ({rr}R)"
                     ),
                     setup=setup,
                 )
             )
             last_entry_i = i
-            used_ob_keys.add(ob_key)
+            used_zone_keys.add(zone_key)
 
         return StrategyResult(
             signals=signals,

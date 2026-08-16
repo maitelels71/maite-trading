@@ -2,6 +2,7 @@
 
 import type { StrategyPlaybook } from "@/lib/playbook-types";
 import { ML02_FUTURES } from "@/lib/playbooks-ml02";
+import { ML03_FUTURES } from "@/lib/playbooks-ml03";
 
 /**
  * ML01 — MNQ 3m pullback real: ChoCh + BOS (zonas HTF).
@@ -93,6 +94,7 @@ export const FUTURES_PLAYBOOKS: StrategyPlaybook[] = [
     ],
   },
   ML02_FUTURES,
+  ML03_FUTURES,
 ];
 
-export const ML_ORDER = ["ml01", "ml02"] as const;
+export const ML_ORDER = ["ml01", "ml02", "ml03"] as const;

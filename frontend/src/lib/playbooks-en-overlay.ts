@@ -1026,57 +1026,58 @@ export const PLAYBOOK_EN: Record<string, PlaybookEnOverlay> = {
 
   ml02: {
     name: "Single Candle Mitigation",
-    markets: "Futures LONG/SHORT · MNQ · MES · 6E · 6A · 6B · GC · HTF OB 15m + SCM 1m/3m",
+    markets:
+      "Futures LONG/SHORT · MNQ · MES · 6E · 6A · 6B · GC · HTF OB/FVG 15m + SCM 1m/3m",
     summary:
-      "Mitigate the HTF Order Block (supply/demand from the BOS impulse). Mark bias + HTF OB · sweep inducement · price returns into the OB · SCM inside the OB = entry trigger (sweeps prior candle extreme and closes back). SCM alone mid-range / without HTF OB = no trade. Candle color does not matter.",
-    sessionWindow: "Intraday · OB / bias 15m · SCM entry 1m–3m",
+      "Mitigate an HTF zone: Order Block or impulse imbalance (FVG), while taking prior highs/lows. Mark bias + HTF OB/FVG · sweep inducement · price returns into the zone · long-wick SCM that grabs recent liquidity and rejects = entry. SCM alone mid-range / without HTF zone = no trade.",
+    sessionWindow: "Intraday · OB/FVG / bias 15m · SCM entry 1m–3m",
     riskNotes: [
-      "Thesis = HTF OB mitigation — not a lone mid-range internal pullback",
-      "HTF bias (BOS / momentum) aligned with the OB side",
-      "Mark HTF OB: last impulse zone before BOS (supply sell / demand buy)",
-      "Inducement or engineering liquidity swept BEFORE accepting the return to the OB",
-      "Valid SCM only INSIDE / at the edge of the HTF OB: prior-candle sweep + close back",
-      "SL beyond OB / SCM wick; TP at opposite HTF structure",
-      "Stacking: new SCM in the same OB (or extreme OB) after a new inducement",
+      "Thesis = HTF OB or FVG mitigation + prior liquidity take — not a lone mid-range pullback",
+      "HTF bias (BOS / momentum) aligned with the zone side",
+      "Mark HTF OB and/or FVG from the BOS impulse",
+      "Inducement or engineering liquidity swept BEFORE accepting the return to the zone",
+      "Valid SCM in OB or FVG: long wick + sweep of recent highs/lows + close back",
+      "SL beyond zone / SCM wick; TP at opposite HTF structure",
+      "Stacking: new SCM in the same zone after a new inducement",
     ],
     invalidation: [
-      "SCM mid-range with no marked HTF OB (internal structure alone)",
-      "Enter HTF OB with no prior inducement (classic trap)",
+      "SCM mid-range with no marked HTF OB/FVG",
+      "Enter HTF zone with no prior inducement (classic trap)",
       "Trade against HTF BOS / bias",
-      "Candle that does not sweep the prior extreme (not SCM)",
-      "Body closes through the OB / SCM against you",
-      "Chase outside the HTF OB",
+      "Candle that does not take prior highs/lows (no liquidity grab)",
+      "Body closes through the zone / SCM against you",
+      "Chase outside the HTF OB/FVG",
     ],
     entrySteps: [
       {
         id: "ml02-e1",
-        label: "HTF bias + mark HTF OB",
+        label: "HTF bias + mark HTF OB / FVG",
         detail:
-          "SELL: bearish BOS → supply OB (last bullish impulse before BOS). BUY: bullish BOS → demand OB.",
+          "SELL: bearish BOS → supply OB and/or bearish FVG. BUY: bullish BOS → demand OB and/or bullish FVG.",
       },
       {
         id: "ml02-e2",
         label: "Wait for inducement / eng. liquidity",
         detail:
-          "Do not take the first mid pullback OB — sweep inducement first, then return to the HTF OB.",
+          "Do not take the first mid pullback OB — sweep inducement first, then return to HTF OB or FVG.",
       },
       {
         id: "ml02-e3",
-        label: "Price returns to the HTF OB",
+        label: "Price returns to HTF OB or imbalance",
         detail:
-          "Mitigating the HTF OB is the trade. No touch of the OB → no setup.",
+          "Mitigating the HTF zone (OB body or FVG) is the trade. No touch → no setup.",
       },
       {
         id: "ml02-e4",
-        label: "SCM inside the OB (trigger)",
+        label: "SCM takes prior highs/lows",
         detail:
-          "SELL: sweeps prior high and closes below. BUY: sweeps prior low and closes above. Color irrelevant.",
+          "Long wick sweeps recent highs/lows and closes with rejection inside/at the HTF zone edge.",
       },
       {
         id: "ml02-e5",
         label: "Entry · SL · TP",
         detail:
-          "Enter on SCM rejection. SL beyond OB/SCM. TP1 internal liquidity · TP2 HTF high/low.",
+          "Enter on SCM rejection. SL beyond zone/SCM. TP1 internal liquidity · TP2 HTF high/low.",
       },
     ],
     exitSteps: [
@@ -1084,41 +1085,41 @@ export const PLAYBOOK_EN: Record<string, PlaybookEnOverlay> = {
       { id: "ml02-x2", label: "TP2: HTF structure (bias high/low)" },
       {
         id: "ml02-x3",
-        label: "BE / exit if body closes through OB / SCM against you",
+        label: "BE / exit if body closes through zone / SCM against you",
       },
-      { id: "ml02-x4", label: "No clean return to HTF OB → paper / no trade" },
+      { id: "ml02-x4", label: "No clean return to HTF OB/FVG → paper / no trade" },
     ],
     byTimeframe: [
       {
         timeframe: "15m / 1H",
-        focus: "Bias + HTF OB (thesis)",
+        focus: "Bias + HTF OB/FVG (thesis)",
         steps: [
           { id: "ml02-htf-1", label: "HTF BOS / momentum = direction" },
           {
             id: "ml02-htf-2",
-            label: "Mark HTF OB (supply/demand of the BOS impulse)",
+            label: "Mark OB and/or FVG of the BOS impulse",
           },
           {
             id: "ml02-htf-3",
-            label: "Inducement first; mid OBs without HTF OB = traps",
+            label: "Inducement first; mid zones without HTF thesis = traps",
           },
         ],
       },
       {
         timeframe: "1m / 3m",
-        focus: "SCM in the OB (trigger)",
+        focus: "SCM in OB/FVG (trigger)",
         steps: [
           {
             id: "ml02-ltf-1",
-            label: "Confirm price inside / at edge of HTF OB",
+            label: "Confirm price inside / at edge of HTF OB or FVG",
           },
           {
             id: "ml02-ltf-2",
-            label: "SCM: prior-candle sweep + close back",
+            label: "SCM: long wick + prior highs/lows + close back",
           },
           {
             id: "ml02-ltf-3",
-            label: "Entry + SL; stack only if new SCM stays in the OB",
+            label: "Entry + SL; stack only if new SCM stays in the zone",
           },
         ],
       },
@@ -1127,58 +1128,58 @@ export const PLAYBOOK_EN: Record<string, PlaybookEnOverlay> = {
 
   ml02o: {
     name: "Single Candle Mitigation",
-    markets: "Options CALL/PUT · HTF OB 15m/1H + LTF SCM · plan ≤35%",
+    markets: "Options CALL/PUT · HTF OB/FVG 15m/1H + LTF SCM · plan ≤35%",
     summary:
-      "Mitigate the HTF Order Block (supply/demand from the BOS impulse). Mark bias + HTF OB · sweep inducement · price returns into the OB · SCM inside the OB = entry trigger (sweeps prior candle extreme and closes back). SCM alone mid-range / without HTF OB = no trade. Candle color does not matter.",
-    sessionWindow: "Intraday · OB / bias 15m/1H · SCM 5m–15m · options plan ≤35%",
+      "Mitigate an HTF zone: Order Block or impulse imbalance (FVG), while taking prior highs/lows. Mark bias + HTF OB/FVG · sweep inducement · price returns into the zone · long-wick SCM that grabs recent liquidity and rejects = entry. SCM alone mid-range / without HTF zone = no trade.",
+    sessionWindow: "Intraday · OB/FVG / bias 15m/1H · SCM 5m–15m · options plan ≤35%",
     riskNotes: [
-      "Thesis = HTF OB mitigation — not a lone mid-range internal pullback",
-      "HTF bias (BOS / momentum) aligned with the OB side",
-      "Mark HTF OB: last impulse zone before BOS (supply sell / demand buy)",
-      "Inducement or engineering liquidity swept BEFORE accepting the return to the OB",
-      "Valid SCM only INSIDE / at the edge of the HTF OB: prior-candle sweep + close back",
-      "SL beyond OB / SCM wick; TP at opposite HTF structure",
-      "Stacking: new SCM in the same OB (or extreme OB) after a new inducement",
+      "Thesis = HTF OB or FVG mitigation + prior liquidity take — not a lone mid-range pullback",
+      "HTF bias (BOS / momentum) aligned with the zone side",
+      "Mark HTF OB and/or FVG from the BOS impulse",
+      "Inducement or engineering liquidity swept BEFORE accepting the return to the zone",
+      "Valid SCM in OB or FVG: long wick + sweep of recent highs/lows + close back",
+      "SL beyond zone / SCM wick; TP at opposite HTF structure",
+      "Stacking: new SCM in the same zone after a new inducement",
       "Options: ATM/OTM in range · plan 10/20/35% — not 100% plan",
     ],
     invalidation: [
-      "SCM mid-range with no marked HTF OB (internal structure alone)",
-      "Enter HTF OB with no prior inducement (classic trap)",
+      "SCM mid-range with no marked HTF OB/FVG",
+      "Enter HTF zone with no prior inducement (classic trap)",
       "Trade against HTF BOS / bias",
-      "Candle that does not sweep the prior extreme (not SCM)",
-      "Body closes through the OB / SCM against you",
-      "Chase outside the HTF OB",
+      "Candle that does not take prior highs/lows (no liquidity grab)",
+      "Body closes through the zone / SCM against you",
+      "Chase outside the HTF OB/FVG",
     ],
     entrySteps: [
       {
         id: "ml02o-e1",
-        label: "HTF bias + mark HTF OB",
+        label: "HTF bias + mark HTF OB / FVG",
         detail:
-          "PUT: bearish BOS → supply OB. CALL: bullish BOS → demand OB (15m/1H).",
+          "PUT: bearish BOS → supply OB and/or bearish FVG. CALL: bullish BOS → demand OB and/or bullish FVG (15m/1H).",
       },
       {
         id: "ml02o-e2",
         label: "Wait for inducement / eng. liquidity",
         detail:
-          "Do not take the first mid pullback OB — sweep inducement first, then return to the HTF OB.",
+          "Do not take the first mid pullback OB — sweep inducement first, then return to HTF OB or FVG.",
       },
       {
         id: "ml02o-e3",
-        label: "Price returns to the HTF OB",
+        label: "Price returns to HTF OB or imbalance",
         detail:
-          "Mitigating the HTF OB is the trade. No touch of the OB → no setup.",
+          "Mitigating the HTF zone (OB body or FVG) is the trade. No touch → no setup.",
       },
       {
         id: "ml02o-e4",
-        label: "SCM inside the OB (trigger)",
+        label: "SCM takes prior highs/lows",
         detail:
-          "PUT: sweeps prior high and closes below. CALL: sweeps prior low and closes above. Color irrelevant.",
+          "Long wick sweeps recent highs/lows and closes with rejection inside/at the HTF zone edge.",
       },
       {
         id: "ml02o-e5",
         label: "Entry · SL · TP",
         detail:
-          "Enter on SCM rejection. SL beyond OB/SCM. Options plan ≤35% · TP HTF swing.",
+          "Enter on SCM rejection. SL beyond zone/SCM. Options plan ≤35% · TP HTF swing.",
       },
     ],
     exitSteps: [
@@ -1186,42 +1187,111 @@ export const PLAYBOOK_EN: Record<string, PlaybookEnOverlay> = {
       { id: "ml02o-x2", label: "TP2: HTF structure (bias high/low)" },
       {
         id: "ml02o-x3",
-        label: "BE / exit if body closes through OB / SCM against you",
+        label: "BE / exit if body closes through zone / SCM against you",
       },
-      { id: "ml02o-x4", label: "No clean return to HTF OB → paper / no trade" },
+      { id: "ml02o-x4", label: "No clean return to HTF OB/FVG → paper / no trade" },
     ],
     byTimeframe: [
       {
         timeframe: "15m / 1H",
-        focus: "Bias + HTF OB (thesis)",
+        focus: "Bias + HTF OB/FVG (thesis)",
         steps: [
           { id: "ml02o-htf-1", label: "HTF BOS / momentum = direction" },
           {
             id: "ml02o-htf-2",
-            label: "Mark HTF OB (supply/demand of the BOS impulse)",
+            label: "Mark OB and/or FVG of the BOS impulse",
           },
           {
             id: "ml02o-htf-3",
-            label: "Inducement first; mid OBs without HTF OB = traps",
+            label: "Inducement first; mid zones without HTF thesis = traps",
           },
         ],
       },
       {
         timeframe: "5m / 15m",
-        focus: "SCM in the OB (trigger)",
+        focus: "SCM in OB/FVG (trigger)",
         steps: [
           {
             id: "ml02o-ltf-1",
-            label: "Confirm price inside / at edge of HTF OB",
+            label: "Confirm price inside / at edge of HTF OB or FVG",
           },
           {
             id: "ml02o-ltf-2",
-            label: "SCM: prior-candle sweep + close back",
+            label: "SCM: long wick + prior highs/lows + close back",
           },
           {
             id: "ml02o-ltf-3",
-            label: "Entry + SL; stack only if new SCM stays in the OB",
+            label: "Entry + SL; stack only if new SCM stays in the zone",
           },
+        ],
+      },
+    ],
+  },
+
+  ml03: {
+    name: "First NY 5m candle",
+    markets: "Futures LONG/SHORT · MNQ · MES · GC · first NY 5m + 1m entry",
+    summary:
+      "First-candle rule: at 9:30 ET on 5m wait for the 9:30–9:35 close, mark that high/low for the day. On 1m do not buy the first touch — require a break with an FVG (gap between wicks), FVG retest, and an engulfing candle. RR ≈ 1:3 to 1:5.",
+    sessionWindow: "RTH · 5m levels 9:30–9:35 · 1m trigger after 9:35",
+    riskNotes: [
+      "Only levels from the first NY 5m candle (9:30–9:35 ET)",
+      "Do not enter on first touch of high/low — wait for break FVG",
+      "FVG = gap between wicks (a wick poke or lone close is not enough)",
+      "Enter on FVG retest + engulfing candle",
+      "SL beyond engulfing / FVG; TP 1:3–1:5 R",
+    ],
+    invalidation: [
+      "Enter first touch of high/low without FVG",
+      "Trade before the first 5m candle closes",
+      "No FVG (only a wick through the level)",
+      "Retest without engulfing",
+      "Chase far from the FVG",
+    ],
+    entrySteps: [
+      {
+        id: "ml03-e1",
+        label: "9:30 ET · 5m chart",
+        detail:
+          "Wait for the 9:30–9:35 candle to close. Mark high and low — the only key levels for the day.",
+      },
+      {
+        id: "ml03-e2",
+        label: "Drop to 1m",
+        detail: "Watch approaches to that first-candle high (longs) or low (shorts).",
+      },
+      {
+        id: "ml03-e3",
+        label: "Break + FVG (gap between wicks)",
+        detail:
+          "Price must break the level and leave an imbalance / gap between wicks — not just a wick or close.",
+      },
+      {
+        id: "ml03-e4",
+        label: "FVG retest + engulfing",
+        detail: "On FVG retest, wait for an engulfing candle and enter. RR ≈ 1:3 to 1:5.",
+      },
+    ],
+    exitSteps: [
+      { id: "ml03-x1", label: "TP at 1:3–1:5 R (or day structure)" },
+      { id: "ml03-x2", label: "SL beyond engulfing / FVG extreme" },
+      { id: "ml03-x3", label: "Flat at RTH close if still open" },
+    ],
+    byTimeframe: [
+      {
+        timeframe: "5m",
+        focus: "First NY candle (thesis)",
+        steps: [
+          { id: "ml03-5-1", label: "Mark high/low 9:30–9:35 ET" },
+          { id: "ml03-5-2", label: "Do not trade inside that candle — wait for close" },
+        ],
+      },
+      {
+        timeframe: "1m",
+        focus: "FVG + engulfing (trigger)",
+        steps: [
+          { id: "ml03-1-1", label: "Level break with gap between wicks" },
+          { id: "ml03-1-2", label: "FVG retest + engulfing → entry" },
         ],
       },
     ],

@@ -13,10 +13,13 @@ from app.domain.strategy_types import StrategyContext
 from app.strategies.ml02_single_candle_mitigation import (
     Ml02SingleCandleMitigationStrategy,
     OrderBlock,
+    _find_impulse_fvg,
     find_scm_in_ob,
     is_bearish_scm,
     is_bullish_scm,
+    mitigates_ob,
     overlaps_ob,
+    prior_liquidity_high,
 )
 from app.strategies.registry import build_default_registry
 
@@ -102,6 +105,43 @@ def test_find_scm_requires_ob_overlap() -> None:
     assert hit is not None
     assert hit.side == "bear"
     assert overlaps_ob(hit.candle, ob)
+
+
+def test_bearish_fvg_detection_and_mitigation() -> None:
+    """Impulse leaves a bearish FVG; SCM wick into the gap counts as mitigation."""
+    base = datetime(2026, 8, 3, 10, 0, tzinfo=ET)
+    # Gap down: candle0 low 110 > candle2 high 105 → FVG 105..110
+    htf = [
+        _c(base, "112", "113", "110", "111"),
+        _c(base + timedelta(minutes=15), "111", "111.5", "108", "108.5"),
+        _c(base + timedelta(minutes=30), "108", "105", "104", "104.5"),
+    ]
+    fvg = _find_impulse_fvg(
+        htf, side="bear", search_from=0, search_to=2, bos_index=2
+    )
+    assert fvg is not None
+    assert fvg.kind == "fvg"
+    assert fvg.bottom == Decimal("105")
+    assert fvg.top == Decimal("110")
+
+    scm = _c(base + timedelta(minutes=45), "106", "109.5", "105.5", "106.2", tf="1m")
+    assert mitigates_ob(scm, fvg)
+
+
+def test_scm_takes_prior_highs_lookback() -> None:
+    base = datetime(2026, 8, 3, 10, 0, tzinfo=ET)
+    bars = [
+        _c(base, "100", "102", "99.5", "101", tf="1m"),
+        _c(base + timedelta(minutes=1), "101", "101.5", "100", "100.5", tf="1m"),
+        _c(base + timedelta(minutes=2), "100.5", "101.2", "100.2", "100.8", tf="1m"),
+    ]
+    # Max prior high in lookback=3 before last bar is 102
+    assert prior_liquidity_high(bars, 2, 3) == Decimal("102")
+    curr = _c(base + timedelta(minutes=3), "100.8", "103.5", "100.0", "100.4", tf="1m")
+    assert is_bearish_scm(bars[1], curr, ref_high=Decimal("102"))
+    # Must clear that higher liquidity, not only immediate prior high 101.2
+    weak = _c(base + timedelta(minutes=3), "100.8", "101.4", "100.0", "100.4", tf="1m")
+    assert not is_bearish_scm(bars[1], weak, ref_high=Decimal("102"))
 
 
 def test_ml02_evaluate_bull_scm_in_demand_ob() -> None:

@@ -9,6 +9,7 @@ from app.strategies.ml01_structure_choch_bos import Ml01StructureChochBosStrateg
 from app.strategies.ml02_single_candle_mitigation import (
     Ml02SingleCandleMitigationStrategy,
 )
+from app.strategies.ml03_first_ny5m import Ml03FirstNy5mStrategy
 from app.strategies.opening_range_breakout import OpeningRangeBreakoutStrategy
 from app.strategies.registry import (
     StrategyRegistry,
@@ -24,6 +25,7 @@ __all__ = [
     "MagnetMa20GapStrategy",
     "Ml01StructureChochBosStrategy",
     "Ml02SingleCandleMitigationStrategy",
+    "Ml03FirstNy5mStrategy",
     "OpeningRangeBreakoutStrategy",
     "StrategyRegistry",
     "build_default_registry",

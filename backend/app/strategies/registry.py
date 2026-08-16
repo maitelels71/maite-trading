@@ -8,6 +8,7 @@ from app.strategies.ml01_structure_choch_bos import Ml01StructureChochBosStrateg
 from app.strategies.ml02_single_candle_mitigation import (
     Ml02SingleCandleMitigationStrategy,
 )
+from app.strategies.ml03_first_ny5m import Ml03FirstNy5mStrategy
 from app.strategies.opening_range_breakout import OpeningRangeBreakoutStrategy
 
 
@@ -38,6 +39,7 @@ def build_default_registry() -> StrategyRegistry:
     registry.register(BbTrendFlipHStrategy())
     registry.register(Ml01StructureChochBosStrategy())
     registry.register(Ml02SingleCandleMitigationStrategy())
+    registry.register(Ml03FirstNy5mStrategy())
     for strategy in ALL_CR_STRATEGIES:
         registry.register(strategy)
     return registry
