@@ -580,6 +580,35 @@ class Ml02SingleCandleMitigationStrategy(BaseStrategy):
                 sl=sl,
                 tp=tp,
             )
+            ob_candle = htf[ob.index] if 0 <= ob.index < len(htf) else curr
+            bos_candle = htf[ob.bos_index] if 0 <= ob.bos_index < len(htf) else curr
+            if hit_side == "bear":
+                liq_price, liq_kind = prior.high, "buy_side"
+            else:
+                liq_price, liq_kind = prior.low, "sell_side"
+            setup = {
+                "kind": "ml02_scm",
+                "bias": hit_side,
+                "ob": {
+                    "top": str(ob.top),
+                    "bottom": str(ob.bottom),
+                    "time": ob_candle.timestamp.isoformat(),
+                    "bos_time": bos_candle.timestamp.isoformat(),
+                },
+                "liquidity": {
+                    "kind": liq_kind,
+                    "price": str(liq_price),
+                    "time": prior.timestamp.isoformat(),
+                },
+                "scm": {
+                    "time": curr.timestamp.isoformat(),
+                    "high": str(curr.high),
+                    "low": str(curr.low),
+                    "close": str(curr.close),
+                },
+                "sl": str(sl),
+                "tp": str(tp),
+            }
             trades.append(
                 Trade(
                     side=side,
@@ -592,6 +621,7 @@ class Ml02SingleCandleMitigationStrategy(BaseStrategy):
                     notes=(
                         f"Long-wick SCM mitigating HTF OB; SL={sl} TP={tp} ({rr}R)"
                     ),
+                    setup=setup,
                 )
             )
             last_entry_i = i

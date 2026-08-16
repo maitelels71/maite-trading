@@ -45,6 +45,30 @@ export type Metrics = {
   max_drawdown: string | number;
 };
 
+export type TradeSetup = {
+  kind?: string;
+  bias?: string;
+  ob?: {
+    top: string | number;
+    bottom: string | number;
+    time: string;
+    bos_time?: string;
+  };
+  liquidity?: {
+    kind?: string;
+    price: string | number;
+    time: string;
+  };
+  scm?: {
+    time: string;
+    high?: string | number;
+    low?: string | number;
+    close?: string | number;
+  };
+  sl?: string | number;
+  tp?: string | number;
+};
+
 export type Trade = {
   side: Side;
   entry_time: string;
@@ -54,6 +78,7 @@ export type Trade = {
   exit_price?: string | number | null;
   profit_loss?: string | number | null;
   notes?: string | null;
+  setup?: TradeSetup | null;
 };
 
 export type Signal = {

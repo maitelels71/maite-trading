@@ -632,6 +632,7 @@ def _classify_scan_result(
             exit_price=open_trades[0].exit_price,
             profit_loss=open_trades[0].profit_loss,
             notes=open_trades[0].notes,
+            setup=getattr(open_trades[0], "setup", None),
         )
         if open_trades
         else None
@@ -742,6 +743,7 @@ def _trades_out(result: StrategyResult) -> list[TradeOut]:
             exit_price=t.exit_price,
             profit_loss=t.profit_loss,
             notes=t.notes,
+            setup=getattr(t, "setup", None),
         )
         for t in result.trades
     ]

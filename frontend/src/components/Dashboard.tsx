@@ -705,7 +705,11 @@ export function Dashboard() {
           </DeskSession>
 
           <DeskSession step={4} title={t("session.chart")} panel={false}>
-            <TradeChart candles={candles} trades={trades} />
+            <TradeChart
+              candles={candles}
+              trades={trades}
+              selectedTrade={selectedTrade}
+            />
           </DeskSession>
 
           <DeskSession
@@ -831,6 +835,37 @@ export function Dashboard() {
                       <dd className="mt-1 text-xs text-[var(--muted)]">
                         {selectedTrade.notes}
                       </dd>
+                    </div>
+                  ) : null}
+                  {selectedTrade.setup ? (
+                    <div className="mt-2 space-y-1.5 rounded-md border border-[var(--border)] bg-[var(--surface-muted)] px-2 py-2 text-xs">
+                      <div className="font-medium">{t("analyzer.setupTitle")}</div>
+                      {selectedTrade.setup.ob ? (
+                        <div>
+                          <span className="text-[var(--muted)]">OB HTF: </span>
+                          {fmtNum(selectedTrade.setup.ob.bottom)} –{" "}
+                          {fmtNum(selectedTrade.setup.ob.top)}
+                        </div>
+                      ) : null}
+                      {selectedTrade.setup.liquidity ? (
+                        <div>
+                          <span className="text-[var(--muted)]">
+                            {selectedTrade.setup.liquidity.kind === "sell_side"
+                              ? t("analyzer.setupSellLiq")
+                              : t("analyzer.setupBuyLiq")}
+                            :{" "}
+                          </span>
+                          {fmtNum(selectedTrade.setup.liquidity.price)}
+                        </div>
+                      ) : null}
+                      {selectedTrade.setup.sl != null ||
+                      selectedTrade.setup.tp != null ? (
+                        <div>
+                          <span className="text-[var(--muted)]">SL/TP: </span>
+                          {fmtNum(selectedTrade.setup.sl ?? null)} /{" "}
+                          {fmtNum(selectedTrade.setup.tp ?? null)}
+                        </div>
+                      ) : null}
                     </div>
                   ) : null}
                   <div>

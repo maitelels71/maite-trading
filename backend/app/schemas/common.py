@@ -54,3 +54,4 @@ class TradeOut(BaseModel):
     exit_price: Decimal | None = None
     profit_loss: Decimal | None = None
     notes: str | None = None
+    setup: dict | None = None

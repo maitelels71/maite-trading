@@ -3,6 +3,7 @@
 from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
+from typing import Any
 
 from app.domain.enums import Side
 
@@ -17,3 +18,5 @@ class Trade:
     exit_price: Decimal | None = None
     profit_loss: Decimal | None = None
     notes: str | None = None
+    # Optional chart geometry (OB, liquidity, SCM, SL/TP) for Analyzer overlays.
+    setup: dict[str, Any] | None = None

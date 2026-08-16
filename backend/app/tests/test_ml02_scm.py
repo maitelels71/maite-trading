@@ -152,6 +152,11 @@ def test_ml02_evaluate_bull_scm_in_demand_ob() -> None:
         assert result.signals[0].side == Side.LONG
         assert "ML02" in result.signals[0].reason
         assert result.trades[0].profit_loss is not None
+        assert result.trades[0].setup is not None
+        assert result.trades[0].setup["kind"] == "ml02_scm"
+        assert "ob" in result.trades[0].setup
+        assert "liquidity" in result.trades[0].setup
+        assert "scm" in result.trades[0].setup
 
 
 def test_ml02_evaluate_runs_empty_ltf() -> None:
