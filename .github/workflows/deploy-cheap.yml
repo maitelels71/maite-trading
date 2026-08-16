@@ -33,25 +33,17 @@ jobs:
   deploy:
     name: Deploy cheap (${{ github.event.inputs.environment || 'staging' }})
     runs-on: ubuntu-latest
-    # Use GitHub Environment so environment-scoped secrets (AWS_ROLE_ARN) are available.
-    environment: ${{ github.event.inputs.environment || 'staging' }}
     env:
       ENVIRONMENT: ${{ github.event.inputs.environment || 'staging' }}
       STACK_NAME: ${{ format('{0}-cheap-{1}', vars.PROJECT_NAME || 'maite-trading', github.event.inputs.environment || 'staging') }}
     steps:
       - uses: actions/checkout@v5
 
-      - name: Require AWS_ROLE_ARN
-        run: |
-          if [ -z "${{ secrets.AWS_ROLE_ARN }}" ]; then
-            echo "::error::Missing secret AWS_ROLE_ARN. Set it on repo or Environment '${{ env.ENVIRONMENT }}' to arn:aws:iam::289981265319:role/maite-trading-github-actions"
-            exit 1
-          fi
-
       - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          # Hardcoded deploy role (same account). Avoids a wrong/stale AWS_ROLE_ARN secret.
+          role-to-assume: arn:aws:iam::289981265319:role/maite-trading-github-actions
           aws-region: ${{ env.AWS_REGION }}
           audience: sts.amazonaws.com
 
