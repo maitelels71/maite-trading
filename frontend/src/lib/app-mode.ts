@@ -17,7 +17,7 @@ export const APP_MODE_LABEL =
 export const APP_MODE_HINT = VENUE_META[APP_VENUE].hint;
 
 /** Short brand mark for icons / tab (Maylels Options / Futures). */
-export const APP_ICON_MARK = APP_MODE === "futures" ? "MLF" : "MLo";
+export const APP_ICON_MARK = APP_MODE === "futures" ? "MLF" : "MLO";
 
 /** Favicon + header icon paths (public/). */
 export const APP_ICON_SVG =
