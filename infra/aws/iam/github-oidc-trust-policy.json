@@ -16,7 +16,11 @@
           "token.actions.githubusercontent.com:aud": "sts.amazonaws.com"
         },
         "StringLike": {
-          "token.actions.githubusercontent.com:sub": "repo:maitelels71/maite-trading:*"
+          "token.actions.githubusercontent.com:sub": [
+            "repo:maitelels71/maite-trading:*",
+            "repo:maitelels71/maite-trading:ref:refs/heads/*",
+            "repo:maitelels71/maite-trading:environment:*"
+          ]
         }
       }
     }

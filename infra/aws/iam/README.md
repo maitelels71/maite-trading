@@ -81,9 +81,14 @@ Leave `AWS_AUTH_MODE` empty (OIDC).
 | Name | Value |
 |------|-------|
 | `AWS_ROLE_ARN` | `arn:aws:iam::289981265319:role/maite-trading-github-actions` |
-| `DB_PASSWORD` | long random password (16+ chars) |
 
-Also create GitHub Environment **staging** (Settings → Environments) and optionally put the same secrets there.
+Put `AWS_ROLE_ARN` on **both**:
+1. Repo → Settings → Secrets and variables → Actions → **Repository secrets**
+2. Environments → **staging** (and **production** if used) → Environment secrets
+
+The Deploy Cheap workflow uses `environment: staging` on push, so environment secrets are required if you only store them there.
+
+`DB_PASSWORD` is **not** required for the cheap SAM stack.
 
 ### 5) First deploy
 
