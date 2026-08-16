@@ -56,12 +56,16 @@ def test_ml02_registered() -> None:
 def test_scm_candle_rules() -> None:
     base = datetime(2026, 8, 3, 10, 0, tzinfo=ET)
     prior = _c(base, "100", "101", "99", "100.5")
-    bear_scm = _c(base + timedelta(minutes=5), "100.5", "102", "99.5", "100.2")
+    # Long upper wick rejection (wick ~70% of range)
+    bear_scm = _c(base + timedelta(minutes=5), "100.4", "103.0", "100.0", "100.3")
     assert is_bearish_scm(prior, bear_scm)
     assert not is_bullish_scm(prior, bear_scm)
+    # Tiny upper wick must fail (no clear liquidity grab)
+    weak = _c(base + timedelta(minutes=5), "100.8", "101.15", "100.6", "101.0")
+    assert not is_bearish_scm(prior, weak)
 
-    prior2 = _c(base, "100", "101", "99", "99.5")
-    bull_scm = _c(base + timedelta(minutes=5), "99.5", "100.5", "98", "99.8")
+    prior2 = _c(base, "100", "101", "99.5", "99.8")
+    bull_scm = _c(base + timedelta(minutes=5), "100.0", "100.4", "97.5", "100.2")
     assert is_bullish_scm(prior2, bull_scm)
     assert not is_bearish_scm(prior2, bull_scm)
 
@@ -78,19 +82,19 @@ def test_find_scm_requires_ob_overlap() -> None:
     # SCM that does NOT touch OB → ignored
     away = [
         _c(base, "100", "101", "99", "100", tf="1m"),
-        _c(base + timedelta(minutes=1), "100", "102", "99", "100.2", tf="1m"),
+        _c(base + timedelta(minutes=1), "100.4", "103.0", "100.0", "100.3", tf="1m"),
     ]
     assert find_scm_in_ob(away, ob, lookback=5) is None
 
-    # SCM overlapping supply OB
+    # Long-wick SCM mitigating supply OB
     in_ob = [
-        _c(base, "108.5", "109", "108.2", "108.8", tf="1m"),
+        _c(base, "108.5", "109.0", "108.2", "108.8", tf="1m"),
         _c(
             base + timedelta(minutes=1),
             "108.8",
-            "110.5",
+            "111.0",
             "108.0",
-            "108.6",
+            "108.5",
             tf="1m",
         ),
     ]
@@ -104,8 +108,6 @@ def test_ml02_evaluate_bull_scm_in_demand_ob() -> None:
     """Synthetic: bullish BOS → demand OB → LTF bullish SCM in zone."""
     base = datetime(2026, 8, 3, 9, 0, tzinfo=ET)
     htf: list[Candle] = []
-    # Build structure: down into swing low, then impulsive BOS up
-    # Bars 0-4 grind down, 5 swing low, 6-7 still low, 8-10 impulse up breaking highs
     levels = [
         ("105", "106", "104", "104.5"),
         ("104.5", "105", "103", "103.5"),
@@ -118,7 +120,6 @@ def test_ml02_evaluate_bull_scm_in_demand_ob() -> None:
         ("100.5", "103", "100", "102.5"),
         ("102.5", "105", "102", "104.5"),  # BOS through earlier highs
         ("104.5", "106", "104", "105"),
-        # pullback / inducement then return toward demand OB ~101-103
         ("105", "105.5", "103.5", "104"),
         ("104", "104.5", "102", "102.5"),
         ("102.5", "103", "101.2", "101.8"),
@@ -126,12 +127,11 @@ def test_ml02_evaluate_bull_scm_in_demand_ob() -> None:
     for i, vals in enumerate(levels):
         htf.append(_c(base + timedelta(minutes=15 * i), *vals))
 
-    # LTF: bullish SCM inside demand zone (~101-103 body of OB bar 3)
+    # Long lower-wick bullish SCM mitigating demand OB ~101-103
     ltf_base = base + timedelta(minutes=15 * 13)
     ltf = [
         _c(ltf_base, "102.0", "102.4", "101.6", "101.9", tf="1m"),
-        _c(ltf_base + timedelta(minutes=1), "101.9", "102.2", "101.0", "102.0", tf="1m"),
-        # forward bars for exit (TP)
+        _c(ltf_base + timedelta(minutes=1), "101.9", "102.3", "100.2", "102.1", tf="1m"),
         _c(ltf_base + timedelta(minutes=2), "102.0", "104.0", "101.9", "103.5", tf="1m"),
     ]
 
@@ -146,7 +146,6 @@ def test_ml02_evaluate_bull_scm_in_demand_ob() -> None:
         extra_candles={"1m": ltf},
     )
     result = strat.evaluate(htf, ctx)
-    # May or may not fire depending on OB detection — assert API shape + optional hit
     assert isinstance(result.signals, list)
     assert isinstance(result.trades, list)
     if result.signals:
@@ -198,11 +197,11 @@ def test_ml02_backtest_walks_full_range_not_only_tail() -> None:
     for i, vals in enumerate(levels):
         htf.append(_c(base + timedelta(minutes=15 * i), *vals))
 
-    # Early SCM + many later bars that are NOT SCM (would hide it if lookback=12)
     ltf_base = base + timedelta(minutes=15 * 13)
     ltf = [
         _c(ltf_base, "102.0", "102.4", "101.6", "101.9", tf="1m"),
-        _c(ltf_base + timedelta(minutes=1), "101.9", "102.2", "101.0", "102.0", tf="1m"),
+        # clear long-wick bullish SCM
+        _c(ltf_base + timedelta(minutes=1), "101.9", "102.3", "100.2", "102.1", tf="1m"),
     ]
     for k in range(2, 40):
         px = Decimal("102") + Decimal(k) * Decimal("0.01")
@@ -228,7 +227,6 @@ def test_ml02_backtest_walks_full_range_not_only_tail() -> None:
         extra_candles={"1m": ltf},
     )
     result = strat.evaluate(htf, ctx)
-    # If OB/SCM detects, at least one closed trade with metrics
     if result.trades:
         assert result.metrics.total_trades >= 1
         assert result.trades[0].profit_loss is not None

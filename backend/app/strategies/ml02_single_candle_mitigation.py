@@ -77,19 +77,92 @@ def _bearish(c: Candle) -> bool:
     return c.close < c.open
 
 
-def is_bearish_scm(prior: Candle, curr: Candle) -> bool:
-    """SELL SCM: sweeps prior high and closes back below that high."""
-    return curr.high > prior.high and curr.close < prior.high
+def _candle_range(c: Candle) -> Decimal:
+    return c.high - c.low
 
 
-def is_bullish_scm(prior: Candle, curr: Candle) -> bool:
-    """BUY SCM: sweeps prior low and closes back above that low."""
-    return curr.low < prior.low and curr.close > prior.low
+def _upper_wick(c: Candle) -> Decimal:
+    return c.high - max(c.open, c.close)
+
+
+def _lower_wick(c: Candle) -> Decimal:
+    return min(c.open, c.close) - c.low
+
+
+def is_bearish_scm(
+    prior: Candle,
+    curr: Candle,
+    *,
+    min_wick_frac: Decimal = Decimal("0.55"),
+    min_sweep_frac: Decimal = Decimal("0.20"),
+) -> bool:
+    """SELL SCM: long upper wick sweeps prior high and closes back below it."""
+    rng = _candle_range(curr)
+    if rng <= 0:
+        return False
+    upper = _upper_wick(curr)
+    if upper / rng < min_wick_frac:
+        return False
+    if curr.high <= prior.high:
+        return False
+    sweep = curr.high - prior.high
+    if sweep / rng < min_sweep_frac:
+        return False
+    # Rejection: close back below prior high and in lower half of the candle
+    if curr.close >= prior.high:
+        return False
+    if curr.close > curr.low + (rng * Decimal("0.50")):
+        return False
+    return True
+
+
+def is_bullish_scm(
+    prior: Candle,
+    curr: Candle,
+    *,
+    min_wick_frac: Decimal = Decimal("0.55"),
+    min_sweep_frac: Decimal = Decimal("0.20"),
+) -> bool:
+    """BUY SCM: long lower wick sweeps prior low and closes back above it."""
+    rng = _candle_range(curr)
+    if rng <= 0:
+        return False
+    lower = _lower_wick(curr)
+    if lower / rng < min_wick_frac:
+        return False
+    if curr.low >= prior.low:
+        return False
+    sweep = prior.low - curr.low
+    if sweep / rng < min_sweep_frac:
+        return False
+    if curr.close <= prior.low:
+        return False
+    if curr.close < curr.high - (rng * Decimal("0.50")):
+        return False
+    return True
 
 
 def overlaps_ob(c: Candle, ob: OrderBlock) -> bool:
     """True if candle range intersects the HTF OB zone."""
     return c.low <= ob.top and c.high >= ob.bottom
+
+
+def mitigates_ob(c: Candle, ob: OrderBlock) -> bool:
+    """
+    True mitigation: wick trades into the HTF OB and close rejects
+    (does not close through the far side of the block).
+    """
+    if not overlaps_ob(c, ob):
+        return False
+    if ob.side == "bear":
+        # Supply: must wick into/above OB bottom; close must not stay above OB top
+        if c.high < ob.bottom:
+            return False
+        return c.close <= ob.top
+    # Demand: must wick into/below OB top; close must not stay below OB bottom
+    if c.low > ob.top:
+        return False
+    return c.close >= ob.bottom
 
 
 def _htf_bias_and_ob(
@@ -225,8 +298,10 @@ def find_scm_in_ob(
     lookback: int | None = 12,
     start_index: int = 1,
     end_index: int | None = None,
+    min_wick_frac: Decimal = Decimal("0.55"),
+    min_sweep_frac: Decimal = Decimal("0.20"),
 ) -> ScmHit | None:
-    """Most recent SCM candle that overlaps the HTF OB (optional lookback window)."""
+    """Most recent clear long-wick SCM that mitigates the HTF OB."""
     if len(ltf) < 2:
         return None
     last = len(ltf) - 1 if end_index is None else min(end_index, len(ltf) - 1)
@@ -236,11 +311,15 @@ def find_scm_in_ob(
         first = max(1, start_index, last - lookback + 1)
     for i in range(last, first - 1, -1):
         prior, curr = ltf[i - 1], ltf[i]
-        if not overlaps_ob(curr, ob):
+        if not mitigates_ob(curr, ob):
             continue
-        if ob.side == "bear" and is_bearish_scm(prior, curr):
+        if ob.side == "bear" and is_bearish_scm(
+            prior, curr, min_wick_frac=min_wick_frac, min_sweep_frac=min_sweep_frac
+        ):
             return ScmHit(index=i, side="bear", candle=curr, prior=prior)
-        if ob.side == "bull" and is_bullish_scm(prior, curr):
+        if ob.side == "bull" and is_bullish_scm(
+            prior, curr, min_wick_frac=min_wick_frac, min_sweep_frac=min_sweep_frac
+        ):
             return ScmHit(index=i, side="bull", candle=curr, prior=prior)
     return None
 
@@ -367,8 +446,13 @@ class Ml02SingleCandleMitigationStrategy(BaseStrategy):
             # None = walk full LTF window (backtest). Set an int for live-only tail scan.
             "scm_lookback": None,
             "require_inducement": True,
+            # Clear liquidity: wick must dominate the candle + meaningful sweep.
+            "min_wick_frac": "0.55",
+            "min_sweep_frac": "0.20",
             "rr_target": "1.5",
-            "max_trades": 50,
+            "max_trades": 12,
+            "cooldown_bars": 20,
+            "one_trade_per_ob": True,
             "timezone": "America/New_York",
         }
 
@@ -385,7 +469,11 @@ class Ml02SingleCandleMitigationStrategy(BaseStrategy):
         lookback = None if raw_lb in (None, "", "none") else int(raw_lb)
         require_ind = bool(params.get("require_inducement", True))
         rr = Decimal(str(params.get("rr_target") or "1.5"))
-        max_trades = int(params.get("max_trades") or 50)
+        max_trades = int(params.get("max_trades") or 12)
+        cooldown = int(params.get("cooldown_bars") or 20)
+        one_per_ob = bool(params.get("one_trade_per_ob", True))
+        min_wick = Decimal(str(params.get("min_wick_frac") or "0.55"))
+        min_sweep = Decimal(str(params.get("min_sweep_frac") or "0.20"))
 
         htf = sorted(candles, key=lambda c: c.timestamp)
         start_d: date = context.start
@@ -410,7 +498,7 @@ class Ml02SingleCandleMitigationStrategy(BaseStrategy):
             search_start = max(1, len(series) - lookback)
 
         last_entry_i = -10_000
-        cooldown = 3  # LTF bars between entries
+        used_ob_keys: set[tuple[int, int]] = set()
 
         for i in range(search_start, len(series)):
             if len(trades) >= max_trades:
@@ -424,17 +512,38 @@ class Ml02SingleCandleMitigationStrategy(BaseStrategy):
             )
             if bias == "range" or ob is None:
                 continue
-            if not overlaps_ob(curr, ob):
+            # Must mitigate the HTF OB (wick into zone + reject), not mid-range noise
+            if not mitigates_ob(curr, ob):
                 continue
             is_scm = (
-                (ob.side == "bear" and is_bearish_scm(prior, curr))
-                or (ob.side == "bull" and is_bullish_scm(prior, curr))
+                (
+                    ob.side == "bear"
+                    and is_bearish_scm(
+                        prior,
+                        curr,
+                        min_wick_frac=min_wick,
+                        min_sweep_frac=min_sweep,
+                    )
+                )
+                or (
+                    ob.side == "bull"
+                    and is_bullish_scm(
+                        prior,
+                        curr,
+                        min_wick_frac=min_wick,
+                        min_sweep_frac=min_sweep,
+                    )
+                )
             )
             if not is_scm:
                 continue
 
             indu_ok, indu_note = _inducement_swept(htf, ob, before_index=htf_i)
             if require_ind and not indu_ok:
+                continue
+
+            ob_key = (ob.index, ob.bos_index)
+            if one_per_ob and ob_key in used_ob_keys:
                 continue
 
             side = Side.LONG if ob.side == "bull" else Side.SHORT
@@ -481,12 +590,12 @@ class Ml02SingleCandleMitigationStrategy(BaseStrategy):
                     exit_price=exit_px,
                     profit_loss=pnl,
                     notes=(
-                        f"SCM entry; SL={sl} TP={tp} ({rr}R); "
-                        f"confirm HTF OB mitigation on chart"
+                        f"Long-wick SCM mitigating HTF OB; SL={sl} TP={tp} ({rr}R)"
                     ),
                 )
             )
             last_entry_i = i
+            used_ob_keys.add(ob_key)
 
         return StrategyResult(
             signals=signals,
