@@ -373,6 +373,16 @@ function moneyUsd(n: number | null | undefined): string {
   });
 }
 
+function brokerErrorCopy(
+  err: unknown,
+  fallback: string,
+  t: (key: string) => string,
+): string {
+  const msg = err instanceof Error ? err.message : fallback;
+  if (/rate limit/i.test(msg)) return t("strategies.rateLimit");
+  return msg;
+}
+
 function planCapital(account: BrokerAccount | null): PlanCapital | null {
   if (!account) return null;
   return {
@@ -543,7 +553,7 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
     setCapitalPending(true);
     setCapitalError(null);
     try {
-      const res = await fetchBrokerPositions();
+      const res = await fetchBrokerPositions({ includeOrders: false });
       setBrokerAccounts(res.accounts ?? []);
       setTradingEnabled(Boolean(res.trading_enabled));
       const best = [...(res.accounts ?? [])].sort(
@@ -564,7 +574,7 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
       }
     } catch (err) {
       setCapitalError(
-        err instanceof Error ? err.message : t("strategies.openFail"),
+        brokerErrorCopy(err, t("strategies.openFail"), t),
       );
       setCapitalNote(null);
     } finally {
@@ -644,10 +654,11 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
             .replace("{sym}", res.option_symbol || plan.symbol)
             .replace("{id}", res.order_id || "—"),
         );
+        await new Promise((resolve) => window.setTimeout(resolve, 1500));
         void loadCapital();
       } catch (err) {
         setOpenError(
-          err instanceof Error ? err.message : t("strategies.openFail"),
+          brokerErrorCopy(err, t("strategies.openFail"), t),
         );
       } finally {
         setOpeningKey(null);

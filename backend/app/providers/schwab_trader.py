@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from typing import Any
 
 import httpx
@@ -16,6 +17,16 @@ logger = get_logger(__name__)
 
 SCHWAB_TRADER_BASE = "https://api.schwabapi.com/trader/v1"
 SCHWAB_MARKETDATA_BASE = "https://api.schwabapi.com/marketdata/v1"
+
+_HASH_CACHE: tuple[float, list[dict[str, str]]] | None = None
+_HASH_TTL_SEC = 300.0
+
+
+def _retry_after_seconds(resp: httpx.Response, attempt: int) -> float:
+    raw = (resp.headers.get("Retry-After") or "").strip()
+    if raw.isdigit():
+        return min(float(raw), 4.0)
+    return min(1.0 * (attempt + 1), 4.0)
 
 
 class SchwabTrader:
@@ -47,15 +58,52 @@ class SchwabTrader:
             "Accept": "application/json",
         }
 
-    def list_account_hashes(self) -> list[dict[str, str]]:
-        """Return [{accountNumber, hashValue}, ...]. Orders use hashValue as accountNumber path."""
-        with httpx.Client(timeout=20.0) as client:
-            resp = client.get(
-                f"{SCHWAB_TRADER_BASE}/accounts/accountNumbers",
-                headers=self._headers(),
+    def _trader_request(
+        self,
+        method: str,
+        url: str,
+        *,
+        timeout: float = 30.0,
+        extra_headers: dict[str, str] | None = None,
+        **kwargs: Any,
+    ) -> httpx.Response:
+        """GET/POST Schwab Trader with a short 429 backoff (Lambda-safe)."""
+        headers = {**self._headers(), **(extra_headers or {})}
+        last: httpx.Response | None = None
+        for attempt in range(3):
+            with httpx.Client(timeout=timeout) as client:
+                last = client.request(method, url, headers=headers, **kwargs)
+            if last.status_code != 429:
+                return last
+            wait = _retry_after_seconds(last, attempt)
+            logger.warning(
+                "schwab-trader 429 method=%s attempt=%s wait=%.1fs",
+                method,
+                attempt + 1,
+                wait,
             )
-            raise_for_provider_response(resp, provider="schwab-trader")
-            data = resp.json()
+            time.sleep(wait)
+        assert last is not None
+        raise_for_provider_response(last, provider="schwab-trader")
+        return last
+
+    def list_account_hashes(self, *, force: bool = False) -> list[dict[str, str]]:
+        """Return [{accountNumber, hashValue}, ...]. Orders use hashValue as accountNumber path."""
+        global _HASH_CACHE
+        now = time.monotonic()
+        if (
+            not force
+            and _HASH_CACHE is not None
+            and now - _HASH_CACHE[0] < _HASH_TTL_SEC
+        ):
+            return _HASH_CACHE[1]
+        resp = self._trader_request(
+            "GET",
+            f"{SCHWAB_TRADER_BASE}/accounts/accountNumbers",
+            timeout=20.0,
+        )
+        raise_for_provider_response(resp, provider="schwab-trader")
+        data = resp.json()
         if not isinstance(data, list):
             return []
         out: list[dict[str, str]] = []
@@ -66,17 +114,18 @@ class SchwabTrader:
             hv = str(row.get("hashValue") or "")
             if hv:
                 out.append({"accountNumber": acct, "hashValue": hv})
+        _HASH_CACHE = (now, out)
         return out
 
     def list_accounts_with_positions(self) -> list[dict[str, Any]]:
-        with httpx.Client(timeout=30.0) as client:
-            resp = client.get(
-                f"{SCHWAB_TRADER_BASE}/accounts",
-                params={"fields": "positions"},
-                headers=self._headers(),
-            )
-            raise_for_provider_response(resp, provider="schwab-trader")
-            data = resp.json()
+        resp = self._trader_request(
+            "GET",
+            f"{SCHWAB_TRADER_BASE}/accounts",
+            timeout=30.0,
+            params={"fields": "positions"},
+        )
+        raise_for_provider_response(resp, provider="schwab-trader")
+        data = resp.json()
         if not isinstance(data, list):
             return []
         return [row for row in data if isinstance(row, dict)]
@@ -87,14 +136,14 @@ class SchwabTrader:
             return {}
         # Schwab quotes: comma-separated symbols
         joined = ",".join(dict.fromkeys(clean))
-        with httpx.Client(timeout=20.0) as client:
-            resp = client.get(
-                f"{SCHWAB_MARKETDATA_BASE}/quotes",
-                params={"symbols": joined},
-                headers=self._headers(),
-            )
-            raise_for_provider_response(resp, provider="schwab-quotes")
-            data = resp.json()
+        resp = self._trader_request(
+            "GET",
+            f"{SCHWAB_MARKETDATA_BASE}/quotes",
+            timeout=20.0,
+            params={"symbols": joined},
+        )
+        raise_for_provider_response(resp, provider="schwab-quotes")
+        data = resp.json()
         if not isinstance(data, dict):
             return {}
         return {str(k): v for k, v in data.items() if isinstance(v, dict)}
@@ -164,33 +213,34 @@ class SchwabTrader:
             limit_price,
             dur,
         )
-        with httpx.Client(timeout=30.0) as client:
-            resp = client.post(
-                f"{SCHWAB_TRADER_BASE}/accounts/{account_hash}/orders",
-                headers={**self._headers(), "Content-Type": "application/json"},
-                json=body,
-            )
-            if resp.status_code not in (200, 201):
-                raise_for_provider_response(resp, provider="schwab-trader")
-            order_id = ""
-            loc = resp.headers.get("Location") or resp.headers.get("location") or ""
-            if loc:
-                order_id = loc.rstrip("/").split("/")[-1]
-            try:
-                payload = resp.json() if resp.content else {}
-            except Exception:  # noqa: BLE001
-                payload = {}
-            if isinstance(payload, dict) and payload.get("orderId"):
-                order_id = str(payload["orderId"])
-            return {
-                "order_id": order_id or None,
-                "status": "submitted",
-                "http_status": resp.status_code,
-                "location": loc or None,
-                "limit_price": limit_price,
-                "quantity": quantity,
-                "symbol": symbol,
-            }
+        resp = self._trader_request(
+            "POST",
+            f"{SCHWAB_TRADER_BASE}/accounts/{account_hash}/orders",
+            timeout=30.0,
+            extra_headers={"Content-Type": "application/json"},
+            json=body,
+        )
+        if resp.status_code not in (200, 201):
+            raise_for_provider_response(resp, provider="schwab-trader")
+        order_id = ""
+        loc = resp.headers.get("Location") or resp.headers.get("location") or ""
+        if loc:
+            order_id = loc.rstrip("/").split("/")[-1]
+        try:
+            payload = resp.json() if resp.content else {}
+        except Exception:  # noqa: BLE001
+            payload = {}
+        if isinstance(payload, dict) and payload.get("orderId"):
+            order_id = str(payload["orderId"])
+        return {
+            "order_id": order_id or None,
+            "status": "submitted",
+            "http_status": resp.status_code,
+            "location": loc or None,
+            "limit_price": limit_price,
+            "quantity": quantity,
+            "symbol": symbol,
+        }
 
     def place_close_order(self, **kwargs: Any) -> dict[str, Any]:
         """Backward-compatible alias for close / cover orders."""
@@ -212,14 +262,14 @@ class SchwabTrader:
             "toEnteredTime": end.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
             "maxResults": max_results,
         }
-        with httpx.Client(timeout=30.0) as client:
-            resp = client.get(
-                f"{SCHWAB_TRADER_BASE}/accounts/{account_hash}/orders",
-                params=params,
-                headers=self._headers(),
-            )
-            raise_for_provider_response(resp, provider="schwab-trader")
-            data = resp.json()
+        resp = self._trader_request(
+            "GET",
+            f"{SCHWAB_TRADER_BASE}/accounts/{account_hash}/orders",
+            timeout=30.0,
+            params=params,
+        )
+        raise_for_provider_response(resp, provider="schwab-trader")
+        data = resp.json()
         if not isinstance(data, list):
             return []
         return [row for row in data if isinstance(row, dict)]

@@ -41,6 +41,12 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
         "Scan timed out (API ~29s). Sync & Scan now runs in smaller batches — retry.",
       );
     }
+    if (res.status === 429) {
+      throw new Error(
+        detail ||
+          "Schwab Trader rate limit. Wait ~30 seconds, then retry.",
+      );
+    }
     throw new Error(detail || `Request failed (${res.status})`);
   }
 
@@ -285,8 +291,12 @@ export async function saveTradeToNotion(payload: {
   });
 }
 
-export async function fetchBrokerPositions(): Promise<BrokerPositionsResponse> {
-  return request("/broker/positions");
+export async function fetchBrokerPositions(opts?: {
+  includeOrders?: boolean;
+}): Promise<BrokerPositionsResponse> {
+  const includeOrders = opts?.includeOrders !== false;
+  const qs = includeOrders ? "" : "?include_orders=false";
+  return request(`/broker/positions${qs}`);
 }
 
 export async function brokerOpenOption(payload: {

@@ -3,6 +3,17 @@
 from app.providers.schwab_trader import normalize_positions
 
 
+def test_retry_after_seconds():
+    from app.providers.schwab_trader import _retry_after_seconds
+    import httpx
+
+    resp = httpx.Response(429, headers={"Retry-After": "3"})
+    assert _retry_after_seconds(resp, 0) == 3.0
+    resp2 = httpx.Response(429)
+    assert _retry_after_seconds(resp2, 0) == 1.0
+    assert _retry_after_seconds(resp2, 2) == 3.0
+
+
 def test_normalize_option_long_position():
     accounts = [
         {

@@ -2,11 +2,15 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from app.core.config import settings
-from app.providers.exceptions import ProviderError, ProviderNotConfiguredError
+from app.providers.exceptions import (
+    ProviderError,
+    ProviderNotConfiguredError,
+    ProviderRateLimitError,
+)
 from app.providers.schwab_trader import (
     DESK_RISK_PCT,
     SchwabTrader,
@@ -19,6 +23,11 @@ from app.providers.schwab_trader import (
 )
 
 router = APIRouter(prefix="/broker", tags=["broker"])
+
+RATE_LIMIT_DETAIL = (
+    "Schwab Trader rate limit. Wait ~30 seconds, then retry. "
+    "Avoid extra Load capital clicks."
+)
 
 
 class PositionsResponse(BaseModel):
@@ -128,7 +137,9 @@ class TpLadderResponse(BaseModel):
 
 
 @router.get("/positions", response_model=PositionsResponse)
-def get_positions() -> PositionsResponse:
+def get_positions(
+    include_orders: bool = Query(default=True),
+) -> PositionsResponse:
     try:
         trader = SchwabTrader()
         hashes = trader.list_account_hashes()
@@ -152,22 +163,25 @@ def get_positions() -> PositionsResponse:
             account_rows.append(base)
 
         orders: list[dict] = []
-        for h in hashes:
-            hv = h.get("hashValue")
-            if not hv:
-                continue
-            try:
-                raw_orders = trader.list_orders(hv)
-            except ProviderError:
-                continue
-            for row in raw_orders:
-                norm = normalize_order(
-                    row,
-                    hv,
-                    account_number=str(h.get("accountNumber") or ""),
-                )
-                if norm:
-                    orders.append(norm)
+        if include_orders:
+            for h in hashes:
+                hv = h.get("hashValue")
+                if not hv:
+                    continue
+                try:
+                    raw_orders = trader.list_orders(hv)
+                except ProviderRateLimitError:
+                    break
+                except ProviderError:
+                    continue
+                for row in raw_orders:
+                    norm = normalize_order(
+                        row,
+                        hv,
+                        account_number=str(h.get("accountNumber") or ""),
+                    )
+                    if norm:
+                        orders.append(norm)
 
         def _ord_key(o: dict) -> tuple:
             st = str(o.get("status") or "").upper()
@@ -190,6 +204,8 @@ def get_positions() -> PositionsResponse:
         )
     except ProviderNotConfiguredError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except ProviderRateLimitError as exc:
+        raise HTTPException(status_code=429, detail=RATE_LIMIT_DETAIL) from exc
     except ProviderError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     except Exception as exc:  # noqa: BLE001
@@ -287,6 +303,8 @@ def open_option_position(body: OpenOrderRequest) -> OpenOrderResponse:
         raise
     except ProviderNotConfiguredError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except ProviderRateLimitError as exc:
+        raise HTTPException(status_code=429, detail=RATE_LIMIT_DETAIL) from exc
     except ProviderError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     except Exception as exc:  # noqa: BLE001
@@ -321,6 +339,8 @@ def close_position(body: CloseOrderRequest) -> CloseOrderResponse:
         )
     except ProviderNotConfiguredError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except ProviderRateLimitError as exc:
+        raise HTTPException(status_code=429, detail=RATE_LIMIT_DETAIL) from exc
     except ProviderError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     except Exception as exc:  # noqa: BLE001
@@ -395,6 +415,8 @@ def place_tp_ladder(body: TpLadderRequest) -> TpLadderResponse:
         )
     except ProviderNotConfiguredError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except ProviderRateLimitError as exc:
+        raise HTTPException(status_code=429, detail=RATE_LIMIT_DETAIL) from exc
     except ProviderError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     except Exception as exc:  # noqa: BLE001
@@ -476,6 +498,8 @@ def tp_check(body: TpCheckRequest) -> TpCheckResponse:
         )
     except ProviderNotConfiguredError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except ProviderRateLimitError as exc:
+        raise HTTPException(status_code=429, detail=RATE_LIMIT_DETAIL) from exc
     except ProviderError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     except Exception as exc:  # noqa: BLE001

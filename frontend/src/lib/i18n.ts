@@ -355,6 +355,8 @@ const en: Dict = {
     "Send BUY_TO_OPEN LIMIT {n}× {sym} {type} {strike} exp {exp} @ {px}? Cost ≈ {cost} (10% risk {risk}).",
   "strategies.openOk": "Submitted {sym} · #{id} · after fill use Positions TP ladder",
   "strategies.openFail": "Open failed",
+  "strategies.rateLimit":
+    "Schwab Trader rate limit. Wait ~30 seconds, then retry. Do not click Load capital repeatedly.",
   "strategies.tradingDisabledShort": "Trading off",
 
   "positions.title": "Schwab positions",
@@ -823,6 +825,8 @@ const es: Dict = {
     "¿Enviar BUY_TO_OPEN LIMIT {n}× {sym} {type} {strike} exp {exp} @ {px}? Costo ≈ {cost} (riesgo 10% {risk}).",
   "strategies.openOk": "Enviado {sym} · #{id} · tras fill usa TP ladder en Posiciones",
   "strategies.openFail": "Open falló",
+  "strategies.rateLimit":
+    "Schwab Trader está saturado (rate limit). Espera ~30 segundos y reintenta. No pulses Load capital varias veces.",
   "strategies.tradingDisabledShort": "Trading off",
 
   "positions.title": "Posiciones Schwab",
