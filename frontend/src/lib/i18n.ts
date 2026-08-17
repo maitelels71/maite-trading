@@ -352,6 +352,10 @@ const en: Dict = {
   "strategies.openNeedArm": "Turn on Trigger opens first.",
   "strategies.openWaitSync":
     "Wait until candle sync finishes, then Open. Auto is paused while Trigger opens is on.",
+  "strategies.openWaitQuiet":
+    "Schwab still cooling down. Open in {n}s.",
+  "strategies.openRetryWait":
+    "Schwab busy. Sending the order in {n}s…",
   "strategies.armPausesAuto":
     "Trigger opens pauses Auto TOP 5 / Auto live so Schwab is free for the order.",
   "strategies.openNeedTrading": "Trading disabled on API (SCHWAB_TRADING_ENABLED).",
@@ -826,6 +830,10 @@ const es: Dict = {
   "strategies.openNeedArm": "Activa Trigger opens primero.",
   "strategies.openWaitSync":
     "Espera a que termine el sync de velas y luego Open. Auto está pausado mientras Trigger opens está activo.",
+  "strategies.openWaitQuiet":
+    "Schwab aún se está enfriando. Open en {n}s.",
+  "strategies.openRetryWait":
+    "Schwab ocupado. Enviando la orden en {n}s…",
   "strategies.armPausesAuto":
     "Trigger opens pausa Auto TOP 5 / Auto live para dejar Schwab libre para la orden.",
   "strategies.openNeedTrading": "Trading desactivado en API (SCHWAB_TRADING_ENABLED).",

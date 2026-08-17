@@ -51,6 +51,11 @@ const AUTO_LIVE_MS = 150_000; // 2.5 minutes
 const AUTO_LIVE_KEY = "maite.strategies.autoLive";
 const AUTO_DESK_KEY = "maite.strategies.autoDesk";
 const ARM_OPENS_KEY = "maite.strategies.armOpens";
+const CAPITAL_CACHE_KEY = "maite.strategies.capitalCache";
+const CAPITAL_CACHE_MS = 15 * 60 * 1000;
+/** After candles/capital, wait before BUY_TO_OPEN so Schwab's 429 window can clear. */
+const OPEN_QUIET_MS = 15_000;
+const OPEN_RETRY_WAIT_SEC = 25;
 const DESK_TOP_N = 5;
 const DESK_SYNC_TFS = ["1h", "1d"] as const;
 const DESK_LOOKBACK_DAYS = 25;
@@ -391,6 +396,40 @@ function planCapital(account: BrokerAccount | null): PlanCapital | null {
   };
 }
 
+type CapitalCache = {
+  at: number;
+  accounts: BrokerAccount[];
+  tradingEnabled: boolean;
+};
+
+function readCapitalCache(): CapitalCache | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.sessionStorage.getItem(CAPITAL_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as CapitalCache;
+    if (!parsed?.at || Date.now() - parsed.at > CAPITAL_CACHE_MS) return null;
+    if (!Array.isArray(parsed.accounts)) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function writeCapitalCache(accounts: BrokerAccount[], tradingEnabled: boolean) {
+  if (typeof window === "undefined") return;
+  try {
+    const payload: CapitalCache = {
+      at: Date.now(),
+      accounts,
+      tradingEnabled,
+    };
+    window.sessionStorage.setItem(CAPITAL_CACHE_KEY, JSON.stringify(payload));
+  } catch {
+    // ignore quota
+  }
+}
+
 function tooRichCopy(
   t: (key: string) => string,
   sizing: ReturnType<typeof sizeLongOption>,
@@ -488,6 +527,9 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
   const [, startDeskTransition] = useTransition();
   const [deskBusy, setDeskBusy] = useState(false);
   const [focusBusy, setFocusBusy] = useState(false);
+  const [quietUntil, setQuietUntil] = useState(0);
+  const [nowTick, setNowTick] = useState(() => Date.now());
+  const wasBrokerBusy = useRef(false);
   const deskBusyRef = useRef(false);
   const focusBusyRef = useRef(false);
   const deskEpochRef = useRef(0);
@@ -573,17 +615,44 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
   const loadCapital = useCallback(async (force = false) => {
     if (venue !== "schwab") return;
     const now = Date.now();
-    if (!force && capitalFetchedAt.current && now - capitalFetchedAt.current < 20_000) {
-      return;
+    if (!force) {
+      const cached = readCapitalCache();
+      if (cached) {
+        capitalFetchedAt.current = cached.at;
+        setBrokerAccounts(cached.accounts);
+        setTradingEnabled(cached.tradingEnabled);
+        const best = [...cached.accounts].sort(
+          (a, b) => (b.equity ?? 0) - (a.equity ?? 0),
+        )[0];
+        if (best) {
+          setCapitalNote(
+            t("strategies.capitalEquity")
+              .replace("{eq}", moneyUsd(best.equity))
+              .replace("{risk}", moneyUsd(best.risk_budget))
+              .replace(
+                "{cash}",
+                moneyUsd(best.available_funds ?? best.cash_balance),
+              ),
+          );
+        }
+        setCapitalError(null);
+        return;
+      }
+      if (capitalFetchedAt.current && now - capitalFetchedAt.current < 20_000) {
+        return;
+      }
     }
     setCapitalPending(true);
     setCapitalError(null);
     try {
       const res = await fetchBrokerPositions({ includeOrders: false });
       capitalFetchedAt.current = Date.now();
-      setBrokerAccounts(res.accounts ?? []);
-      setTradingEnabled(Boolean(res.trading_enabled));
-      const best = [...(res.accounts ?? [])].sort(
+      const accounts = res.accounts ?? [];
+      const tradingOn = Boolean(res.trading_enabled);
+      setBrokerAccounts(accounts);
+      setTradingEnabled(tradingOn);
+      writeCapitalCache(accounts, tradingOn);
+      const best = [...accounts].sort(
         (a, b) => (b.equity ?? 0) - (a.equity ?? 0),
       )[0];
       if (best) {
@@ -616,6 +685,24 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
     }
   }, [venue, loadCapital]);
 
+  useEffect(() => {
+    const busy = deskBusy || focusBusy || capitalPending;
+    if (wasBrokerBusy.current && !busy) {
+      setQuietUntil(Date.now() + OPEN_QUIET_MS);
+      setNowTick(Date.now());
+    }
+    wasBrokerBusy.current = busy;
+  }, [deskBusy, focusBusy, capitalPending]);
+
+  useEffect(() => {
+    if (quietUntil <= Date.now()) return;
+    const id = window.setInterval(() => setNowTick(Date.now()), 500);
+    return () => window.clearInterval(id);
+  }, [quietUntil]);
+
+  const quietRemainSec = Math.max(0, Math.ceil((quietUntil - nowTick) / 1000));
+  const schwabBusy = deskBusy || focusBusy || quietRemainSec > 0;
+
   const openFromPlan = useCallback(
     async (
       plan: NonNullable<ReturnType<typeof buildOptionsEntryPlan>>,
@@ -633,8 +720,12 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
         setOpenError(t("strategies.openNeedArm"));
         return;
       }
-      if (deskBusy || focusBusy) {
-        setOpenError(t("strategies.openWaitSync"));
+      if (deskBusy || focusBusy || quietRemainSec > 0) {
+        setOpenError(
+          quietRemainSec > 0
+            ? t("strategies.openWaitQuiet").replace("{n}", String(quietRemainSec))
+            : t("strategies.openWaitSync"),
+        );
         return;
       }
       const sizing = sizeLongOption({
@@ -670,20 +761,35 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
       setOpeningKey(rowKey);
       setOpenError(null);
       setOpenNote(null);
+      const payload = {
+        account_hash: primaryAccount.hashValue,
+        underlying: plan.symbol,
+        option_type: plan.optionType,
+        strike: plan.strike,
+        exp_iso: plan.expIso,
+        entry_premium: plan.entryPremium,
+        quantity: qty,
+        confirm_live: true as const,
+        equity: primaryAccount.equity ?? 0,
+        cash_available:
+          primaryAccount.available_funds ?? primaryAccount.cash_balance ?? 0,
+      };
       try {
-        const res = await brokerOpenOption({
-          account_hash: primaryAccount.hashValue,
-          underlying: plan.symbol,
-          option_type: plan.optionType,
-          strike: plan.strike,
-          exp_iso: plan.expIso,
-          entry_premium: plan.entryPremium,
-          quantity: qty,
-          confirm_live: true,
-          equity: primaryAccount.equity ?? 0,
-          cash_available:
-            primaryAccount.available_funds ?? primaryAccount.cash_balance ?? 0,
-        });
+        let res;
+        try {
+          res = await brokerOpenOption(payload);
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : "";
+          if (!/rate limit/i.test(msg)) throw err;
+          for (let n = OPEN_RETRY_WAIT_SEC; n > 0; n -= 1) {
+            setOpenNote(
+              t("strategies.openRetryWait").replace("{n}", String(n)),
+            );
+            await new Promise((r) => window.setTimeout(r, 1000));
+          }
+          setOpenNote(null);
+          res = await brokerOpenOption(payload);
+        }
         setOpenNote(
           t("strategies.openOk")
             .replace("{sym}", res.option_symbol || plan.symbol)
@@ -697,7 +803,7 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
         setOpeningKey(null);
       }
     },
-    [primaryAccount, tradingEnabled, armOpens, t, deskBusy, focusBusy],
+    [primaryAccount, tradingEnabled, armOpens, t, deskBusy, focusBusy, quietRemainSec],
   );
 
   useEffect(() => {
@@ -1429,7 +1535,15 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
                                       account={primaryAccount}
                                       tradingEnabled={tradingEnabled}
                                       armOpens={armOpens}
-                                      brokerBusy={deskBusy || focusBusy}
+                                      brokerBusy={schwabBusy}
+                                      busyTitle={
+                                        quietRemainSec > 0
+                                          ? t("strategies.openWaitQuiet").replace(
+                                              "{n}",
+                                              String(quietRemainSec),
+                                            )
+                                          : t("strategies.openWaitSync")
+                                      }
                                       opening={openingKey === rowOpenKey}
                                       onOpen={openFromPlan}
                                     />
@@ -1609,7 +1723,15 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
                 account={primaryAccount}
                 tradingEnabled={tradingEnabled}
                 armOpens={armOpens}
-                brokerBusy={deskBusy || focusBusy}
+                brokerBusy={schwabBusy}
+                busyTitle={
+                  quietRemainSec > 0
+                    ? t("strategies.openWaitQuiet").replace(
+                        "{n}",
+                        String(quietRemainSec),
+                      )
+                    : t("strategies.openWaitSync")
+                }
                 openingKey={openingKey}
                 onOpen={openFromPlan}
               />
@@ -1930,6 +2052,7 @@ function HitCard({
   tradingEnabled = false,
   armOpens = false,
   brokerBusy = false,
+  busyTitle,
   openingKey = null,
   onOpen,
 }: {
@@ -1940,6 +2063,7 @@ function HitCard({
   tradingEnabled?: boolean;
   armOpens?: boolean;
   brokerBusy?: boolean;
+  busyTitle?: string;
   openingKey?: string | null;
   onOpen?: (
     plan: NonNullable<ReturnType<typeof buildOptionsEntryPlan>>,
@@ -2004,6 +2128,7 @@ function HitCard({
           tradingEnabled={tradingEnabled}
           armOpens={armOpens}
           brokerBusy={brokerBusy}
+          busyTitle={busyTitle}
           opening={openingKey === rowKey}
           onOpen={onOpen}
           rowKey={rowKey}
@@ -2020,6 +2145,7 @@ function OpenPlanButton({
   tradingEnabled,
   armOpens,
   brokerBusy = false,
+  busyTitle,
   opening,
   onOpen,
 }: {
@@ -2029,6 +2155,7 @@ function OpenPlanButton({
   tradingEnabled: boolean;
   armOpens: boolean;
   brokerBusy?: boolean;
+  busyTitle?: string;
   opening: boolean;
   onOpen: (
     plan: NonNullable<ReturnType<typeof buildOptionsEntryPlan>>,
@@ -2089,7 +2216,7 @@ function OpenPlanButton({
           disabled={opening || !armOpens || brokerBusy}
           title={
             brokerBusy
-              ? t("strategies.openWaitSync")
+              ? busyTitle || t("strategies.openWaitSync")
               : !armOpens
                 ? t("strategies.openNeedArm")
                 : undefined
@@ -2122,6 +2249,7 @@ function OptionsPlanBlock({
   tradingEnabled = false,
   armOpens = false,
   brokerBusy = false,
+  busyTitle,
   opening = false,
   onOpen,
   rowKey,
@@ -2131,6 +2259,7 @@ function OptionsPlanBlock({
   tradingEnabled?: boolean;
   armOpens?: boolean;
   brokerBusy?: boolean;
+  busyTitle?: string;
   opening?: boolean;
   onOpen?: (
     plan: NonNullable<ReturnType<typeof buildOptionsEntryPlan>>,
@@ -2215,6 +2344,7 @@ function OptionsPlanBlock({
             tradingEnabled={tradingEnabled}
             armOpens={armOpens}
             brokerBusy={brokerBusy}
+            busyTitle={busyTitle}
             opening={opening}
             onOpen={onOpen}
           />

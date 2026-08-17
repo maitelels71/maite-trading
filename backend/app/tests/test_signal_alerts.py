@@ -97,6 +97,16 @@ def test_options_requires_multiple_confluence_and_capital() -> None:
     )
     assert too_small == []
 
+    unfiltered = options_candidates(
+        hits,
+        session="2026-08-15",
+        equity=0,
+        cash_available=0,
+        skip_size_filter=True,
+    )
+    assert [c.symbol for c in unfiltered] == ["SPY"]
+    assert unfiltered[0].contracts is None
+
 
 def test_futures_sends_every_ready_signal() -> None:
     hits = [

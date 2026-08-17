@@ -22,11 +22,14 @@ _HASH_CACHE: tuple[float, list[dict[str, str]]] | None = None
 _HASH_TTL_SEC = 300.0
 
 
-def _retry_after_seconds(resp: httpx.Response, attempt: int) -> float:
+def _retry_after_seconds(
+    resp: httpx.Response, attempt: int, *, max_wait: float = 4.0
+) -> float:
     raw = (resp.headers.get("Retry-After") or "").strip()
+    cap = max(1.0, max_wait)
     if raw.isdigit():
-        return min(float(raw), 4.0)
-    return min(1.0 * (attempt + 1), 4.0)
+        return min(float(raw), cap)
+    return min(1.0 * (attempt + 1), cap)
 
 
 class SchwabTrader:
@@ -65,17 +68,19 @@ class SchwabTrader:
         *,
         timeout: float = 30.0,
         extra_headers: dict[str, str] | None = None,
+        retries: int = 3,
+        max_wait: float = 4.0,
         **kwargs: Any,
     ) -> httpx.Response:
-        """GET/POST Schwab Trader with a short 429 backoff (Lambda-safe)."""
+        """GET/POST Schwab Trader with a short 429 backoff (API Gateway ~29s)."""
         headers = {**self._headers(), **(extra_headers or {})}
         last: httpx.Response | None = None
-        for attempt in range(3):
+        for attempt in range(max(1, retries)):
             with httpx.Client(timeout=timeout) as client:
                 last = client.request(method, url, headers=headers, **kwargs)
             if last.status_code != 429:
                 return last
-            wait = _retry_after_seconds(last, attempt)
+            wait = _retry_after_seconds(last, attempt, max_wait=max_wait)
             logger.warning(
                 "schwab-trader 429 method=%s attempt=%s wait=%.1fs",
                 method,
@@ -219,6 +224,8 @@ class SchwabTrader:
             timeout=30.0,
             extra_headers={"Content-Type": "application/json"},
             json=body,
+            retries=3,
+            max_wait=8.0,
         )
         if resp.status_code not in (200, 201):
             raise_for_provider_response(resp, provider="schwab-trader")

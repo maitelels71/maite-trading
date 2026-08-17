@@ -58,21 +58,32 @@ def options_candidates(
     cash_available: float,
     top_n: int = ALERT_TOP_N,
     min_confluence: int = ALERT_MIN_CONFLUENCE,
+    skip_size_filter: bool = False,
 ) -> list[AlertCandidate]:
-    """TOP 5 by confluence, ≥2 agreeing playbooks, 1 contract fits 10% risk."""
+    """TOP 5 by confluence, ≥2 agreeing playbooks.
+
+    Size filter (1ct fits cash / 50% equity) is skipped when skip_size_filter
+    is set so alerts never call Schwab Trader.
+    """
     ranked = rank_by_confluence(hits, top_n=top_n, ready_only=True)
     out: list[AlertCandidate] = []
     for group in ranked:
         if group.confluence < min_confluence:
             continue
         premium = entry_premium_for_sizing(group.symbol)
-        sizing = size_long_option(
-            entry_premium=premium,
-            equity=equity,
-            cash_available=cash_available,
-        )
-        if not sizing["can_open"]:
-            continue
+        contracts: int | None = None
+        if skip_size_filter:
+            detail = f"{group.confluence} conf · ~${premium:.2f}"
+        else:
+            sizing = size_long_option(
+                entry_premium=premium,
+                equity=equity,
+                cash_available=cash_available,
+            )
+            if not sizing["can_open"]:
+                continue
+            contracts = int(sizing["contracts"])
+            detail = f"{group.confluence} conf · {contracts}ct @{premium:.2f}"
         strategies = group.strategies
         out.append(
             AlertCandidate(
@@ -88,9 +99,9 @@ def options_candidates(
                     side=group.side,
                     strategies=strategies,
                 ),
-                contracts=int(sizing["contracts"]),
+                contracts=contracts,
                 premium=premium,
-                detail=f"{group.confluence} conf · {int(sizing['contracts'])}ct @{premium:.2f}",
+                detail=detail,
             )
         )
     return out
@@ -144,6 +155,8 @@ def format_sms(candidate: AlertCandidate) -> str:
         f"{prefix} {candidate.symbol} {candidate.side_label} · "
         f"{candidate.strategy_labels}"
     )
-    if candidate.venue == "options" and candidate.contracts:
-        core += f" · {candidate.confluence} conf · {candidate.contracts}ct"
+    if candidate.venue == "options":
+        core += f" · {candidate.confluence} conf"
+        if candidate.contracts:
+            core += f" · {candidate.contracts}ct"
     return core[:160]

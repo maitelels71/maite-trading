@@ -12,6 +12,9 @@ def test_retry_after_seconds():
     resp2 = httpx.Response(429)
     assert _retry_after_seconds(resp2, 0) == 1.0
     assert _retry_after_seconds(resp2, 2) == 3.0
+    long_wait = httpx.Response(429, headers={"Retry-After": "30"})
+    assert _retry_after_seconds(long_wait, 0) == 4.0
+    assert _retry_after_seconds(long_wait, 0, max_wait=8.0) == 8.0
 
 
 def test_normalize_option_long_position():

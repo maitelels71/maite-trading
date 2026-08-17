@@ -112,24 +112,15 @@ def run_signal_alerts(
         logger.exception("Futures alert scan failed")
         summary["errors"].append(f"futures_scan: {exc}")
 
-    capital = None
-    if options_hits:
-        capital = _load_options_capital()
+    # Do not call Schwab Trader here — same OAuth app as live BUY_TO_OPEN (429).
     candidates: list[AlertCandidate] = []
-    if not options_hits:
-        pass
-    elif capital is None:
-        summary["errors"].append("options_capital: unavailable")
-    else:
+    if options_hits:
         opt = options_candidates(
             options_hits,
             session=session_s,
-            equity=float(capital.get("equity") or 0),
-            cash_available=float(
-                capital.get("available_funds")
-                or capital.get("cash_balance")
-                or 0
-            ),
+            equity=0,
+            cash_available=0,
+            skip_size_filter=True,
         )
         summary["options_candidates"] = len(opt)
         candidates.extend(opt)
@@ -173,24 +164,6 @@ def run_signal_alerts(
             summary["errors"].append(f"notify {cand.symbol}: {exc}")
 
     return summary
-
-def _load_options_capital() -> dict[str, Any] | None:
-    try:
-        from app.providers.schwab_trader import (
-            SchwabTrader,
-            normalize_account_summaries,
-        )
-
-        trader = SchwabTrader()
-        hashes = trader.list_account_hashes()
-        accounts = trader.list_accounts_with_positions()
-        rows = normalize_account_summaries(accounts, hashes)
-        if not rows:
-            return None
-        return max(rows, key=lambda r: float(r.get("equity") or 0))
-    except Exception:  # noqa: BLE001
-        logger.exception("Could not load Schwab capital for options SMS")
-        return None
 
 
 def _timeframes_for(strategy_names: tuple[str, ...]) -> set[str]:
