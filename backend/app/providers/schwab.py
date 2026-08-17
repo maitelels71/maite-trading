@@ -14,7 +14,7 @@ from app.domain.enums import DataProviderName
 from app.providers.exceptions import ProviderNotConfiguredError
 from app.providers.http_utils import raise_for_provider_response
 from app.providers.normalize import normalize_candles
-from app.providers.schwab_oauth import get_valid_access_token
+from app.providers.schwab_oauth import force_refresh_token, get_valid_access_token
 
 logger = get_logger(__name__)
 
@@ -35,6 +35,7 @@ class SchwabProvider:
         self._config = config or settings
         self._client = client
         self._access_token = access_token
+        self._injected_token = access_token is not None
         self._authenticated = access_token is not None
 
     @property
@@ -42,23 +43,29 @@ class SchwabProvider:
         return DataProviderName.SCHWAB
 
     def authenticate(self) -> None:
+        if self._injected_token:
+            self._authenticated = True
+            return
         if not self._config.schwab_client_id or not self._config.schwab_client_secret:
             raise ProviderNotConfiguredError(
                 "SCHWAB_CLIENT_ID and SCHWAB_CLIENT_SECRET must be set"
             )
-        if self._access_token:
-            self._authenticated = True
-            return
-        self._access_token = get_valid_access_token(self._config)
+        token = get_valid_access_token(self._config)
+        if token != self._access_token:
+            self._access_token = token
+            self._reset_client()
         self._authenticated = True
-        # Reset client so Authorization header picks up fresh token
-        if self._client is not None:
-            self._client.close()
-            self._client = None
 
     def ensure_authenticated(self) -> None:
-        if not self._authenticated:
-            self.authenticate()
+        if self._injected_token:
+            self._authenticated = True
+            return
+        self.authenticate()
+
+    def _reset_client(self) -> None:
+        if self._client is not None and not self._injected_token:
+            self._client.close()
+            self._client = None
 
     def _get_client(self) -> httpx.Client:
         if self._client is not None:
@@ -99,6 +106,16 @@ class SchwabProvider:
         }
         client = self._get_client()
         response = client.get("/pricehistory", params=params)
+        if response.status_code == 401 and not self._injected_token:
+            logger.warning("schwab_pricehistory_401 retrying with fresh token")
+            self._reset_client()
+            try:
+                force_refresh_token(self._config)
+            except Exception:  # noqa: BLE001
+                logger.exception("schwab_401_refresh_failed")
+            self._access_token = None
+            self.authenticate()
+            response = self._get_client().get("/pricehistory", params=params)
         raise_for_provider_response(response, provider="schwab")
         payload = response.json()
         rows = _extract_schwab_candles(payload)

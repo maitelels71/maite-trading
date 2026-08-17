@@ -99,12 +99,35 @@ def test_size_long_option_10pct():
     assert s2["cost_per_contract"] == 18_500.0
     assert s2["contracts"] == 0
     assert s2["can_open"] is False
+    assert s2["can_pay_cash"] is False
+    assert s2["actual_risk_pct"] == 16371.7
+    assert s2["equity_for_desk_rule"] == 185_000.0
 
     # Cheap premium that fits in 10% of $113
     s3 = size_long_option(entry_premium=0.10, equity=113, cash_available=113)
     assert s3["cost_per_contract"] == 10.0
     assert s3["contracts"] == 1
     assert s3["can_open"] is True
+    assert s3["consider"] is True
+    assert s3["actual_risk_pct"] == 8.8
+
+    # 25% of equity: above 10% flag, but within 50% open cap
+    s4 = size_long_option(entry_premium=0.50, equity=200, cash_available=80)
+    assert s4["cost_per_contract"] == 50.0
+    assert s4["consider"] is False
+    assert s4["can_open"] is True
+    assert s4["contracts"] == 1
+    assert s4["can_pay_cash"] is True
+    assert s4["actual_risk_pct"] == 25.0
+    assert s4["equity_for_desk_rule"] == 500.0
+    assert s4["equity_for_max_open"] == 100.0
+
+    # 60% of equity: over 50% cap even with cash
+    s5 = size_long_option(entry_premium=1.20, equity=200, cash_available=200)
+    assert s5["cost_per_contract"] == 120.0
+    assert s5["consider"] is False
+    assert s5["can_open"] is False
+    assert s5["actual_risk_pct"] == 60.0
 
 
 def test_normalize_account_summaries():

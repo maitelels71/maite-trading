@@ -41,11 +41,13 @@ def test_admin_schwab_status_from_file(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setenv("SCHWAB_CLIENT_SECRET", "sec")
 
     # Re-read: API uses app settings singleton — call token_status directly
+    monkeypatch.delenv("SCHWAB_TOKEN_JSON", raising=False)
     status = schwab_oauth.token_status(
         Settings(
             SCHWAB_CLIENT_ID="cid",
             SCHWAB_CLIENT_SECRET="sec",
             SCHWAB_TOKEN_PATH=str(token_path),
+            SCHWAB_TOKEN_JSON="",
         )
     )
     assert status["has_access_token"] is True

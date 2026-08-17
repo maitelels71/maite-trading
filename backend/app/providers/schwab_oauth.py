@@ -66,24 +66,70 @@ def _parse_token_blob(raw: str | None) -> dict[str, Any] | None:
     return data
 
 
-def load_token(config: Settings | None = None) -> dict[str, Any] | None:
-    cfg = config or settings
+def _token_from_file(cfg: Settings) -> dict[str, Any] | None:
     path = resolve_token_path(cfg)
-    if path.exists():
-        try:
-            data = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            logger.warning("schwab_token_unreadable path=%s", path)
-            data = None
-        if isinstance(data, dict) and data.get("access_token"):
-            return data
-
-    # Secrets Manager → env (see secrets_loader) or explicit settings
-    env_blob = (cfg.schwab_token_json or os.environ.get("SCHWAB_TOKEN_JSON") or "").strip()
-    parsed = _parse_token_blob(env_blob)
-    if parsed:
-        return parsed
+    if not path.exists():
+        return None
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        logger.warning("schwab_token_unreadable path=%s", path)
+        return None
+    if isinstance(data, dict) and data.get("access_token"):
+        return data
     return None
+
+
+def _token_from_env(cfg: Settings) -> dict[str, Any] | None:
+    env_blob = (cfg.schwab_token_json or os.environ.get("SCHWAB_TOKEN_JSON") or "").strip()
+    return _parse_token_blob(env_blob)
+
+
+def _token_from_secrets_manager() -> dict[str, Any] | None:
+    """Live SCHWAB_TOKEN_JSON from Secrets Manager (other Lambdas may have refreshed)."""
+    arn = (os.environ.get("APP_SECRETS_ARN") or "").strip()
+    if not arn:
+        return None
+    try:
+        import boto3
+
+        client = boto3.client("secretsmanager")
+        raw = client.get_secret_value(SecretId=arn).get("SecretString") or "{}"
+        data = json.loads(raw)
+        if not isinstance(data, dict):
+            return None
+        blob = data.get("SCHWAB_TOKEN_JSON")
+        if isinstance(blob, dict):
+            parsed = blob if blob.get("access_token") else None
+        else:
+            parsed = _parse_token_blob(str(blob) if blob else None)
+        if parsed:
+            os.environ["SCHWAB_TOKEN_JSON"] = json.dumps(parsed)
+        return parsed
+    except Exception:  # noqa: BLE001
+        logger.exception("schwab_token_secrets_read_failed")
+        return None
+
+
+def _newer_token(*tokens: dict[str, Any] | None) -> dict[str, Any] | None:
+    present = [t for t in tokens if t and t.get("access_token")]
+    if not present:
+        return None
+    return max(present, key=lambda t: float(t.get("expires_at") or 0))
+
+
+def load_token(config: Settings | None = None) -> dict[str, Any] | None:
+    """Prefer the newest blob among file, env, and Secrets Manager.
+
+    Lambda keeps a stale `/tmp` copy; another instance may have already
+    refreshed into Secrets Manager — always pick the later `expires_at`.
+    """
+    cfg = config or settings
+    return _newer_token(
+        _token_from_file(cfg),
+        _token_from_env(cfg),
+        _token_from_secrets_manager(),
+    )
 
 
 def _persist_token_to_secrets_manager(token: dict[str, Any]) -> None:
@@ -239,23 +285,17 @@ def token_status(config: Settings | None = None) -> dict[str, Any]:
     """Safe status for Admin UI (never returns raw tokens)."""
     cfg = config or settings
     path = resolve_token_path(cfg)
+    file_tok = _token_from_file(cfg)
+    env_tok = _token_from_env(cfg)
+    sm_tok = _token_from_secrets_manager()
+    token = _newer_token(file_tok, env_tok, sm_tok)
     source = "none"
-    token: dict[str, Any] | None = None
-
-    if path.exists():
-        try:
-            data = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            data = None
-        if isinstance(data, dict) and data.get("access_token"):
-            token = data
-            source = "file"
-
-    if token is None:
-        env_blob = (cfg.schwab_token_json or os.environ.get("SCHWAB_TOKEN_JSON") or "").strip()
-        token = _parse_token_blob(env_blob)
-        if token:
-            source = "env"
+    if token is sm_tok:
+        source = "secrets"
+    elif token is env_tok:
+        source = "env"
+    elif token is file_tok:
+        source = "file"
 
     expires_at = float(token.get("expires_at") or 0) if token else 0.0
     now = time.time()

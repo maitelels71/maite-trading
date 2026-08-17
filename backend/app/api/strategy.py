@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 
 from app.api.storage import get_dynamo_store, using_dynamo
 from app.database.session import get_db
-from app.domain.enums import Side
+from app.domain.enums import DataProviderName, Side
 from app.domain.strategy_types import StrategyResult
 from app.models import BacktestRun, Instrument, Strategy as StrategyModel
 from app.models import SignalRow, Trade as TradeModel
@@ -82,9 +82,15 @@ def execute_scan(
 
     from app.domain.session_calendar import resolve_operative_session_date
 
-    # Live desk: omit session_date → last/current NY cash session (not calendar
-    # "today" before the open, which otherwise yields wall-to-wall no_data).
-    scan_day = body.session_date or resolve_operative_session_date()
+    # Live desk: omit session_date → last/current NY session for that venue
+    # (cash RTH 9:30 vs CME Globex Sunday 18:00). Using calendar "today"
+    # before the cash open otherwise yields wall-to-wall no_data.
+    market = (
+        "futures"
+        if body.data_provider == DataProviderName.TRADEADVOCATE.value
+        else "cash"
+    )
+    scan_day = body.session_date or resolve_operative_session_date(market=market)
     instruments = _list_scan_instruments(
         db,
         data_provider=body.data_provider,

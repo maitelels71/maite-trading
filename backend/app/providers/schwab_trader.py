@@ -28,10 +28,11 @@ class SchwabTrader:
         access_token: str | None = None,
     ) -> None:
         self._config = config or settings
+        self._injected_token = access_token is not None
         self._access_token = access_token
 
     def _token(self) -> str:
-        if self._access_token:
+        if self._injected_token and self._access_token:
             return self._access_token
         if not self._config.schwab_client_id or not self._config.schwab_client_secret:
             raise ProviderNotConfiguredError(
@@ -242,7 +243,8 @@ def split_tp_ladder_quantities(quantity: float) -> list[tuple[float, int]]:
     ]
 
 
-DESK_RISK_PCT = 0.10  # 10% of equity per options entry
+DESK_RISK_PCT = 0.10  # consider / less-risk flag
+MAX_OPEN_RISK_PCT = 0.50  # hard cap to send BUY_TO_OPEN
 
 
 def build_occ_option_symbol(
@@ -276,8 +278,9 @@ def size_long_option(
     equity: float,
     cash_available: float,
     risk_pct: float = DESK_RISK_PCT,
+    max_open_risk_pct: float = MAX_OPEN_RISK_PCT,
 ) -> dict[str, Any]:
-    """10% equity risk vs mid-optimal debit; multiplier 100."""
+    """Size 1+ contracts: flag ≤10% equity; allow open up to 50% if cash covers."""
     prem = float(entry_premium or 0)
     eq = float(equity or 0)
     cash = float(cash_available or 0)
@@ -285,7 +288,23 @@ def size_long_option(
     risk_budget = round(eq * risk_pct, 2) if eq > 0 else 0.0
     by_risk = int(risk_budget // cost_1) if cost_1 > 0 else 0
     by_cash = int(cash // cost_1) if cost_1 > 0 else 0
-    contracts = max(0, min(by_risk, by_cash))
+    can_pay_cash = cost_1 > 0 and cash >= cost_1
+    consider = can_pay_cash and eq > 0 and cost_1 <= eq * risk_pct + 1e-9
+    within_max = can_pay_cash and eq > 0 and cost_1 <= eq * max_open_risk_pct + 1e-9
+    if consider:
+        contracts = max(0, min(by_risk, by_cash))
+    elif within_max:
+        contracts = 1
+    else:
+        contracts = 0
+    actual_risk_pct = round((cost_1 / eq) * 100, 1) if eq > 0 and cost_1 > 0 else 0.0
+    equity_for_desk = round(cost_1 / risk_pct, 2) if cost_1 > 0 and risk_pct > 0 else 0.0
+    equity_for_max = (
+        round(cost_1 / max_open_risk_pct, 2)
+        if cost_1 > 0 and max_open_risk_pct > 0
+        else 0.0
+    )
+    cash_shortfall = round(max(0.0, cost_1 - cash), 2)
     return {
         "entry_premium": prem,
         "cost_per_contract": cost_1,
@@ -295,6 +314,12 @@ def size_long_option(
         "risk_budget": risk_budget,
         "contracts": contracts,
         "can_open": contracts >= 1 and cost_1 > 0,
+        "can_pay_cash": can_pay_cash,
+        "consider": consider,
+        "actual_risk_pct": actual_risk_pct,
+        "equity_for_desk_rule": equity_for_desk,
+        "equity_for_max_open": equity_for_max,
+        "cash_shortfall": cash_shortfall,
     }
 
 

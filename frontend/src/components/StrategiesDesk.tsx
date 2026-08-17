@@ -30,8 +30,11 @@ import {
   localizedPlaybookName,
 } from "@/lib/playbook-localize";
 import { buildOptionsEntryPlan } from "@/lib/options-premium-ranges";
-import { sizeLongOption } from "@/lib/option-sizing";
-import { groupInstrumentsForVenue } from "@/lib/instrument-groups";
+import { DEFAULT_OTM_PREMIUM, sizeForSymbol, sizeLongOption } from "@/lib/option-sizing";
+import {
+  groupInstrumentsForVenue,
+  WATCH_SYMBOLS,
+} from "@/lib/instrument-groups";
 import {
   FALLBACK_INSTRUMENTS,
   TIMEFRAMES,
@@ -50,10 +53,28 @@ const AUTO_DESK_KEY = "maite.strategies.autoDesk";
 const ARM_OPENS_KEY = "maite.strategies.armOpens";
 const DESK_TOP_N = 5;
 const DESK_SYNC_TFS = ["1h", "1d"] as const;
-const DESK_LOOKBACK_DAYS = 60;
-/** One strategy per HTTP call — 3×6 evals with 1m extras trips API Gateway ~29s (503). */
+const DESK_LOOKBACK_DAYS = 25;
+/** One strategy per HTTP call — extras (15m/1m) still trip API Gateway ~29s. */
 const DESK_STRATEGY_CHUNK = 1;
 const SCAN_SYMBOL_BATCH = 2;
+/** Desk TOP 5 is 1h-only — slightly larger batches are safe. */
+const DESK_SCAN_SYMBOL_BATCH = 4;
+const HARD_SYNC_KEY = "maite.strategies.hardSyncDay";
+/** Watch + rich-premium names stay on Focus Sync & Scan, not the TOP 5 universe. */
+const DESK_FOCUS_ONLY = new Set([...WATCH_SYMBOLS, "IOVA"]);
+
+function takeHardRefresh(sessionDay: string, fromAuto: boolean): boolean {
+  if (fromAuto) return false;
+  if (typeof window === "undefined") return true;
+  try {
+    const prev = window.localStorage.getItem(HARD_SYNC_KEY);
+    if (prev === sessionDay) return false;
+    window.localStorage.setItem(HARD_SYNC_KEY, sessionDay);
+    return true;
+  } catch {
+    return true;
+  }
+}
 
 type DeskConfluenceGroup = {
   symbol: string;
@@ -67,14 +88,17 @@ type DeskConfluenceGroup = {
 };
 
 /** Split /strategy/scan so each request stays under API Gateway's ~29s cap. */
-async function scanStrategiesBatched(payload: {
-  strategies?: string[];
-  timeframe?: string;
-  session_date?: string;
-  data_provider?: string;
-  symbols: string[];
-  matches_only?: boolean;
-}): Promise<ScanResponse> {
+async function scanStrategiesBatched(
+  payload: {
+    strategies?: string[];
+    timeframe?: string;
+    session_date?: string;
+    data_provider?: string;
+    symbols: string[];
+    matches_only?: boolean;
+  },
+  batchSize = SCAN_SYMBOL_BATCH,
+): Promise<ScanResponse> {
   const merged: ScanResponse = {
     scanned_at: new Date().toISOString(),
     session_date: payload.session_date ?? "",
@@ -84,8 +108,9 @@ async function scanStrategiesBatched(payload: {
     match_count: 0,
     total_checked: 0,
   };
-  for (let i = 0; i < payload.symbols.length; i += SCAN_SYMBOL_BATCH) {
-    const symbols = payload.symbols.slice(i, i + SCAN_SYMBOL_BATCH);
+  const size = Math.max(1, batchSize);
+  for (let i = 0; i < payload.symbols.length; i += size) {
+    const symbols = payload.symbols.slice(i, i + size);
     const res = await scanStrategies({ ...payload, symbols });
     merged.scanned_at = res.scanned_at;
     merged.session_date = res.session_date;
@@ -230,23 +255,44 @@ function previousWeekdayIso(isoDate: string): string {
   return d;
 }
 
-/** Last/current NY cash session — mirrors backend resolve_operative_session_date. */
-function operativeSessionNyIso(now = new Date()): string {
+/** Last/current NY session — mirrors backend resolve_operative_session_date. */
+function operativeSessionNyIso(now = new Date(), venue: Venue = "schwab"): string {
   const p = nyParts(now);
   const today = `${p.y}-${String(p.m).padStart(2, "0")}-${String(p.day).padStart(2, "0")}`;
   const [y, m, day] = today.split("-").map(Number);
-  const wd = new Date(Date.UTC(y, m - 1, day, 12)).getUTCDay();
+  const wd = new Date(Date.UTC(y, m - 1, day, 12)).getUTCDay(); // Sun=0 … Sat=6
+  if (venue === "tradeadvocate") {
+    const globexOpen = isGlobexOpenNy(p.hh, p.mm, wd);
+    if (globexOpen) return today;
+    if (wd === 5) return today; // Friday after 17:00 — last Globex day
+    if (wd === 0 || wd === 6) return previousWeekdayIso(today);
+    return today; // Mon–Thu 17:00–18:00 halt
+  }
   if (wd === 0 || wd === 6) return previousWeekdayIso(today);
   if (p.hh < 9 || (p.hh === 9 && p.mm < 30)) return previousWeekdayIso(today);
   return today;
 }
 
-/** True before 9:30 ET on a weekday (or anytime weekend) — session = prior cash day. */
-function isPremarketOrClosedNy(now = new Date()): boolean {
+/** CME Globex weekly session: Sun 18:00 ET → Fri 17:00 ET. */
+function isGlobexOpenNy(hh: number, mm: number, wd: number): boolean {
+  const minutes = hh * 60 + mm;
+  const reopen = 18 * 60;
+  const halt = 17 * 60;
+  if (wd === 6) return false; // Saturday
+  if (wd === 0) return minutes >= reopen; // Sunday
+  if (wd === 5) return minutes < halt; // Friday
+  return minutes < halt || minutes >= reopen; // Mon–Thu
+}
+
+/** True when the venue is not in its live session (prior-session banners). */
+function isPremarketOrClosedNy(now = new Date(), venue: Venue = "schwab"): boolean {
   const p = nyParts(now);
   const today = `${p.y}-${String(p.m).padStart(2, "0")}-${String(p.day).padStart(2, "0")}`;
   const [y, m, day] = today.split("-").map(Number);
   const wd = new Date(Date.UTC(y, m - 1, day, 12)).getUTCDay();
+  if (venue === "tradeadvocate") {
+    return !isGlobexOpenNy(p.hh, p.mm, wd);
+  }
   if (wd === 0 || wd === 6) return true;
   return p.hh < 9 || (p.hh === 9 && p.mm < 30);
 }
@@ -309,6 +355,14 @@ function readArmOpens(): boolean {
   return window.localStorage.getItem(ARM_OPENS_KEY) === "1";
 }
 
+function formatPct(n: number): string {
+  if (!Number.isFinite(n)) return "—";
+  return n.toLocaleString(undefined, {
+    maximumFractionDigits: 1,
+    minimumFractionDigits: n < 10 ? 1 : 0,
+  });
+}
+
 function moneyUsd(n: number | null | undefined): string {
   if (n == null || !Number.isFinite(n)) return "—";
   return n.toLocaleString(undefined, {
@@ -317,6 +371,78 @@ function moneyUsd(n: number | null | undefined): string {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   });
+}
+
+function tooRichCopy(
+  t: (key: string) => string,
+  sizing: ReturnType<typeof sizeLongOption>,
+): string {
+  const main = t("strategies.openTooRich")
+    .replace("{cost}", moneyUsd(sizing.costPerContract))
+    .replace("{pct}", formatPct(sizing.actualRiskPct))
+    .replace("{risk}", moneyUsd(sizing.riskBudget))
+    .replace("{need}", moneyUsd(sizing.equityForDeskRule))
+    .replace("{need50}", moneyUsd(sizing.equityForMaxOpen));
+  if (sizing.cashShortfall > 0) {
+    return (
+      main +
+      " " +
+      t("strategies.openNeedCash")
+        .replace("{cash}", moneyUsd(sizing.cashAvailable))
+        .replace("{more}", moneyUsd(sizing.cashShortfall))
+        .replace("{cost}", moneyUsd(sizing.costPerContract))
+    );
+  }
+  return main;
+}
+
+function RiskFlag({
+  symbol,
+  account,
+  entryPremium,
+  enabled,
+}: {
+  symbol: string;
+  account: BrokerAccount | null;
+  entryPremium?: number;
+  enabled: boolean;
+}) {
+  const { t } = useLocale();
+  if (!enabled) {
+    return <span className="text-[var(--muted)]">—</span>;
+  }
+  if (!account) {
+    return (
+      <span className="text-[10px] text-[var(--muted)]" title={t("strategies.capitalNeed")}>
+        —
+      </span>
+    );
+  }
+  const sizing = sizeForSymbol(
+    symbol,
+    account.equity ?? 0,
+    account.available_funds ?? account.cash_balance ?? 0,
+    entryPremium,
+  );
+  const pct = formatPct(sizing.actualRiskPct);
+  if (sizing.consider) {
+    return (
+      <span
+        className="inline-flex items-center gap-0.5 rounded px-1 py-0.5 text-[10px] font-semibold text-[var(--ok)] bg-[var(--ok-soft)]"
+        title={t("strategies.riskConsiderHint").replace("{pct}", pct)}
+      >
+        ⚑ {pct}%
+      </span>
+    );
+  }
+  return (
+    <span
+      className="text-[10px] tabular-nums text-[var(--muted)]"
+      title={t("strategies.riskOtherHint").replace("{pct}", pct)}
+    >
+      {pct}%
+    </span>
+  );
 }
 
 type StrategiesDeskProps = {
@@ -328,7 +454,9 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
   const books = useMemo(() => playbooksForVenue(venue), [venue]);
   const [selectedId, setSelectedId] = useState(books[0]?.id ?? "");
   const [timeframe, setTimeframe] = useState("15m");
-  const [sessionDate, setSessionDate] = useState(operativeSessionNyIso);
+  const [sessionDate, setSessionDate] = useState(() =>
+    operativeSessionNyIso(new Date(), venue),
+  );
   const [premarket, setPremarket] = useState(false);
   const [scan, setScan] = useState<ScanResponse | null>(null);
   const [deskGroups, setDeskGroups] = useState<DeskConfluenceGroup[]>([]);
@@ -373,13 +501,13 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
 
   useEffect(() => {
     const tick = () => {
-      setSessionDate(operativeSessionNyIso());
-      setPremarket(isPremarketOrClosedNy());
+      setSessionDate(operativeSessionNyIso(new Date(), venue));
+      setPremarket(isPremarketOrClosedNy(new Date(), venue));
     };
     tick();
     const id = window.setInterval(tick, 30_000);
     return () => window.clearInterval(id);
-  }, []);
+  }, [venue]);
 
   useEffect(() => {
     let cancelled = false;
@@ -465,24 +593,28 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
         cashAvailable:
           primaryAccount.available_funds ?? primaryAccount.cash_balance ?? 0,
       });
+      const overRisk = sizing.canOpen && !sizing.consider;
       if (!sizing.canOpen) {
-        setOpenError(
-          t("strategies.openTooRich")
-            .replace("{cost}", moneyUsd(sizing.costPerContract))
-            .replace("{risk}", moneyUsd(sizing.riskBudget)),
-        );
+        setOpenError(tooRichCopy(t, sizing));
         return;
       }
+      const qty = sizing.contracts;
       const ok = window.confirm(
-        t("strategies.openConfirm")
-          .replace("{n}", String(sizing.contracts))
-          .replace("{sym}", plan.symbol)
-          .replace("{type}", plan.optionType)
-          .replace("{strike}", moneyUsd(plan.strike))
-          .replace("{exp}", plan.expLabel)
-          .replace("{px}", moneyUsd(plan.entryPremium))
-          .replace("{cost}", moneyUsd(sizing.costPerContract * sizing.contracts))
-          .replace("{risk}", moneyUsd(sizing.riskBudget)),
+        overRisk
+          ? t("strategies.openConfirmOverRisk")
+              .replace("{cost}", moneyUsd(sizing.costPerContract))
+              .replace("{pct}", formatPct(sizing.actualRiskPct))
+              .replace("{eq}", moneyUsd(sizing.equity))
+              .replace("{risk}", moneyUsd(sizing.riskBudget))
+          : t("strategies.openConfirm")
+              .replace("{n}", String(qty))
+              .replace("{sym}", plan.symbol)
+              .replace("{type}", plan.optionType)
+              .replace("{strike}", moneyUsd(plan.strike))
+              .replace("{exp}", plan.expLabel)
+              .replace("{px}", moneyUsd(plan.entryPremium))
+              .replace("{cost}", moneyUsd(sizing.costPerContract * qty))
+              .replace("{risk}", moneyUsd(sizing.riskBudget)),
       );
       if (!ok) return;
       setOpeningKey(rowKey);
@@ -496,7 +628,7 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
           strike: plan.strike,
           exp_iso: plan.expIso,
           entry_premium: plan.entryPremium,
-          quantity: sizing.contracts,
+          quantity: qty,
           confirm_live: true,
         });
         setOpenNote(
@@ -564,6 +696,13 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
     return FALLBACK_INSTRUMENTS.filter((i) => i.data_provider === venue);
   }, [venueInstruments, venue]);
 
+  const deskUniverse = useMemo(() => {
+    if (venue !== "schwab") return universe;
+    return universe.filter(
+      (i) => !DESK_FOCUS_ONLY.has(i.symbol.toUpperCase()),
+    );
+  }, [universe, venue]);
+
   useEffect(() => {
     setScan(null);
     setError(null);
@@ -574,15 +713,23 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
     }
   }, [selectedId, venue, playbook?.preferredTimeframe]);
 
-  async function syncUniverse(tfs: string[], lookback: number, gen: number, genRef: { current: number }, endDay: string) {
-    const startDay = addDaysIso(endDay, -lookback);
+  async function syncUniverse(opts: {
+    tfs: string[];
+    lookback: number;
+    gen: number;
+    genRef: { current: number };
+    endDay: string;
+    items: Instrument[];
+    forceRefresh: boolean;
+  }) {
+    const startDay = addDaysIso(opts.endDay, -opts.lookback);
     const start = `${startDay}T00:00:00.000Z`;
-    const end = `${endDay}T23:59:59.999Z`;
+    const end = `${opts.endDay}T23:59:59.999Z`;
     let syncedBars = 0;
     let syncErrors = 0;
-    for (const inst of universe) {
+    for (const inst of opts.items) {
       if (inst.data_provider && inst.data_provider !== venue) continue;
-      for (const tf of tfs) {
+      for (const tf of opts.tfs) {
         try {
           const res = await syncMarketData({
             ticker: inst.symbol,
@@ -590,7 +737,7 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
             start,
             end,
             market_type: inst.market_type,
-            force_refresh: true,
+            force_refresh: opts.forceRefresh,
           });
           syncedBars += res.candles_count;
         } catch {
@@ -598,44 +745,69 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
         }
       }
     }
-    if (gen !== genRef.current) return null;
-    return { syncedBars, syncErrors };
+    if (opts.gen !== opts.genRef.current) return null;
+    return { syncedBars, syncErrors, symbolCount: opts.items.length };
   }
 
   const syncAndScan = useCallback(
-    async (override?: StrategyPlaybook) => {
+    async (
+      override?: StrategyPlaybook,
+      opts?: {
+        fromAuto?: boolean;
+        skipDeskTfs?: boolean;
+        items?: Instrument[];
+      },
+    ) => {
       const pb = override ?? playbook;
       if (!pb?.strategyKey) {
         setError(t("strategies.draftError"));
         setScan(null);
         return;
       }
-      const day = operativeSessionNyIso();
+      const day = operativeSessionNyIso(new Date(), venue);
       setSessionDate(day);
       const gen = ++runGen.current;
       setError(null);
       setSyncNote(t("strategies.syncing"));
 
       const scanTf = pb.preferredTimeframe ?? timeframe;
-      const tfs =
+      let tfs =
         pb.syncTimeframes?.length
           ? pb.syncTimeframes
           : pb.preferredTimeframe
             ? [pb.preferredTimeframe]
             : [scanTf];
+      if (opts?.skipDeskTfs) {
+        tfs = tfs.filter(
+          (tf) => !(DESK_SYNC_TFS as readonly string[]).includes(tf),
+        );
+      }
       const lookback = pb.syncLookbackDays ?? 7;
+      const items = opts?.items ?? universe;
+      const forceRefresh = takeHardRefresh(day, Boolean(opts?.fromAuto));
 
-      const synced = await syncUniverse(tfs, lookback, gen, runGen, day);
-      if (!synced) return;
+      if (tfs.length > 0) {
+        const synced = await syncUniverse({
+          tfs,
+          lookback,
+          gen,
+          genRef: runGen,
+          endDay: day,
+          items,
+          forceRefresh,
+        });
+        if (!synced) return;
+        setSyncNote(
+          t("strategies.syncDone")
+            .replace("{bars}", String(synced.syncedBars))
+            .replace("{symbols}", String(synced.symbolCount))
+            .replace("{errors}", String(synced.syncErrors)),
+        );
+      } else {
+        setSyncNote(t("strategies.syncSkipped"));
+      }
 
-      setSyncNote(
-        t("strategies.syncDone")
-          .replace("{bars}", String(synced.syncedBars))
-          .replace("{symbols}", String(universe.length))
-          .replace("{errors}", String(synced.syncErrors)),
-      );
-
-      const symbols = universe
+      const symbols = items
         .filter((i) => !i.data_provider || i.data_provider === venue)
         .map((i) => i.symbol);
       try {
@@ -659,85 +831,97 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
     [playbook, timeframe, universe, venue, t],
   );
 
-  const runDeskTop5 = useCallback(async () => {
-    if (deskStrategyKeys.length === 0) {
-      setDeskError(t("strategies.draftError"));
-      return;
-    }
-    const day = operativeSessionNyIso();
-    setSessionDate(day);
-    const gen = ++deskGen.current;
-    setDeskError(null);
-    setDeskNote(t("strategies.syncing"));
-
-    const synced = await syncUniverse(
-      [...DESK_SYNC_TFS],
-      DESK_LOOKBACK_DAYS,
-      gen,
-      deskGen,
-      day,
-    );
-    if (!synced) return;
-
-    setDeskNote(
-      t("strategies.syncDone")
-        .replace("{bars}", String(synced.syncedBars))
-        .replace("{symbols}", String(universe.length))
-        .replace("{errors}", String(synced.syncErrors)),
-    );
-
-    try {
-      // Collect ALL matches (every strategy) so we can rank by confluence.
-      const allMatches: ScanHit[] = [];
-      for (let i = 0; i < deskStrategyKeys.length; i += DESK_STRATEGY_CHUNK) {
-        if (gen !== deskGen.current) return;
-        const chunk = deskStrategyKeys.slice(i, i + DESK_STRATEGY_CHUNK);
-        const symbols = universe
-          .filter((i) => !i.data_provider || i.data_provider === venue)
-          .map((i) => i.symbol);
-        const res = await scanStrategiesBatched({
-          strategies: chunk,
-          timeframe: "1h",
-          session_date: day,
-          data_provider: venue,
-          symbols,
-          matches_only: true,
-        });
-        for (const hit of res.hits) {
-          if (hit.matched) allMatches.push(hit);
-        }
+  const runDeskTop5 = useCallback(
+    async (opts?: { fromAuto?: boolean }) => {
+      if (deskStrategyKeys.length === 0) {
+        setDeskError(t("strategies.draftError"));
+        return;
       }
-      if (gen !== deskGen.current) return;
-      const ranked = rankByConfluence(allMatches, DESK_TOP_N);
-      setDeskGroups(ranked);
-      const strategyHits = ranked.reduce((n, g) => n + g.confluence, 0);
+      const day = operativeSessionNyIso(new Date(), venue);
+      setSessionDate(day);
+      const gen = ++deskGen.current;
+      setDeskError(null);
+      setDeskNote(t("strategies.syncing"));
+      const fromAuto = Boolean(opts?.fromAuto);
+      const forceRefresh = takeHardRefresh(day, fromAuto);
+
+      const synced = await syncUniverse({
+        tfs: [...DESK_SYNC_TFS],
+        lookback: DESK_LOOKBACK_DAYS,
+        gen,
+        genRef: deskGen,
+        endDay: day,
+        items: deskUniverse,
+        forceRefresh,
+      });
+      if (!synced) return;
+
       setDeskNote(
-        t("strategies.deskTopSummary")
-          .replace("{n}", String(ranked.length))
-          .replace("{hits}", String(strategyHits))
-          .replace("{session}", day)
-          .replace("{when}", formatNyDateTime(new Date(), locale)),
+        t("strategies.syncDone")
+          .replace("{bars}", String(synced.syncedBars))
+          .replace("{symbols}", String(synced.symbolCount))
+          .replace("{errors}", String(synced.syncErrors)),
       );
 
-      // Routine: Focus the first TOP 5 strategy row, then Sync & Scan that playbook.
-      const firstHit = ranked[0]?.hits[0];
-      const focusPb = firstHit
-        ? playbookByStrategyKey(firstHit.strategy)
-        : undefined;
-      if (firstHit && focusPb?.strategyKey) {
-        setDeskFocusKey(`${firstHit.symbol}::${firstHit.strategy}`);
-        setSelectedId(focusPb.id);
+      try {
+        const allMatches: ScanHit[] = [];
+        const symbols = deskUniverse
+          .filter((i) => !i.data_provider || i.data_provider === venue)
+          .map((i) => i.symbol);
+        for (let i = 0; i < deskStrategyKeys.length; i += DESK_STRATEGY_CHUNK) {
+          if (gen !== deskGen.current) return;
+          const chunk = deskStrategyKeys.slice(i, i + DESK_STRATEGY_CHUNK);
+          const res = await scanStrategiesBatched(
+            {
+              strategies: chunk,
+              timeframe: "1h",
+              session_date: day,
+              data_provider: venue,
+              symbols,
+              matches_only: true,
+            },
+            DESK_SCAN_SYMBOL_BATCH,
+          );
+          for (const hit of res.hits) {
+            if (hit.matched) allMatches.push(hit);
+          }
+        }
         if (gen !== deskGen.current) return;
-        await syncAndScan(focusPb);
-      } else {
-        setDeskFocusKey(null);
+        const ranked = rankByConfluence(allMatches, DESK_TOP_N);
+        setDeskGroups(ranked);
+        const strategyHits = ranked.reduce((n, g) => n + g.confluence, 0);
+        setDeskNote(
+          t("strategies.deskTopSummary")
+            .replace("{n}", String(ranked.length))
+            .replace("{hits}", String(strategyHits))
+            .replace("{session}", day)
+            .replace("{when}", formatNyDateTime(new Date(), locale)),
+        );
+
+        const firstHit = ranked[0]?.hits[0];
+        const focusPb = firstHit
+          ? playbookByStrategyKey(firstHit.strategy)
+          : undefined;
+        if (firstHit && focusPb?.strategyKey) {
+          setDeskFocusKey(`${firstHit.symbol}::${firstHit.strategy}`);
+          setSelectedId(focusPb.id);
+          if (gen !== deskGen.current) return;
+          await syncAndScan(focusPb, {
+            fromAuto,
+            skipDeskTfs: true,
+            items: universe,
+          });
+        } else {
+          setDeskFocusKey(null);
+        }
+      } catch (err) {
+        if (gen !== deskGen.current) return;
+        setDeskError(err instanceof Error ? err.message : "Desk scan failed");
+        setDeskGroups([]);
       }
-    } catch (err) {
-      if (gen !== deskGen.current) return;
-      setDeskError(err instanceof Error ? err.message : "Desk scan failed");
-      setDeskGroups([]);
-    }
-  }, [deskStrategyKeys, universe, venue, t, locale, syncAndScan]);
+    },
+    [deskStrategyKeys, deskUniverse, universe, venue, t, locale, syncAndScan],
+  );
 
   const runSyncAndScan = useCallback(() => {
     startTransition(async () => {
@@ -747,7 +931,7 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
 
   const runDeskScan = useCallback(() => {
     startDeskTransition(async () => {
-      await runDeskTop5();
+      await runDeskTop5({ fromAuto: false });
     });
   }, [runDeskTop5]);
 
@@ -779,10 +963,10 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
   useEffect(() => {
     if (!autoLive || !playbook?.strategyKey) return;
     const kickoff = window.setTimeout(() => {
-      void syncAndScan();
+      void syncAndScan(undefined, { fromAuto: true });
     }, 400);
     const id = window.setInterval(() => {
-      void syncAndScan();
+      void syncAndScan(undefined, { fromAuto: true });
     }, AUTO_LIVE_MS);
     return () => {
       window.clearTimeout(kickoff);
@@ -793,10 +977,10 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
   useEffect(() => {
     if (!autoDesk || deskStrategyKeys.length === 0) return;
     const kickoff = window.setTimeout(() => {
-      void runDeskTop5();
+      void runDeskTop5({ fromAuto: true });
     }, 400);
     const id = window.setInterval(() => {
-      void runDeskTop5();
+      void runDeskTop5({ fromAuto: true });
     }, AUTO_LIVE_MS);
     return () => {
       window.clearTimeout(kickoff);
@@ -846,16 +1030,26 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
             className={`${field} w-auto min-w-[11rem] truncate opacity-90`}
             title={
               premarket
-                ? t("strategies.premarketHint")
-                : `${sessionDate} (${t("strategies.sessionAuto")})`
+                ? venue === "tradeadvocate"
+                  ? t("strategies.globexClosedHint")
+                  : t("strategies.premarketHint")
+                : `${sessionDate} (${
+                    venue === "tradeadvocate"
+                      ? t("strategies.sessionAutoFutures")
+                      : t("strategies.sessionAuto")
+                  })`
             }
           >
             {sessionDate}{" "}
             <span className="text-[10px]">
               (
               {premarket
-                ? t("strategies.premarketBadge")
-                : t("strategies.sessionAuto")}
+                ? venue === "tradeadvocate"
+                  ? t("strategies.globexClosedBadge")
+                  : t("strategies.premarketBadge")
+                : venue === "tradeadvocate"
+                  ? t("strategies.sessionAutoFutures")
+                  : t("strategies.sessionAuto")}
               )
             </span>
           </div>
@@ -987,6 +1181,7 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
             <table className="min-w-full text-left text-xs">
               <thead className="bg-[var(--surface-muted)] text-[var(--muted)]">
                 <tr>
+                  <th className="px-2 py-1.5 font-medium">{t("strategies.colRisk")}</th>
                   <th className="px-2 py-1.5 font-medium">{t("strategies.colFocus")}</th>
                   <th className="px-2 py-1.5 font-medium">#</th>
                   <th className="px-2 py-1.5 font-medium">
@@ -1029,6 +1224,24 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
                         }`}
                       >
                         <td className="px-2 py-1.5">
+                          {isFirst ? (
+                            <RiskFlag
+                              symbol={hit.symbol}
+                              account={primaryAccount}
+                              entryPremium={
+                                venue === "schwab" && hit.last_signal
+                                  ? (buildOptionsEntryPlan(
+                                      hit.symbol,
+                                      hit.last_signal.side,
+                                      hit.last_signal.price,
+                                    )?.entryPremium ?? undefined)
+                                  : undefined
+                              }
+                              enabled={venue === "schwab"}
+                            />
+                          ) : null}
+                        </td>
+                        <td className="px-2 py-1.5">
                           <input
                             type="checkbox"
                             className="h-3.5 w-3.5 cursor-pointer accent-[var(--accent)]"
@@ -1045,7 +1258,10 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
                               setDeskFocusKey(rowKey);
                               setSelectedId(pb.id);
                               startTransition(async () => {
-                                await syncAndScan(pb);
+                                await syncAndScan(pb, {
+                                  skipDeskTfs: true,
+                                  items: universe,
+                                });
                               });
                             }}
                           />
@@ -1310,6 +1526,7 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
             <table className="min-w-full text-left text-xs">
               <thead className="sticky top-0 bg-[var(--surface-muted)] text-[var(--muted)]">
                 <tr>
+                  <th className="px-2 py-1.5 font-medium">{t("strategies.colRisk")}</th>
                   <th className="px-2 py-1.5 font-medium">Symbol</th>
                   <th className="px-2 py-1.5 font-medium">Strategy</th>
                   <th className="px-2 py-1.5 font-medium">Venue</th>
@@ -1323,6 +1540,22 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
                     key={`${hit.symbol}-${hit.strategy}-row`}
                     className="border-t border-[var(--border)]"
                   >
+                    <td className="px-2 py-1">
+                      <RiskFlag
+                        symbol={hit.symbol}
+                        account={primaryAccount}
+                        entryPremium={
+                          venue === "schwab" && hit.last_signal
+                            ? (buildOptionsEntryPlan(
+                                hit.symbol,
+                                hit.last_signal.side,
+                                hit.last_signal.price,
+                              )?.entryPremium ?? undefined)
+                            : undefined
+                        }
+                        enabled={venue === "schwab"}
+                      />
+                    </td>
                     <td className="px-2 py-1 font-medium">{hit.symbol}</td>
                     <td className="px-2 py-1">
                       {(() => {
@@ -1694,47 +1927,71 @@ function OpenPlanButton({
   ) => void;
 }) {
   const { t } = useLocale();
-  if (!plan.hasRange || plan.entryPremium <= 0) return null;
+  const [manualPrem, setManualPrem] = useState(
+    String(plan.entryPremium > 0 ? plan.entryPremium : DEFAULT_OTM_PREMIUM),
+  );
+  const entryPremium = plan.hasRange
+    ? plan.entryPremium
+    : Number(manualPrem);
+  const livePlan = { ...plan, entryPremium };
   if (!account) {
     return (
       <p className="text-[10px] text-[var(--muted)]">{t("strategies.capitalNeed")}</p>
     );
   }
   const sizing = sizeLongOption({
-    entryPremium: plan.entryPremium,
+    entryPremium,
     equity: account.equity ?? 0,
     cashAvailable: account.available_funds ?? account.cash_balance ?? 0,
   });
-  if (!sizing.canOpen) {
-    return (
-      <p className="text-[10px] text-[var(--warn)]">
-        {t("strategies.openTooRich")
-          .replace("{cost}", moneyUsd(sizing.costPerContract))
-          .replace("{risk}", moneyUsd(sizing.riskBudget))}
-      </p>
-    );
-  }
-  if (!tradingEnabled) {
-    return (
-      <p className="text-[10px] text-[var(--muted)]">
-        {t("strategies.tradingDisabledShort")}
-      </p>
-    );
-  }
   return (
-    <button
-      type="button"
-      disabled={opening || !armOpens}
-      title={!armOpens ? t("strategies.openNeedArm") : undefined}
-      onClick={() => onOpen(plan, rowKey)}
-      className="rounded border border-[var(--ok)]/40 bg-[var(--ok-soft)] px-2 py-0.5 text-[10px] font-medium text-[var(--ok)] hover:bg-[var(--hover)] disabled:opacity-40"
-    >
-      {opening
-        ? "…"
-        : t("strategies.openSchwab")
-            .replace("{n}", String(sizing.contracts))
-            .replace("{px}", moneyUsd(plan.entryPremium))}
-    </button>
+    <div className="flex flex-wrap items-center gap-1.5">
+      {plan.hasRange ? null : (
+        <label className="inline-flex items-center gap-1 text-[10px] text-[var(--muted)]">
+          {t("strategies.optionsPremManual")}
+          <input
+            type="number"
+            min={0.01}
+            step={0.01}
+            inputMode="decimal"
+            value={manualPrem}
+            onChange={(e) => setManualPrem(e.target.value)}
+            className="w-16 rounded border border-[var(--border)] bg-[var(--surface)] px-1 py-0.5 text-[11px] tabular-nums text-[var(--foreground)]"
+          />
+        </label>
+      )}
+      {!sizing.canOpen ? (
+        <p className="text-[10px] leading-snug text-[var(--warn)]">
+          {tooRichCopy(t, sizing)}
+        </p>
+      ) : !tradingEnabled ? (
+        <p className="text-[10px] text-[var(--muted)]">
+          {t("strategies.tradingDisabledShort")}
+        </p>
+      ) : (
+        <button
+          type="button"
+          disabled={opening || !armOpens}
+          title={!armOpens ? t("strategies.openNeedArm") : undefined}
+          onClick={() => onOpen(livePlan, rowKey)}
+          className={`rounded px-2 py-0.5 text-[10px] font-medium hover:bg-[var(--hover)] disabled:opacity-40 ${
+            sizing.consider
+              ? "border border-[var(--ok)]/40 bg-[var(--ok-soft)] text-[var(--ok)]"
+              : "border border-[var(--warn)]/40 bg-[var(--warn-soft)] text-[var(--warn)]"
+          }`}
+        >
+          {opening
+            ? "…"
+            : sizing.consider
+              ? t("strategies.openSchwab")
+                  .replace("{n}", String(sizing.contracts))
+                  .replace("{px}", moneyUsd(entryPremium))
+              : t("strategies.openOverRisk")
+                  .replace("{px}", moneyUsd(entryPremium))
+                  .replace("{pct}", formatPct(sizing.actualRiskPct))}
+        </button>
+      )}
+    </div>
   );
 }
 
@@ -1822,9 +2079,24 @@ function OptionsPlanBlock({
           ) : null}
         </>
       ) : (
-        <p className="mt-0.5 text-[10px] leading-snug text-[var(--muted)]">
-          {t("strategies.optionsNoRange")}
-        </p>
+        <>
+          <p className="mt-0.5 text-[10px] leading-snug text-[var(--muted)]">
+            {t("strategies.optionsNoRange")}
+          </p>
+          {onOpen && rowKey ? (
+            <div className="mt-1.5">
+              <OpenPlanButton
+                plan={plan}
+                rowKey={rowKey}
+                account={account}
+                tradingEnabled={tradingEnabled}
+                armOpens={armOpens}
+                opening={opening}
+                onOpen={onOpen}
+              />
+            </div>
+          ) : null}
+        </>
       )}
     </div>
   );

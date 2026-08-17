@@ -223,24 +223,30 @@ def open_option_position(body: OpenOrderRequest) -> OpenOrderResponse:
             equity=equity,
             cash_available=cash,
         )
-        if not sizing["can_open"]:
+        cost_1 = float(sizing["cost_per_contract"])
+        max_qty = int(sizing["contracts"])
+        if max_qty < 1:
             raise HTTPException(
                 status_code=400,
                 detail=(
-                    f"Cannot open within 10% risk / cash: "
-                    f"cost/contract ${sizing['cost_per_contract']:.2f}, "
-                    f"risk budget ${sizing['risk_budget']:.2f}, "
-                    f"available ${sizing['cash_available']:.2f}"
+                    f"1ct ${cost_1:.2f} = {sizing['actual_risk_pct']}% of equity "
+                    f"${equity:.2f}. Consider ≤10% (budget ${sizing['risk_budget']:.2f}); "
+                    f"open allowed ≤50% (need ${sizing['equity_for_max_open']:.2f} equity)"
+                    + (
+                        f", or ${sizing['cash_shortfall']:.2f} more cash."
+                        if float(sizing["cash_shortfall"]) > 0
+                        else "."
+                    )
                 ),
             )
 
-        qty = int(body.quantity) if body.quantity else int(sizing["contracts"])
-        if qty < 1 or qty > int(sizing["contracts"]):
+        qty = int(body.quantity) if body.quantity else max_qty
+        if qty < 1 or qty > max_qty:
             raise HTTPException(
                 status_code=400,
                 detail=(
-                    f"quantity {qty} exceeds max {sizing['contracts']} "
-                    f"for 10% risk (${sizing['risk_budget']:.2f})"
+                    f"quantity {qty} exceeds max {max_qty} "
+                    f"(≤50% equity / cash ${cash:.2f})"
                 ),
             )
 

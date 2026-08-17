@@ -1,3 +1,8 @@
+import { WATCH_SYMBOLS } from "@/lib/instrument-groups";
+
+/** Names without weekday dailies — Friday weeklies only (USAR/UUUU/ONDS + IOVA). */
+const WEEKLY_FRIDAY_SYMBOLS = new Set([...WATCH_SYMBOLS, "IOVA"]);
+
 /** Investep Academy option premium ranges (rango_precios_opciones_2026-06-16.xls). */
 
 export type OptionPremiumRange = {
@@ -704,6 +709,15 @@ function nextWeekdayOnOrAfter(isoDate: string): string {
   return isoDate;
 }
 
+function nextFridayOnOrAfter(isoDate: string): string {
+  let d = isoDate;
+  for (let i = 0; i < 8; i += 1) {
+    if (weekdayUtc(d) === 5) return d;
+    d = addDaysIso(d, 1);
+  }
+  return isoDate;
+}
+
 function formatExpShort(isoDate: string): string {
   const [y, m, d] = isoDate.split("-").map(Number);
   const dt = new Date(Date.UTC(y, m - 1, d, 12));
@@ -717,15 +731,16 @@ function formatExpShort(isoDate: string): string {
 
 /**
  * Desk expiry helper (no live chain):
- * - Before 10:00 ET → next weekday exp, including today (hoy / 0DTE OK)
- * - From 10:00 ET → next weekday after today (e.g. Fri after 10 → Mon)
- * Uses Mon–Fri session days (liquid names with dailies). Confirm on live chain.
+ * - Before 10:00 ET → next session exp, including today
+ * - From 10:00 ET → next session after today
+ * Liquid 0DTE names (SPY/QQQ/IWM + megacaps): Mon–Fri.
+ * Watch / IOVA: Friday weeklies only (ONDS has no Tue/Wed dailies).
+ * Confirm on live chain.
  */
 export function suggestOptionExpDate(
   symbol: string,
   now = new Date(),
 ): Pick<OptionsEntryPlan, "expIso" | "expLabel" | "expIsToday" | "expRule"> {
-  void symbol; // reserved if we later branch thin names to weeklies
   const clock = nyClock(now);
   const before10 = clock.hh < 10;
   const expRule: "before_10" | "from_10" = before10 ? "before_10" : "from_10";
@@ -735,7 +750,10 @@ export function suggestOptionExpDate(
       ? clock.iso
       : addDaysIso(clock.iso, 1);
 
-  const expIso = nextWeekdayOnOrAfter(start);
+  const weekly = WEEKLY_FRIDAY_SYMBOLS.has(symbol.trim().toUpperCase());
+  const expIso = weekly
+    ? nextFridayOnOrAfter(start)
+    : nextWeekdayOnOrAfter(start);
 
   return {
     expIso,

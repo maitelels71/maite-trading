@@ -158,7 +158,7 @@ const en: Dict = {
   "strategies.playbook": "Playbook",
   "strategies.deskTopTitle": "Desk TOP 5",
   "strategies.deskTopHint":
-    "Syncs 1h + 1d, ranks top 5 by confluence, then Focus Sync & Scan on the first strategy.",
+    "Syncs 1h + 1d (25d) on core names, ranks TOP 5, then Focus-scans #1 without re-downloading 1h/1d. Watch (USAR/UUUU/ONDS/IOVA) is Focus-only. Open to Schwab only if the debit fits 10% equity.",
   "strategies.deskTopScan": "Sync & TOP 5",
   "strategies.deskTopScanning": "Desk scan…",
   "strategies.deskTopEmpty": "No TOP 5 matches yet — sync on a trading day.",
@@ -168,6 +168,7 @@ const en: Dict = {
     "One sync of the universe, then symbols ranked by same-direction confluence.",
   "strategies.scopeHintPlaybook":
     "Sync + scan only the selected playbook (detail board + optional auto).",
+  "strategies.colRisk": "Risk",
   "strategies.colFocus": "Focus",
   "strategies.colSymbol": "Symbol",
   "strategies.colConfluence": "Confluence",
@@ -190,6 +191,8 @@ const en: Dict = {
   "strategies.syncing": "Syncing candles from broker…",
   "strategies.syncDone":
     "Synced {bars} bars across {symbols} symbols ({errors} sync errors). Scanning…",
+  "strategies.syncSkipped":
+    "Using candles already synced (1h/1d). Scanning…",
   "strategies.syncHint":
     "Sync downloads {tfs} from Schwab for this session’s symbols — then runs the scan.",
   "strategies.syncHintFutures":
@@ -224,9 +227,13 @@ const en: Dict = {
   "strategies.timeframe": "Timeframe",
   "strategies.sessionDate": "Operative session (NY)",
   "strategies.sessionAuto": "auto · last/current cash session",
+  "strategies.sessionAutoFutures": "auto · Globex session (NY)",
   "strategies.premarketBadge": "premarket · prior cash day",
+  "strategies.globexClosedBadge": "Globex closed · last session",
   "strategies.premarketHint":
     "Before 9:30 ET the desk uses yesterday’s closed RTH session as the scan date. Use TOP 5 as a watchlist for today’s open, then re-scan after 9:30 for today’s session.",
+  "strategies.globexClosedHint":
+    "CME Globex is closed (Fri 17:00 ET → Sun 18:00 ET). The desk uses Friday’s session until Sunday’s 18:00 ET open.",
   "strategies.priorSessionBanner":
     "Premarket: green cards below are from the prior cash session — not live setups for today’s open. Re-scan after 9:30 ET for today’s signals (e.g. CR08 needs today’s first RTH hour).",
   "strategies.priorSessionBadge": "prior session · not today",
@@ -249,7 +256,7 @@ const en: Dict = {
     "Choose one strategy to deep-scan — or check a TOP 5 row above.",
   "session.deskTop5": "Desk TOP 5",
   "session.deskTop5Hint":
-    "Ranks top 5 by confluence, then runs Focus Sync & Scan on the first strategy.",
+    "Ranks core names (not watch) by confluence. Hard-refresh Schwab once per session; Auto 2.5m reuses cached candles.",
   "session.liveScan": "Sync & Scan",
   "session.liveScanHint": "Sync candles for this playbook, then scan its universe.",
   "session.scanDesk": "Scan",
@@ -312,21 +319,30 @@ const en: Dict = {
   "strategies.optionsExpHoy": "hoy · 0DTE",
   "strategies.optionsPrem": "Prima óptima",
   "strategies.optionsTp": "TP prima",
-  "strategies.optionsNoRange": "No premium range for this ticker — pick premium on the chain.",
+  "strategies.optionsNoRange":
+    "No academy premium band for this ticker — type the debit from the chain, then Open.",
+  "strategies.optionsPremManual": "Debit $",
   "strategies.optionsPlanHint":
-    "Strike ATM · Exp: before 10:00 ET can be today; from 10:00 next weekday (Fri→Mon). Confirm live chain.",
-  "strategies.capitalTitle": "Capital · 10% risk",
+    "Strike ATM · Exp: before 10:00 ET can be today; from 10:00 next session. Watch/IOVA = Friday weekly. Confirm live chain.",
+  "strategies.capitalTitle": "Capital · flag 10% · open ≤50%",
   "strategies.capitalHint":
-    "Equity from Schwab. Risk budget = 10% equity. Open button only when mid-optimal premium fits.",
+    "Green flag = 1ct ≤ 10% equity (consider). Open allowed up to 50% of equity if cash covers. Sort stays confluence.",
   "strategies.capitalLoad": "Load capital",
   "strategies.capitalLoading": "Loading capital…",
-  "strategies.capitalEquity": "Equity {eq} · 10% risk {risk} · cash {cash}",
-  "strategies.capitalNeed": "Load capital to size opens (10% equity).",
+  "strategies.capitalEquity": "Equity {eq} · 10% {risk} · cash {cash}",
+  "strategies.capitalNeed": "Load capital to size opens (10% flag · 50% max).",
   "strategies.armOpens": "Trigger opens",
   "strategies.armOpensBody":
     "Required to send BUY_TO_OPEN to Schwab. After fill → Positions → TP 10/20/35.",
   "strategies.openSchwab": "Open {n}× @ {px}",
-  "strategies.openTooRich": "Too rich for 10% ({cost} > risk {risk})",
+  "strategies.openTooRich":
+    "1ct {cost} = {pct}% of equity. Consider ≤10% ({risk}). Open ≤50% needs {need50} equity.",
+  "strategies.openNeedCash": "Cash {cash} — need {more} more to buy 1ct {cost}.",
+  "strategies.openOverRisk": "Open 1× @ {px} · {pct}% risk",
+  "strategies.openConfirmOverRisk":
+    "1ct costs {cost} = {pct}% of equity {eq} (consider ≤10%, max 50%). Send BUY_TO_OPEN anyway?",
+  "strategies.riskConsiderHint": "Consider — 1ct is {pct}% of equity (≤10%).",
+  "strategies.riskOtherHint": "1ct is {pct}% of equity. Open allowed up to 50%.",
   "strategies.openNeedArm": "Turn on Trigger opens first.",
   "strategies.openNeedTrading": "Trading disabled on API (SCHWAB_TRADING_ENABLED).",
   "strategies.openConfirm":
@@ -604,7 +620,7 @@ const es: Dict = {
   "strategies.playbook": "Playbook",
   "strategies.deskTopTitle": "Desk TOP 5",
   "strategies.deskTopHint":
-    "Sync 1h + 1d, rankea top 5 por confluencia y luego Focus Sync & Scan de la primera estrategia.",
+    "Sync 1h + 1d (25d) en nombres core, rankea TOP 5 y Focus-scan de #1 sin re-bajar 1h/1d. Watch (USAR/UUUU/ONDS/IOVA) solo en Focus. Abrir a Schwab solo si la prima cabe en el 10% del equity.",
   "strategies.deskTopScan": "Sync & TOP 5",
   "strategies.deskTopScanning": "Desk scan…",
   "strategies.deskTopEmpty": "Sin TOP 5 todavía — haz sync en un día de mercado.",
@@ -614,6 +630,7 @@ const es: Dict = {
     "Un sync del universo y símbolos rankeados por confluencia en la misma dirección.",
   "strategies.scopeHintPlaybook":
     "Sync + scan solo del playbook elegido (tablero detalle + auto opcional).",
+  "strategies.colRisk": "Riesgo",
   "strategies.colFocus": "Focus",
   "strategies.colSymbol": "Activo",
   "strategies.colConfluence": "Confluencia",
@@ -636,6 +653,8 @@ const es: Dict = {
   "strategies.syncing": "Bajando velas del broker…",
   "strategies.syncDone":
     "Sync: {bars} barras · {symbols} símbolos · {errors} errores. Escaneando…",
+  "strategies.syncSkipped":
+    "Usando velas ya sincronizadas (1h/1d). Escaneando…",
   "strategies.syncHint":
     "Sync descarga {tfs} desde Schwab para los símbolos de esta sesión — luego corre el scan.",
   "strategies.syncHintFutures":
@@ -670,9 +689,13 @@ const es: Dict = {
   "strategies.timeframe": "Timeframe",
   "strategies.sessionDate": "Sesión operativa (NY)",
   "strategies.sessionAuto": "auto · última/actual sesión cash",
+  "strategies.sessionAutoFutures": "auto · sesión Globex (NY)",
   "strategies.premarketBadge": "premarket · día cash anterior",
+  "strategies.globexClosedBadge": "Globex cerrado · última sesión",
   "strategies.premarketHint":
     "Antes de 9:30 ET el desk usa la sesión RTH cerrada de ayer como fecha de scan. Usa el TOP 5 como watchlist para el open de hoy; después de 9:30 vuelve a escanear para la sesión de hoy.",
+  "strategies.globexClosedHint":
+    "CME Globex está cerrado (vie 17:00 ET → dom 18:00 ET). El desk usa la sesión del viernes hasta el open del domingo a las 18:00 ET.",
   "strategies.priorSessionBanner":
     "Premarket: las tarjetas de abajo son de la sesión cash anterior — no son setups vivos para el open de hoy. Vuelve a escanear después de 9:30 ET para señales de hoy (p. ej. CR08 necesita la primera hora RTH de hoy).",
   "strategies.priorSessionBadge": "sesión anterior · no hoy",
@@ -695,7 +718,7 @@ const es: Dict = {
     "Elige una estrategia para deep-scan — o marca una fila del TOP 5 de arriba.",
   "session.deskTop5": "Desk TOP 5",
   "session.deskTop5Hint":
-    "Rankea top 5 por confluencia y luego corre Focus Sync & Scan con la primera estrategia.",
+    "Rankea nombres core (no watch) por confluencia. Hard-refresh Schwab una vez por sesión; Auto 2.5m reusa velas en cache.",
   "session.liveScan": "Sync & Scan",
   "session.liveScanHint": "Baja velas de este playbook y escanea su universo.",
   "session.scanDesk": "Scan",
@@ -759,21 +782,29 @@ const es: Dict = {
   "strategies.optionsPrem": "Prima óptima",
   "strategies.optionsTp": "TP prima",
   "strategies.optionsNoRange":
-    "Sin rango de prima para este ticker — elige prima en la cadena.",
+    "Sin rango de academia para este ticker — escribe la prima de la cadena y pulsa Abrir.",
+  "strategies.optionsPremManual": "Prima $",
   "strategies.optionsPlanHint":
-    "Strike ATM · Exp: antes de 10:00 ET puede ser hoy; desde 10:00 el próximo día hábil (vie→lun). Confirma en la cadena.",
-  "strategies.capitalTitle": "Capital · riesgo 10%",
+    "Strike ATM · Exp: antes de 10:00 ET puede ser hoy; desde 10:00 la próxima sesión. Watch/IOVA = weekly del viernes. Confirma en la cadena.",
+  "strategies.capitalTitle": "Capital · flag 10% · open ≤50%",
   "strategies.capitalHint":
-    "Equity de Schwab. Presupuesto = 10% del equity. El botón Open solo sale si la prima óptima cabe.",
+    "Bandera verde = 1ct ≤ 10% del equity (considerar). Abrir permitido hasta 50% si hay cash. El sort sigue por confluencia.",
   "strategies.capitalLoad": "Cargar capital",
   "strategies.capitalLoading": "Cargando capital…",
-  "strategies.capitalEquity": "Equity {eq} · riesgo 10% {risk} · cash {cash}",
-  "strategies.capitalNeed": "Carga capital para dimensionar opens (10% equity).",
+  "strategies.capitalEquity": "Equity {eq} · 10% {risk} · cash {cash}",
+  "strategies.capitalNeed": "Carga capital para dimensionar (flag 10% · máx 50%).",
   "strategies.armOpens": "Trigger opens",
   "strategies.armOpensBody":
     "Obligatorio para enviar BUY_TO_OPEN a Schwab. Tras el fill → Posiciones → TP 10/20/35.",
   "strategies.openSchwab": "Abrir {n}× @ {px}",
-  "strategies.openTooRich": "No cabe en 10% ({cost} > riesgo {risk})",
+  "strategies.openTooRich":
+    "1ct {cost} = {pct}% del equity. Considerar ≤10% ({risk}). Open ≤50% pide {need50} de equity.",
+  "strategies.openNeedCash": "Cash {cash} — te faltan {more} para 1ct {cost}.",
+  "strategies.openOverRisk": "Abrir 1× @ {px} · riesgo {pct}%",
+  "strategies.openConfirmOverRisk":
+    "1ct cuesta {cost} = {pct}% del equity {eq} (considerar ≤10%, máx 50%). ¿Enviar BUY_TO_OPEN igual?",
+  "strategies.riskConsiderHint": "Considerar — 1ct es {pct}% del equity (≤10%).",
+  "strategies.riskOtherHint": "1ct es {pct}% del equity. Abrir permitido hasta 50%.",
   "strategies.openNeedArm": "Activa Trigger opens primero.",
   "strategies.openNeedTrading": "Trading desactivado en API (SCHWAB_TRADING_ENABLED).",
   "strategies.openConfirm":

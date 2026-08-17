@@ -53,11 +53,13 @@ def run_signal_alerts(
     if not use_email and not use_sms:
         return {"ok": True, "skipped": "no_destination", "sent": 0}
 
-    session = resolve_operative_session_date()
-    session_s = session.isoformat()
+    cash_session = resolve_operative_session_date(market="cash")
+    fut_session = resolve_operative_session_date(market="futures")
+    session_s = cash_session.isoformat()
     summary: dict[str, Any] = {
         "ok": True,
         "session": session_s,
+        "futures_session": fut_session.isoformat(),
         "channel": "email" if use_email else "sms",
         "sent": 0,
         "skipped_dup": 0,
@@ -83,7 +85,7 @@ def run_signal_alerts(
             StrategyScanRequest(
                 strategies=list(OPTIONS_ALERT_STRATEGIES),
                 timeframe="1h",
-                session_date=session,
+                session_date=cash_session,
                 data_provider=_OPTIONS_PROVIDER,
                 matches_only=True,
             ),
@@ -99,7 +101,7 @@ def run_signal_alerts(
             StrategyScanRequest(
                 strategies=list(FUTURES_ALERT_STRATEGIES),
                 timeframe="1h",
-                session_date=session,
+                session_date=fut_session,
                 data_provider=_FUTURES_PROVIDER,
                 matches_only=True,
             ),
@@ -128,7 +130,7 @@ def run_signal_alerts(
         summary["options_candidates"] = len(opt)
         candidates.extend(opt)
 
-    fut = futures_candidates(futures_hits, session=session_s)
+    fut = futures_candidates(futures_hits, session=fut_session.isoformat())
     summary["futures_candidates"] = len(fut)
     candidates.extend(fut)
 

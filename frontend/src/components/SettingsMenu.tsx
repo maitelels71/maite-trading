@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useRef, useState, type MouseEvent } from "react";
+import { useEffect, useId, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
 
 import { useLocale } from "@/components/LocaleProvider";
 import { useTheme } from "@/components/ThemeProvider";
@@ -14,7 +14,7 @@ type SettingsMenuProps = {
   adminHref?: string;
 };
 
-function sameTabNav(e: MouseEvent, go: () => void) {
+function sameTabNav(e: ReactMouseEvent, go: () => void) {
   if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) {
     return;
   }
@@ -36,7 +36,7 @@ export function SettingsMenu({
 
   useEffect(() => {
     if (!open) return;
-    const onDoc = (e: MouseEvent) => {
+    const onDoc = (e: globalThis.MouseEvent) => {
       if (!rootRef.current?.contains(e.target as Node)) setOpen(false);
     };
     const onKey = (e: KeyboardEvent) => {

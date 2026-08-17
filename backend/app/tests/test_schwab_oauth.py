@@ -75,6 +75,31 @@ def test_load_token_from_env_json() -> None:
     assert load_token(cfg)["access_token"] == "from-env"
 
 
+def test_load_token_prefers_newer_expiry(tmp_path: Path) -> None:
+    token_path = tmp_path / "schwab_token.json"
+    token_path.write_text(
+        json.dumps(
+            {
+                "access_token": "old-file",
+                "refresh_token": "r-old",
+                "expires_at": 1_000,
+            }
+        ),
+        encoding="utf-8",
+    )
+    cfg = Settings(
+        SCHWAB_TOKEN_PATH=str(token_path),
+        SCHWAB_TOKEN_JSON=json.dumps(
+            {
+                "access_token": "new-env",
+                "refresh_token": "r-new",
+                "expires_at": 9_999_999_999,
+            }
+        ),
+    )
+    assert load_token(cfg)["access_token"] == "new-env"
+
+
 def test_refresh_keeps_refresh_token_when_omitted(tmp_path: Path) -> None:
     token_path = tmp_path / "schwab_token.json"
     cfg = Settings(
