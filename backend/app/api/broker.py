@@ -70,6 +70,9 @@ class OpenOrderRequest(BaseModel):
     order_type: str = "LIMIT"
     duration: str = "DAY"
     confirm_live: bool = False
+    # From the last Load capital — avoids extra Schwab GETs (rate limit).
+    equity: float | None = Field(default=None, ge=0)
+    cash_available: float | None = Field(default=None, ge=0)
 
 
 class OpenOrderResponse(BaseModel):
@@ -222,18 +225,29 @@ def open_option_position(body: OpenOrderRequest) -> OpenOrderResponse:
         )
     try:
         trader = SchwabTrader()
-        hashes = trader.list_account_hashes()
-        accounts = trader.list_accounts_with_positions()
-        summaries = normalize_account_summaries(accounts, hashes)
-        acct = next(
-            (s for s in summaries if str(s.get("hashValue")) == body.account_hash),
-            None,
-        )
-        if acct is None:
-            raise HTTPException(status_code=400, detail="unknown account_hash")
-
-        equity = float(acct.get("equity") or 0)
-        cash = float(acct.get("available_funds") or acct.get("cash_balance") or 0)
+        if (
+            body.equity is not None
+            and body.equity > 0
+            and body.cash_available is not None
+        ):
+            equity = float(body.equity)
+            cash = float(body.cash_available)
+        else:
+            hashes = trader.list_account_hashes()
+            accounts = trader.list_accounts_with_positions()
+            summaries = normalize_account_summaries(accounts, hashes)
+            acct = next(
+                (
+                    s
+                    for s in summaries
+                    if str(s.get("hashValue")) == body.account_hash
+                ),
+                None,
+            )
+            if acct is None:
+                raise HTTPException(status_code=400, detail="unknown account_hash")
+            equity = float(acct.get("equity") or 0)
+            cash = float(acct.get("available_funds") or acct.get("cash_balance") or 0)
         sizing = size_long_option(
             entry_premium=body.entry_premium,
             equity=equity,

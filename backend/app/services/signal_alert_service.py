@@ -112,9 +112,13 @@ def run_signal_alerts(
         logger.exception("Futures alert scan failed")
         summary["errors"].append(f"futures_scan: {exc}")
 
-    capital = _load_options_capital()
+    capital = None
+    if options_hits:
+        capital = _load_options_capital()
     candidates: list[AlertCandidate] = []
-    if capital is None:
+    if not options_hits:
+        pass
+    elif capital is None:
         summary["errors"].append("options_capital: unavailable")
     else:
         opt = options_candidates(

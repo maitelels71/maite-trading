@@ -548,12 +548,19 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
     )[0];
   }, [brokerAccounts]);
 
-  const loadCapital = useCallback(async () => {
+  const capitalFetchedAt = useRef(0);
+
+  const loadCapital = useCallback(async (force = false) => {
     if (venue !== "schwab") return;
+    const now = Date.now();
+    if (!force && capitalFetchedAt.current && now - capitalFetchedAt.current < 20_000) {
+      return;
+    }
     setCapitalPending(true);
     setCapitalError(null);
     try {
       const res = await fetchBrokerPositions({ includeOrders: false });
+      capitalFetchedAt.current = Date.now();
       setBrokerAccounts(res.accounts ?? []);
       setTradingEnabled(Boolean(res.trading_enabled));
       const best = [...(res.accounts ?? [])].sort(
@@ -573,6 +580,7 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
         setCapitalNote(t("strategies.capitalNeed"));
       }
     } catch (err) {
+      capitalFetchedAt.current = Date.now();
       setCapitalError(
         brokerErrorCopy(err, t("strategies.openFail"), t),
       );
@@ -648,14 +656,15 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
           entry_premium: plan.entryPremium,
           quantity: qty,
           confirm_live: true,
+          equity: primaryAccount.equity ?? 0,
+          cash_available:
+            primaryAccount.available_funds ?? primaryAccount.cash_balance ?? 0,
         });
         setOpenNote(
           t("strategies.openOk")
             .replace("{sym}", res.option_symbol || plan.symbol)
             .replace("{id}", res.order_id || "—"),
         );
-        await new Promise((resolve) => window.setTimeout(resolve, 1500));
-        void loadCapital();
       } catch (err) {
         setOpenError(
           brokerErrorCopy(err, t("strategies.openFail"), t),
@@ -664,7 +673,7 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
         setOpeningKey(null);
       }
     },
-    [primaryAccount, tradingEnabled, armOpens, t, loadCapital],
+    [primaryAccount, tradingEnabled, armOpens, t],
   );
 
   useEffect(() => {
@@ -1092,7 +1101,7 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
             <button
               type="button"
               disabled={capitalPending}
-              onClick={() => void loadCapital()}
+              onClick={() => void loadCapital(true)}
               className="rounded-md border border-[var(--border)] px-2.5 py-1 text-[11px] font-medium hover:bg-[var(--hover)] disabled:opacity-50"
             >
               {capitalPending

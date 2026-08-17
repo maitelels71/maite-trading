@@ -310,6 +310,8 @@ export async function brokerOpenOption(payload: {
   confirm_live: boolean;
   order_type?: string;
   duration?: string;
+  equity?: number;
+  cash_available?: number;
 }): Promise<{
   ok: boolean;
   order_id: string | null;
