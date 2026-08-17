@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState, type MouseEvent } from "react";
 
 import { useLocale } from "@/components/LocaleProvider";
 import { useTheme } from "@/components/ThemeProvider";
@@ -11,12 +11,22 @@ type SettingsMenuProps = {
   onAdmin: () => void;
   onAbout: () => void;
   adminActive?: boolean;
+  adminHref?: string;
 };
+
+function sameTabNav(e: MouseEvent, go: () => void) {
+  if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) {
+    return;
+  }
+  e.preventDefault();
+  go();
+}
 
 export function SettingsMenu({
   onAdmin,
   onAbout,
   adminActive = false,
+  adminHref = "/?view=admin",
 }: SettingsMenuProps) {
   const { t, locale, setLocale } = useLocale();
   const { theme, setTheme } = useTheme();
@@ -125,13 +135,15 @@ export function SettingsMenu({
 
           <div className="my-1 border-t border-[var(--border)]" />
 
-          <button
-            type="button"
+          <a
+            href={adminHref}
             role="menuitem"
-            onClick={() => {
-              setOpen(false);
-              onAdmin();
-            }}
+            onClick={(e) =>
+              sameTabNav(e, () => {
+                setOpen(false);
+                onAdmin();
+              })
+            }
             className={`flex w-full items-center px-3 py-2 text-left text-sm font-medium transition hover:bg-[var(--hover)] ${
               adminActive
                 ? "text-[var(--accent-fg)]"
@@ -139,7 +151,7 @@ export function SettingsMenu({
             }`}
           >
             {t("nav.admin")}
-          </button>
+          </a>
           <button
             type="button"
             role="menuitem"

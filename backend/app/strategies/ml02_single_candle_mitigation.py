@@ -584,8 +584,14 @@ class Ml02SingleCandleMitigationStrategy(BaseStrategy):
         allow_fvg = bool(params.get("allow_fvg_mitigation", True))
 
         htf = sorted(candles, key=lambda c: c.timestamp)
-        start_d: date = context.start
-        end_d: date = context.end
+        start_d = (
+            context.start.date()
+            if isinstance(context.start, datetime)
+            else context.start
+        )
+        end_d = (
+            context.end.date() if isinstance(context.end, datetime) else context.end
+        )
         series, ltf = _resolve_ltf(context, start_d=start_d, end_d=end_d, tz=tz)
 
         signals: list[Signal] = []
@@ -602,6 +608,9 @@ class Ml02SingleCandleMitigationStrategy(BaseStrategy):
         ltf_by_ts = {c.timestamp: i for i, c in enumerate(ltf)}
 
         search_start = 1
+        if lookback is None and start_d == end_d:
+            # Live scan is one session — don't walk 14d of 1m (API Gateway 503).
+            lookback = 180
         if lookback is not None:
             search_start = max(1, len(series) - lookback)
 

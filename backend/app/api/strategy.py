@@ -98,14 +98,21 @@ def execute_scan(
     hits: list[StrategyScanHit] = []
     matched_symbols: set[str] = set()
     checked = 0
+    # HTTP API integration timeout is ~29s — stop early so the client
+    # gets a 200 with partial hits instead of a 503.
+    deadline = dt.now(UTC) + timedelta(seconds=20)
 
     # Prefer finding matches quickly: iterate symbols outer, strategies inner,
     # and stop early when top_n unique symbols are filled.
     for inst in instruments:
         if body.top_n is not None and len(matched_symbols) >= body.top_n:
             break
+        if dt.now(UTC) >= deadline:
+            break
         for strategy_name in strategy_names:
             if body.top_n is not None and len(matched_symbols) >= body.top_n:
+                break
+            if dt.now(UTC) >= deadline:
                 break
             hit = _scan_one(
                 db=db,
@@ -171,6 +178,8 @@ def evaluate_strategy(
                 market_type=body.market_type,
                 extra_timeframes=extra_tfs,
                 candle_start=candle_start,
+                fetch_missing=True,
+                require_extras=True,
             )
         else:
             engine = StrategyEngine(session=db)
@@ -225,6 +234,8 @@ def backtest_strategy(
                 market_type=body.market_type,
                 extra_timeframes=extra_tfs,
                 candle_start=candle_start,
+                fetch_missing=True,
+                require_extras=True,
             )
             run_id = None
             if body.persist:
@@ -304,6 +315,10 @@ def backtest_strategy(
     )
 
 
+# Live desk scan: extras (especially 1m) must stay small or API Gateway 503s.
+_SCAN_EXTRA_LOOKBACK: dict[str, int] = {"1m": 2, "5m": 3, "15m": 5}
+
+
 def _evaluate_dynamo(
     *,
     strategy_name: str,
@@ -316,12 +331,16 @@ def _evaluate_dynamo(
     extra_timeframes: tuple[str, ...] | list[str] | None = None,
     candle_cache: dict[tuple[str, str, str, str, str], list] | None = None,
     candle_start: date | datetime | None = None,
+    fetch_missing: bool = False,
+    require_extras: bool = False,
+    extra_lookback_days: dict[str, int] | None = None,
 ) -> StrategyResult:
     from datetime import datetime as dt
 
     from app.domain.candles import Candle
-    from app.domain.enums import SessionType
+    from app.domain.enums import DataProviderName, SessionType
     from app.domain.strategy_types import StrategyContext
+    from app.providers.factory import get_provider_factory
 
     store = get_dynamo_store()
     instrument = store.get_instrument(ticker, market_type=market_type)
@@ -331,33 +350,74 @@ def _evaluate_dynamo(
     )
     end_dt = end if isinstance(end, dt) else dt.combine(end, dt.max.time().replace(microsecond=0))
 
-    def _load(tf: str) -> list[Candle]:
-        key = (
+    def _range_start(tf: str) -> dt:
+        cap = (extra_lookback_days or {}).get(tf)
+        if cap is None:
+            return start_dt
+        capped = end_dt - timedelta(days=cap)
+        return capped if capped > start_dt else start_dt
+
+    def _cache_key(tf: str, tf_start: dt) -> tuple[str, str, str, str, str]:
+        return (
             instrument["symbol"],
             instrument["market_type"],
             tf,
-            start_dt.isoformat(),
+            tf_start.isoformat(),
             end_dt.isoformat(),
         )
+
+    def _load(tf: str, tf_start: dt) -> list[Candle]:
+        key = _cache_key(tf, tf_start)
         if candle_cache is not None and key in candle_cache:
             return candle_cache[key]
         rows = store.get_candles_by_range(
             instrument["symbol"],
             instrument["market_type"],
             tf,
-            start_dt,
+            tf_start,
             end_dt,
         )
         if candle_cache is not None:
             candle_cache[key] = rows
         return rows
 
-    candles = _load(timeframe)
+    def _fetch_and_store(tf: str, tf_start: dt) -> list[Candle]:
+        provider = get_provider_factory().get(
+            DataProviderName(instrument["data_provider"])
+        )
+        fetched = provider.get_historical_candles(
+            instrument["symbol"], tf, tf_start, end_dt
+        )
+        if fetched:
+            store.save_candles(
+                instrument["symbol"],
+                instrument["market_type"],
+                tf,
+                fetched,
+            )
+        if candle_cache is not None:
+            candle_cache[_cache_key(tf, tf_start)] = fetched
+        return fetched
+
+    def _load_or_fetch(tf: str, tf_start: dt) -> list[Candle]:
+        rows = _load(tf, tf_start)
+        if rows or not fetch_missing:
+            return rows
+        return _fetch_and_store(tf, tf_start)
+
+    candles = _load_or_fetch(timeframe, start_dt)
     extras: dict[str, list[Candle]] = {}
     for tf in extra_timeframes or ():
         if tf == timeframe:
             continue
-        extras[tf] = _load(tf)
+        extras[tf] = _load_or_fetch(tf, _range_start(tf))
+    if require_extras:
+        _require_extra_candles(
+            strategy_name=strategy_name,
+            primary_tf=timeframe,
+            primary_count=len(candles),
+            extras=extras,
+        )
     context = StrategyContext(
         ticker=ticker,
         timeframe=timeframe,
@@ -369,6 +429,29 @@ def _evaluate_dynamo(
         extra_candles=extras,
     )
     return StrategyEngine().evaluate(strategy_name, candles, context)
+
+
+def _require_extra_candles(
+    *,
+    strategy_name: str,
+    primary_tf: str,
+    primary_count: int,
+    extras: dict[str, list],
+) -> None:
+    """Fail fast when multi-TF strategies have primary bars but empty extras."""
+    if primary_count <= 0 or not extras:
+        return
+    missing = [tf for tf, rows in extras.items() if not rows]
+    if not missing:
+        return
+    hint = ""
+    if "1m" in missing:
+        hint = " Yahoo 1m only keeps ~7 days — Sync market data (include 1m) then re-run."
+    raise ValueError(
+        f"{strategy_name} needs {', '.join(missing)} candles in the DB "
+        f"(have {primary_count}×{primary_tf}, 0×{', '.join(missing)})."
+        f"{hint}"
+    )
 
 
 def _list_scan_instruments(
@@ -466,6 +549,9 @@ def _scan_one(
                 extra_timeframes=extra_tfs,
                 candle_cache=candle_cache,
                 candle_start=eval_start,
+                fetch_missing=False,
+                require_extras=False,
+                extra_lookback_days=_SCAN_EXTRA_LOOKBACK,
             )
         else:
             engine = StrategyEngine(session=db)

@@ -111,6 +111,9 @@ const en: Dict = {
   "analyzer.running": "Running…",
   "analyzer.sync": "Sync market data",
   "analyzer.syncHint": "Downloads the playbook TFs from the broker into the DB before running.",
+  "analyzer.syncBeforeRun": "Syncing playbook TFs before run…",
+  "analyzer.zeroTradesHint":
+    "0 trades. ML03 needs 5m+1m in the DB (Yahoo 1m ≈ 7 days). Sync, then re-run — or no FVG+engulfing setup in range.",
   "analyzer.metrics": "Results",
   "analyzer.trades": "Trades",
   "analyzer.signals": "Signals",
@@ -554,6 +557,9 @@ const es: Dict = {
   "analyzer.running": "Corriendo…",
   "analyzer.sync": "Sincronizar datos de mercado",
   "analyzer.syncHint": "Baja los TFs del playbook desde el broker a la DB antes de correr.",
+  "analyzer.syncBeforeRun": "Sincronizando TFs del playbook antes de correr…",
+  "analyzer.zeroTradesHint":
+    "0 trades. ML03 necesita 5m+1m en la DB (Yahoo 1m ≈ 7 días). Haz Sync y vuelve a correr — o no hubo FVG+envolvente en el rango.",
   "analyzer.metrics": "Resultados",
   "analyzer.trades": "Trades",
   "analyzer.signals": "Señales",

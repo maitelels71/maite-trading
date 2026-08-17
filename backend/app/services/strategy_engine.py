@@ -91,6 +91,18 @@ class StrategyEngine:
             extras[tf] = self._market_data.get_candles_by_range(
                 instrument.id, tf, start_dt, end_dt
             )
+        missing = [tf for tf, rows in extras.items() if not rows]
+        if candles and missing:
+            hint = (
+                " Yahoo 1m only keeps ~7 days — Sync market data (include 1m) then re-run."
+                if "1m" in missing
+                else ""
+            )
+            raise ValueError(
+                f"{strategy_name} needs {', '.join(missing)} candles in the DB "
+                f"(have {len(candles)}×{timeframe}, 0×{', '.join(missing)})."
+                f"{hint}"
+            )
         context = StrategyContext(
             ticker=symbol,
             timeframe=timeframe,

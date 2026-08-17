@@ -29,12 +29,17 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   });
 
   if (!res.ok) {
-    let detail = res.statusText;
+    let detail = "";
     try {
       const body = (await res.json()) as { detail?: string };
       if (body.detail) detail = body.detail;
     } catch {
       // ignore parse errors
+    }
+    if (res.status === 503) {
+      throw new Error(
+        "Scan timed out (API ~29s). Sync & Scan now runs in smaller batches — retry.",
+      );
     }
     throw new Error(detail || `Request failed (${res.status})`);
   }

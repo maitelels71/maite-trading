@@ -280,6 +280,50 @@ export function Dashboard() {
     };
   }
 
+  /** Yahoo caps 1m history near 7 days — do not request longer windows. */
+  function lookbackDaysForTf(tf: string): number {
+    const base = playbook?.syncLookbackDays ?? 7;
+    if (tf === "1m") return Math.min(base, 7);
+    return base;
+  }
+
+  async function syncPlaybookTfs(): Promise<{
+    bars: number;
+    errs: number;
+    perTf: { tf: string; count: number; error?: string }[];
+  }> {
+    const { start, end } = rangeForCandles();
+    let bars = 0;
+    let errs = 0;
+    const perTf: { tf: string; count: number; error?: string }[] = [];
+    for (const tf of syncTfs) {
+      try {
+        const lookback = lookbackDaysForTf(tf);
+        const startDt = new Date(start);
+        startDt.setUTCDate(startDt.getUTCDate() - lookback);
+        const res = await syncMarketData({
+          ticker: symbol,
+          timeframe: tf,
+          start: startDt.toISOString(),
+          end,
+          market_type: selected?.market_type,
+          force_refresh: true,
+        });
+        bars += res.candles_count;
+        perTf.push({ tf, count: res.candles_count });
+        if (res.candles_count === 0) errs += 1;
+      } catch (err) {
+        errs += 1;
+        perTf.push({
+          tf,
+          count: 0,
+          error: err instanceof Error ? err.message : "sync failed",
+        });
+      }
+    }
+    return { bars, errs, perTf };
+  }
+
   async function loadCandles() {
     const { start, end } = rangeForCandles();
     try {
@@ -322,31 +366,21 @@ export function Dashboard() {
     setStatus(null);
     startTransition(async () => {
       try {
-        const { start, end } = rangeForCandles();
-        const lookback = playbook?.syncLookbackDays ?? 7;
-        const startDt = new Date(start);
-        startDt.setUTCDate(startDt.getUTCDate() - lookback);
-        const syncStart = startDt.toISOString();
-        let bars = 0;
-        let errs = 0;
-        for (const tf of syncTfs) {
-          try {
-            const res = await syncMarketData({
-              ticker: symbol,
-              timeframe: tf,
-              start: syncStart,
-              end,
-              market_type: selected?.market_type,
-              force_refresh: true,
-            });
-            bars += res.candles_count;
-          } catch {
-            errs += 1;
-          }
+        const { bars, errs, perTf } = await syncPlaybookTfs();
+        const detail = perTf
+          .map((p) => (p.error ? `${p.tf}:ERR` : `${p.tf}:${p.count}`))
+          .join(" · ");
+        setStatus(`Synced ${bars} candles · ${detail}${errs ? ` · ${errs} issues` : ""}`);
+        const missing = perTf.filter((p) => p.count === 0);
+        if (missing.length) {
+          setError(
+            `Sin velas para: ${missing.map((m) => m.tf).join(", ")}. ${
+              missing.some((m) => m.tf === "1m")
+                ? "Yahoo 1m ≈ 7 días — acorta el rango y reintenta."
+                : "Revisa el rango / símbolo."
+            }`,
+          );
         }
-        setStatus(
-          `Synced ${bars} candles · ${syncTfs.join("+")} · lookback ${lookback}d · ${errs} errors`,
-        );
         await loadCandles();
       } catch (err) {
         setError(err instanceof Error ? err.message : "Sync failed");
@@ -359,6 +393,20 @@ export function Dashboard() {
     setStatus(null);
     startTransition(async () => {
       try {
+        // Multi-TF playbooks (ML02/ML03) need every listed TF in the DB.
+        if (syncTfs.length > 1) {
+          setStatus(t("analyzer.syncBeforeRun"));
+          const { perTf } = await syncPlaybookTfs();
+          const missing = perTf.filter((p) => p.count === 0).map((p) => p.tf);
+          if (missing.length) {
+            throw new Error(
+              `Faltan velas ${missing.join("+")} tras sync. Yahoo 1m ≈ 7 días — acorta el rango.`,
+            );
+          }
+          setStatus(
+            `Synced ${perTf.map((p) => `${p.tf}:${p.count}`).join(" · ")} · running…`,
+          );
+        }
         if (mode === "evaluate") {
           const res = await evaluateStrategy({
             ticker: symbol,
@@ -368,8 +416,12 @@ export function Dashboard() {
             market_type: selected?.market_type,
           });
           applyEvaluate(res);
+          const zeroHint =
+            res.trades.length === 0 && syncTfs.includes("1m")
+              ? ` · ${t("analyzer.zeroTradesHint")}`
+              : "";
           setStatus(
-            `${strategyDisplayName(strategy)} · ${symbol} · ${date} · ${res.signals?.length ?? 0} signals · ${res.trades.length} trades`,
+            `${strategyDisplayName(strategy)} · ${symbol} · ${date} · ${res.signals?.length ?? 0} signals · ${res.trades.length} trades${zeroHint}`,
           );
         } else {
           const res = await backtestStrategy({
@@ -382,8 +434,12 @@ export function Dashboard() {
             persist: true,
           });
           applyBacktest(res);
+          const zeroHint =
+            res.total_trades === 0 && syncTfs.includes("1m")
+              ? ` · ${t("analyzer.zeroTradesHint")}`
+              : "";
           setStatus(
-            `${strategyDisplayName(strategy)} · backtest ${startDate}→${endDate}${res.run_id ? ` · run ${res.run_id}` : ""}`,
+            `${strategyDisplayName(strategy)} · backtest ${startDate}→${endDate} · ${res.total_trades} trades${res.run_id ? ` · run ${res.run_id}` : ""}${zeroHint}`,
           );
         }
         await loadCandles();

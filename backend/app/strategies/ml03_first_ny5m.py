@@ -209,7 +209,7 @@ class Ml03FirstNy5mStrategy(BaseStrategy):
 
     @property
     def scan_lookback_days(self) -> int:
-        return 10
+        return 7
 
     @property
     def scan_extra_timeframes(self) -> tuple[str, ...]:
@@ -249,8 +249,14 @@ class Ml03FirstNy5mStrategy(BaseStrategy):
                 metrics=metrics_from_trades(trades),
             )
 
-        start_d: date = context.start
-        end_d: date = context.end
+        start_d = (
+            context.start.date()
+            if isinstance(context.start, datetime)
+            else context.start
+        )
+        end_d = (
+            context.end.date() if isinstance(context.end, datetime) else context.end
+        )
         days = sorted(
             {
                 _local(c.timestamp, tz).date()

@@ -13,7 +13,8 @@ export const ML03_FUTURES: StrategyPlaybook = {
   strategyKey: "ml03_first_ny5m",
   preferredTimeframe: "5m",
   syncTimeframes: ["5m", "1m"],
-  syncLookbackDays: 10,
+  /** Yahoo 1m history caps near 7 days — keep lookback inside that window. */
+  syncLookbackDays: 7,
   name: "Primera vela NY 5m",
   shortName: "ML03",
   markets: "Futuros LONG/SHORT · MNQ · MES · GC · primera 5m NY + entrada 1m",

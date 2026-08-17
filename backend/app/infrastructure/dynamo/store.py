@@ -190,11 +190,19 @@ class DynamoStore:
         end: datetime,
     ) -> list[DomainCandle]:
         pk = f"{symbol}#{market_type}#{timeframe}"
-        resp = ddb.candles_table().query(
-            KeyConditionExpression=Key("pk").eq(pk)
-            & Key("sk").between(_iso(start), _iso(end))
-        )
-        items = sorted(resp.get("Items", []), key=lambda x: x["sk"])
+        key_cond = Key("pk").eq(pk) & Key("sk").between(_iso(start), _iso(end))
+        items: list[dict[str, Any]] = []
+        exclusive_start: dict[str, Any] | None = None
+        while True:
+            kwargs: dict[str, Any] = {"KeyConditionExpression": key_cond}
+            if exclusive_start is not None:
+                kwargs["ExclusiveStartKey"] = exclusive_start
+            resp = ddb.candles_table().query(**kwargs)
+            items.extend(resp.get("Items", []))
+            exclusive_start = resp.get("LastEvaluatedKey")
+            if not exclusive_start:
+                break
+        items.sort(key=lambda x: x["sk"])
         out: list[DomainCandle] = []
         for i in items:
             out.append(

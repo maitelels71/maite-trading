@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useCallback, useEffect, useState, type MouseEvent } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 import { AboutDialog } from "@/components/AboutDialog";
 import { AdminDesk } from "@/components/AdminDesk";
@@ -16,7 +17,13 @@ import { SettingsMenu } from "@/components/SettingsMenu";
 import { StickyNotesDesk } from "@/components/StickyNotesDesk";
 import { StrategiesDesk } from "@/components/StrategiesDesk";
 import { ThemeProvider } from "@/components/ThemeProvider";
-import { APP_DOCUMENT_TITLE, APP_ICON_SVG, APP_MODE, APP_MODE_LABEL, APP_VENUE } from "@/lib/app-mode";
+import {
+  APP_DOCUMENT_TITLE,
+  APP_ICON_SVG,
+  APP_MODE,
+  APP_MODE_LABEL,
+  APP_VENUE,
+} from "@/lib/app-mode";
 
 type AppView =
   | "analyzer"
@@ -29,6 +36,36 @@ type AppView =
   | "positions"
   | "news"
   | "admin";
+
+const APP_VIEWS = new Set<string>([
+  "analyzer",
+  "strategies",
+  "daily",
+  "journal",
+  "mind",
+  "stickyNotes",
+  "optionsChecklist",
+  "positions",
+  "news",
+  "admin",
+]);
+
+function isAppView(value: string | null | undefined): value is AppView {
+  return Boolean(value && APP_VIEWS.has(value));
+}
+
+function viewHref(view: AppView): string {
+  return `/?view=${view}`;
+}
+
+/** Same-tab SPA nav; Ctrl/Cmd/middle-click keep native new-tab behavior. */
+function sameTabNav(e: MouseEvent, go: () => void) {
+  if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) {
+    return;
+  }
+  e.preventDefault();
+  go();
+}
 
 type StepItem = {
   kind: "step";
@@ -81,9 +118,32 @@ const DESK_TOOLS: ExtraItem[] = [
 ];
 
 function AppShellInner() {
-  const [view, setView] = useState<AppView>("strategies");
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const paramView = searchParams.get("view");
+  const [view, setViewState] = useState<AppView>(() =>
+    isAppView(paramView) ? paramView : "strategies",
+  );
   const [aboutOpen, setAboutOpen] = useState(false);
   const { t } = useLocale();
+
+  useEffect(() => {
+    if (isAppView(paramView) && paramView !== view) {
+      setViewState(paramView);
+    }
+  }, [paramView, view]);
+
+  const setView = useCallback(
+    (next: AppView) => {
+      setViewState(next);
+      const params = new URLSearchParams(searchParams.toString());
+      params.set("view", next);
+      const qs = params.toString();
+      router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+    },
+    [pathname, router, searchParams],
+  );
 
   const toolActive = DESK_TOOLS.some((item) => item.id === view);
 
@@ -91,9 +151,9 @@ function AppShellInner() {
     <div className="min-h-screen text-[var(--foreground)]">
       <header className="sticky top-0 z-40 border-b border-[var(--border-strong)] bg-[var(--surface)] shadow-[0_1px_0_rgba(0,0,0,0.06)]">
         <div className="mx-auto flex max-w-7xl flex-col gap-2 px-4 py-2.5 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-3 sm:px-6">
-          <button
-            type="button"
-            onClick={() => setView("strategies")}
+          <a
+            href={viewHref("strategies")}
+            onClick={(e) => sameTabNav(e, () => setView("strategies"))}
             className="group mr-1 flex min-w-0 items-center gap-3 rounded-lg py-1 pr-2 text-left transition hover:bg-[var(--hover)]"
             aria-label={APP_DOCUMENT_TITLE}
           >
@@ -113,7 +173,7 @@ function AppShellInner() {
                 {APP_MODE_LABEL}
               </span>
             </span>
-          </button>
+          </a>
 
           <nav
             className="flex min-w-0 w-full flex-wrap items-center gap-1 sm:w-auto sm:flex-1"
@@ -124,11 +184,12 @@ function AppShellInner() {
               const showArrow = index < FLOW.length - 1;
               return (
                 <div key={item.id} className="flex items-center gap-1">
-                  <StepButton
+                  <StepLink
                     step={item.step}
                     label={t(item.labelKey)}
                     active={active}
-                    onClick={() => setView(item.id)}
+                    href={viewHref(item.id)}
+                    onNavigate={() => setView(item.id)}
                   />
                   {showArrow ? (
                     <span
@@ -160,10 +221,10 @@ function AppShellInner() {
               {DESK_TOOLS.map((item) => {
                 const active = view === item.id;
                 return (
-                  <button
+                  <a
                     key={item.id}
-                    type="button"
-                    onClick={() => setView(item.id)}
+                    href={viewHref(item.id)}
+                    onClick={(e) => sameTabNav(e, () => setView(item.id))}
                     className={`rounded-md px-2.5 py-1 text-xs font-semibold transition ${
                       active
                         ? "bg-[var(--accent)] text-[var(--on-accent)]"
@@ -171,12 +232,13 @@ function AppShellInner() {
                     }`}
                   >
                     {t(item.labelKey)}
-                  </button>
+                  </a>
                 );
               })}
             </nav>
             <SettingsMenu
               adminActive={view === "admin"}
+              adminHref={viewHref("admin")}
               onAdmin={() => setView("admin")}
               onAbout={() => setAboutOpen(true)}
             />
@@ -211,21 +273,23 @@ function AppShellInner() {
   );
 }
 
-function StepButton({
+function StepLink({
   step,
   label,
   active,
-  onClick,
+  href,
+  onNavigate,
 }: {
   step: number;
   label: string;
   active: boolean;
-  onClick: () => void;
+  href: string;
+  onNavigate: () => void;
 }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
+    <a
+      href={href}
+      onClick={(e) => sameTabNav(e, onNavigate)}
       className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-2 text-sm font-semibold transition ${
         active
           ? "bg-[var(--accent)] text-[var(--on-accent)] shadow-sm"
@@ -242,7 +306,7 @@ function StepButton({
         {step}
       </span>
       {label}
-    </button>
+    </a>
   );
 }
 
@@ -250,7 +314,9 @@ export function AppShell() {
   return (
     <ThemeProvider>
       <LocaleProvider>
-        <AppShellInner />
+        <Suspense fallback={null}>
+          <AppShellInner />
+        </Suspense>
       </LocaleProvider>
     </ThemeProvider>
   );

@@ -51,7 +51,9 @@ const ARM_OPENS_KEY = "maite.strategies.armOpens";
 const DESK_TOP_N = 5;
 const DESK_SYNC_TFS = ["1h", "1d"] as const;
 const DESK_LOOKBACK_DAYS = 60;
-const DESK_STRATEGY_CHUNK = 3;
+/** One strategy per HTTP call — 3×6 evals with 1m extras trips API Gateway ~29s (503). */
+const DESK_STRATEGY_CHUNK = 1;
+const SCAN_SYMBOL_BATCH = 2;
 
 type DeskConfluenceGroup = {
   symbol: string;
@@ -63,6 +65,38 @@ type DeskConfluenceGroup = {
   /** Matching setups on the opposite side (hidden from rank, shown as note). */
   opposedCount: number;
 };
+
+/** Split /strategy/scan so each request stays under API Gateway's ~29s cap. */
+async function scanStrategiesBatched(payload: {
+  strategies?: string[];
+  timeframe?: string;
+  session_date?: string;
+  data_provider?: string;
+  symbols: string[];
+  matches_only?: boolean;
+}): Promise<ScanResponse> {
+  const merged: ScanResponse = {
+    scanned_at: new Date().toISOString(),
+    session_date: payload.session_date ?? "",
+    timeframe: payload.timeframe ?? "",
+    strategies: payload.strategies ?? [],
+    hits: [],
+    match_count: 0,
+    total_checked: 0,
+  };
+  for (let i = 0; i < payload.symbols.length; i += SCAN_SYMBOL_BATCH) {
+    const symbols = payload.symbols.slice(i, i + SCAN_SYMBOL_BATCH);
+    const res = await scanStrategies({ ...payload, symbols });
+    merged.scanned_at = res.scanned_at;
+    merged.session_date = res.session_date;
+    merged.timeframe = res.timeframe;
+    merged.strategies = res.strategies;
+    merged.hits.push(...res.hits);
+    merged.total_checked += res.total_checked;
+  }
+  merged.match_count = merged.hits.filter((h) => h.matched).length;
+  return merged;
+}
 
 function hitSide(hit: ScanHit): "long" | "short" | null {
   const side = hit.last_signal?.side;
@@ -601,12 +635,16 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
           .replace("{errors}", String(synced.syncErrors)),
       );
 
+      const symbols = universe
+        .filter((i) => !i.data_provider || i.data_provider === venue)
+        .map((i) => i.symbol);
       try {
-        const res = await scanStrategies({
+        const res = await scanStrategiesBatched({
           strategies: [pb.strategyKey],
           timeframe: scanTf,
           session_date: day,
           data_provider: venue,
+          symbols,
           matches_only: false,
         });
         if (gen !== runGen.current) return;
@@ -654,11 +692,15 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
       for (let i = 0; i < deskStrategyKeys.length; i += DESK_STRATEGY_CHUNK) {
         if (gen !== deskGen.current) return;
         const chunk = deskStrategyKeys.slice(i, i + DESK_STRATEGY_CHUNK);
-        const res = await scanStrategies({
+        const symbols = universe
+          .filter((i) => !i.data_provider || i.data_provider === venue)
+          .map((i) => i.symbol);
+        const res = await scanStrategiesBatched({
           strategies: chunk,
           timeframe: "1h",
           session_date: day,
           data_provider: venue,
+          symbols,
           matches_only: true,
         });
         for (const hit of res.hits) {
