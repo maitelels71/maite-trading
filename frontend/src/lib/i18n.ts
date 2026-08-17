@@ -339,7 +339,7 @@ const en: Dict = {
   "strategies.capitalNeed": "Load capital to size opens (10% flag · 50% max).",
   "strategies.armOpens": "Trigger opens",
   "strategies.armOpensBody":
-    "Required to send BUY_TO_OPEN to Schwab. After fill → Positions → TP 10/20/35.",
+    "Required to send BUY_TO_OPEN to Schwab. Pauses Auto sync so the order is not blocked. After fill → Positions → TP 10/20/35.",
   "strategies.openSchwab": "Open {n}× @ {px}",
   "strategies.openTooRich":
     "1ct {cost} = {pct}% of equity. Consider ≤10% ({risk}). Open ≤50% needs {need50} equity.",
@@ -350,6 +350,10 @@ const en: Dict = {
   "strategies.riskConsiderHint": "Consider — 1ct is {pct}% of equity (≤10%).",
   "strategies.riskOtherHint": "1ct is {pct}% of equity. Open allowed up to 50%.",
   "strategies.openNeedArm": "Turn on Trigger opens first.",
+  "strategies.openWaitSync":
+    "Wait until candle sync finishes, then Open. Auto is paused while Trigger opens is on.",
+  "strategies.armPausesAuto":
+    "Trigger opens pauses Auto TOP 5 / Auto live so Schwab is free for the order.",
   "strategies.openNeedTrading": "Trading disabled on API (SCHWAB_TRADING_ENABLED).",
   "strategies.openConfirm":
     "Send BUY_TO_OPEN LIMIT {n}× {sym} {type} {strike} exp {exp} @ {px}? Cost ≈ {cost} (10% risk {risk}).",
@@ -809,7 +813,7 @@ const es: Dict = {
   "strategies.capitalNeed": "Carga capital para dimensionar (flag 10% · máx 50%).",
   "strategies.armOpens": "Trigger opens",
   "strategies.armOpensBody":
-    "Obligatorio para enviar BUY_TO_OPEN a Schwab. Tras el fill → Posiciones → TP 10/20/35.",
+    "Obligatorio para enviar BUY_TO_OPEN a Schwab. Pausa el Auto sync para no bloquear la orden. Tras el fill → Posiciones → TP 10/20/35.",
   "strategies.openSchwab": "Abrir {n}× @ {px}",
   "strategies.openTooRich":
     "1ct {cost} = {pct}% del equity. Considerar ≤10% ({risk}). Open ≤50% pide {need50} de equity.",
@@ -820,6 +824,10 @@ const es: Dict = {
   "strategies.riskConsiderHint": "Considerar — 1ct es {pct}% del equity (≤10%).",
   "strategies.riskOtherHint": "1ct es {pct}% del equity. Abrir permitido hasta 50%.",
   "strategies.openNeedArm": "Activa Trigger opens primero.",
+  "strategies.openWaitSync":
+    "Espera a que termine el sync de velas y luego Open. Auto está pausado mientras Trigger opens está activo.",
+  "strategies.armPausesAuto":
+    "Trigger opens pausa Auto TOP 5 / Auto live para dejar Schwab libre para la orden.",
   "strategies.openNeedTrading": "Trading desactivado en API (SCHWAB_TRADING_ENABLED).",
   "strategies.openConfirm":
     "¿Enviar BUY_TO_OPEN LIMIT {n}× {sym} {type} {strike} exp {exp} @ {px}? Costo ≈ {cost} (riesgo 10% {risk}).",

@@ -485,7 +485,13 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
   const [error, setError] = useState<string | null>(null);
   const [syncNote, setSyncNote] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
-  const [deskPending, startDeskTransition] = useTransition();
+  const [, startDeskTransition] = useTransition();
+  const [deskBusy, setDeskBusy] = useState(false);
+  const [focusBusy, setFocusBusy] = useState(false);
+  const deskBusyRef = useRef(false);
+  const focusBusyRef = useRef(false);
+  const deskEpochRef = useRef(0);
+  const focusEpochRef = useRef(0);
   const [checkedSteps, setCheckedSteps] = useState<Record<string, boolean>>({});
   const [autoLive, setAutoLive] = useState(false);
   const [autoDesk, setAutoDesk] = useState(false);
@@ -502,7 +508,22 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
   const runGen = useRef(0);
   const deskGen = useRef(0);
 
+  const abortBrokerSync = useCallback(() => {
+    // Stop further candle requests; leave busy until the in-flight call returns.
+    runGen.current += 1;
+    deskGen.current += 1;
+  }, []);
+
   useEffect(() => {
+    const armed = readArmOpens();
+    setArmOpens(armed);
+    if (armed) {
+      setAutoLive(false);
+      setAutoDesk(false);
+      window.localStorage.setItem(AUTO_LIVE_KEY, "0");
+      window.localStorage.setItem(AUTO_DESK_KEY, "0");
+      return;
+    }
     const live = readAutoLive();
     const desk = readAutoDesk();
     // Prefer desk auto if both were left on from an older build
@@ -514,7 +535,6 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
       setAutoLive(live);
       setAutoDesk(desk);
     }
-    setArmOpens(readArmOpens());
   }, []);
 
   useEffect(() => {
@@ -613,6 +633,10 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
         setOpenError(t("strategies.openNeedArm"));
         return;
       }
+      if (deskBusy || focusBusy) {
+        setOpenError(t("strategies.openWaitSync"));
+        return;
+      }
       const sizing = sizeLongOption({
         entryPremium: plan.entryPremium,
         equity: primaryAccount.equity ?? 0,
@@ -673,7 +697,7 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
         setOpeningKey(null);
       }
     },
-    [primaryAccount, tradingEnabled, armOpens, t],
+    [primaryAccount, tradingEnabled, armOpens, t, deskBusy, focusBusy],
   );
 
   useEffect(() => {
@@ -795,65 +819,74 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
       const day = operativeSessionNyIso(new Date(), venue);
       setSessionDate(day);
       const gen = ++runGen.current;
+      const epoch = ++focusEpochRef.current;
+      focusBusyRef.current = true;
+      setFocusBusy(true);
       setError(null);
       setSyncNote(t("strategies.syncing"));
-
-      const scanTf = pb.preferredTimeframe ?? timeframe;
-      let tfs =
-        pb.syncTimeframes?.length
-          ? pb.syncTimeframes
-          : pb.preferredTimeframe
-            ? [pb.preferredTimeframe]
-            : [scanTf];
-      if (opts?.skipDeskTfs) {
-        tfs = tfs.filter(
-          (tf) => !(DESK_SYNC_TFS as readonly string[]).includes(tf),
-        );
-      }
-      const lookback = pb.syncLookbackDays ?? 7;
-      const items = opts?.items ?? universe;
-      const forceRefresh = takeHardRefresh(day, Boolean(opts?.fromAuto));
-
-      if (tfs.length > 0) {
-        const synced = await syncUniverse({
-          tfs,
-          lookback,
-          gen,
-          genRef: runGen,
-          endDay: day,
-          items,
-          forceRefresh,
-        });
-        if (!synced) return;
-        setSyncNote(
-          t("strategies.syncDone")
-            .replace("{bars}", String(synced.syncedBars))
-            .replace("{symbols}", String(synced.symbolCount))
-            .replace("{errors}", String(synced.syncErrors)),
-        );
-      } else {
-        setSyncNote(t("strategies.syncSkipped"));
-      }
-
-      const symbols = items
-        .filter((i) => !i.data_provider || i.data_provider === venue)
-        .map((i) => i.symbol);
       try {
-        const res = await scanStrategiesBatched({
-          strategies: [pb.strategyKey],
-          timeframe: scanTf,
-          session_date: day,
-          data_provider: venue,
-          symbols,
-          matches_only: false,
-        });
-        if (gen !== runGen.current) return;
-        setScan(res);
-        if (res.session_date) setSessionDate(res.session_date);
-      } catch (err) {
-        if (gen !== runGen.current) return;
-        setError(err instanceof Error ? err.message : "Scan failed");
-        setScan(null);
+        const scanTf = pb.preferredTimeframe ?? timeframe;
+        let tfs =
+          pb.syncTimeframes?.length
+            ? pb.syncTimeframes
+            : pb.preferredTimeframe
+              ? [pb.preferredTimeframe]
+              : [scanTf];
+        if (opts?.skipDeskTfs) {
+          tfs = tfs.filter(
+            (tf) => !(DESK_SYNC_TFS as readonly string[]).includes(tf),
+          );
+        }
+        const lookback = pb.syncLookbackDays ?? 7;
+        const items = opts?.items ?? universe;
+        const forceRefresh = takeHardRefresh(day, Boolean(opts?.fromAuto));
+
+        if (tfs.length > 0) {
+          const synced = await syncUniverse({
+            tfs,
+            lookback,
+            gen,
+            genRef: runGen,
+            endDay: day,
+            items,
+            forceRefresh,
+          });
+          if (!synced) return;
+          setSyncNote(
+            t("strategies.syncDone")
+              .replace("{bars}", String(synced.syncedBars))
+              .replace("{symbols}", String(synced.symbolCount))
+              .replace("{errors}", String(synced.syncErrors)),
+          );
+        } else {
+          setSyncNote(t("strategies.syncSkipped"));
+        }
+
+        const symbols = items
+          .filter((i) => !i.data_provider || i.data_provider === venue)
+          .map((i) => i.symbol);
+        try {
+          const res = await scanStrategiesBatched({
+            strategies: [pb.strategyKey],
+            timeframe: scanTf,
+            session_date: day,
+            data_provider: venue,
+            symbols,
+            matches_only: false,
+          });
+          if (gen !== runGen.current) return;
+          setScan(res);
+          if (res.session_date) setSessionDate(res.session_date);
+        } catch (err) {
+          if (gen !== runGen.current) return;
+          setError(err instanceof Error ? err.message : "Scan failed");
+          setScan(null);
+        }
+      } finally {
+        if (focusEpochRef.current === epoch) {
+          focusBusyRef.current = false;
+          setFocusBusy(false);
+        }
       }
     },
     [playbook, timeframe, universe, venue, t],
@@ -868,11 +901,14 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
       const day = operativeSessionNyIso(new Date(), venue);
       setSessionDate(day);
       const gen = ++deskGen.current;
+      const epoch = ++deskEpochRef.current;
+      deskBusyRef.current = true;
+      setDeskBusy(true);
       setDeskError(null);
       setDeskNote(t("strategies.syncing"));
       const fromAuto = Boolean(opts?.fromAuto);
       const forceRefresh = takeHardRefresh(day, fromAuto);
-
+      try {
       const synced = await syncUniverse({
         tfs: [...DESK_SYNC_TFS],
         lookback: DESK_LOOKBACK_DAYS,
@@ -934,11 +970,13 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
           setDeskFocusKey(`${firstHit.symbol}::${firstHit.strategy}`);
           setSelectedId(focusPb.id);
           if (gen !== deskGen.current) return;
-          await syncAndScan(focusPb, {
-            fromAuto,
-            skipDeskTfs: true,
-            items: universe,
-          });
+          if (!armOpens) {
+            await syncAndScan(focusPb, {
+              fromAuto,
+              skipDeskTfs: true,
+              items: universe,
+            });
+          }
         } else {
           setDeskFocusKey(null);
         }
@@ -947,8 +985,14 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
         setDeskError(err instanceof Error ? err.message : "Desk scan failed");
         setDeskGroups([]);
       }
+      } finally {
+        if (deskEpochRef.current === epoch) {
+          deskBusyRef.current = false;
+          setDeskBusy(false);
+        }
+      }
     },
-    [deskStrategyKeys, deskUniverse, universe, venue, t, locale, syncAndScan],
+    [deskStrategyKeys, deskUniverse, universe, venue, t, locale, syncAndScan, armOpens],
   );
 
   const runSyncAndScan = useCallback(() => {
@@ -989,32 +1033,36 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
   }
 
   useEffect(() => {
-    if (!autoLive || !playbook?.strategyKey) return;
+    if (!autoLive || armOpens || !playbook?.strategyKey) return;
     const kickoff = window.setTimeout(() => {
+      if (deskBusyRef.current || focusBusyRef.current) return;
       void syncAndScan(undefined, { fromAuto: true });
     }, 400);
     const id = window.setInterval(() => {
+      if (deskBusyRef.current || focusBusyRef.current) return;
       void syncAndScan(undefined, { fromAuto: true });
     }, AUTO_LIVE_MS);
     return () => {
       window.clearTimeout(kickoff);
       window.clearInterval(id);
     };
-  }, [autoLive, playbook?.strategyKey, playbook?.id, venue, syncAndScan]);
+  }, [autoLive, armOpens, playbook?.strategyKey, playbook?.id, venue, syncAndScan]);
 
   useEffect(() => {
-    if (!autoDesk || deskStrategyKeys.length === 0) return;
+    if (!autoDesk || armOpens || deskStrategyKeys.length === 0) return;
     const kickoff = window.setTimeout(() => {
+      if (deskBusyRef.current || focusBusyRef.current) return;
       void runDeskTop5({ fromAuto: true });
     }, 400);
     const id = window.setInterval(() => {
+      if (deskBusyRef.current || focusBusyRef.current) return;
       void runDeskTop5({ fromAuto: true });
     }, AUTO_LIVE_MS);
     return () => {
       window.clearTimeout(kickoff);
       window.clearInterval(id);
     };
-  }, [autoDesk, deskStrategyKeys.length, venue, runDeskTop5]);
+  }, [autoDesk, armOpens, deskStrategyKeys.length, venue, runDeskTop5]);
 
   const matches = useMemo(
     () => sortScanBoard((scan?.hits ?? []).filter((h) => h.matched)),
@@ -1100,7 +1148,7 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
             </div>
             <button
               type="button"
-              disabled={capitalPending}
+              disabled={capitalPending || deskBusy || focusBusy}
               onClick={() => void loadCapital(true)}
               className="rounded-md border border-[var(--border)] px-2.5 py-1 text-[11px] font-medium hover:bg-[var(--hover)] disabled:opacity-50"
             >
@@ -1131,6 +1179,13 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
                 const on = e.target.checked;
                 setArmOpens(on);
                 window.localStorage.setItem(ARM_OPENS_KEY, on ? "1" : "0");
+                if (on) {
+                  abortBrokerSync();
+                  setAutoDesk(false);
+                  setAutoLive(false);
+                  window.localStorage.setItem(AUTO_DESK_KEY, "0");
+                  window.localStorage.setItem(AUTO_LIVE_KEY, "0");
+                }
               }}
             />
             <span>
@@ -1160,24 +1215,28 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
           <>
             <button
               type="button"
-              disabled={deskPending || deskStrategyKeys.length === 0}
+              disabled={deskBusy || deskStrategyKeys.length === 0 || Boolean(openingKey)}
               onClick={runDeskScan}
               className="shrink-0 rounded-md bg-[var(--accent)] px-3 py-1.5 text-xs font-medium text-[var(--on-accent)] hover:bg-[var(--accent-hover)] disabled:opacity-50"
             >
-              {deskPending
+              {deskBusy
                 ? t("strategies.deskTopScanning")
                 : t("strategies.deskTopScan")}
             </button>
             <button
               type="button"
-              disabled={deskStrategyKeys.length === 0}
+              disabled={deskStrategyKeys.length === 0 || armOpens}
               onClick={toggleAutoDesk}
               className={`shrink-0 rounded-md px-3 py-1.5 text-xs font-medium disabled:opacity-50 ${
                 autoDesk
                   ? "border border-[var(--ok)] text-[var(--ok)]"
                   : "border border-[var(--border)] text-[var(--muted)] hover:bg-[var(--hover)]"
               }`}
-              title={t("strategies.deskAutoHint")}
+              title={
+                armOpens
+                  ? t("strategies.armPausesAuto")
+                  : t("strategies.deskAutoHint")
+              }
             >
               {autoDesk ? t("strategies.autoStop") : t("strategies.autoStart")}
             </button>
@@ -1287,6 +1346,7 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
                               if (!pb) return;
                               setDeskFocusKey(rowKey);
                               setSelectedId(pb.id);
+                              if (armOpens) return;
                               startTransition(async () => {
                                 await syncAndScan(pb, {
                                   skipDeskTfs: true,
@@ -1369,6 +1429,7 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
                                       account={primaryAccount}
                                       tradingEnabled={tradingEnabled}
                                       armOpens={armOpens}
+                                      brokerBusy={deskBusy || focusBusy}
                                       opening={openingKey === rowOpenKey}
                                       onOpen={openFromPlan}
                                     />
@@ -1393,7 +1454,7 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
               </tbody>
             </table>
           </div>
-        ) : deskNote && !deskPending ? (
+        ) : deskNote && !deskBusy ? (
           <p className="mt-2 text-[11px] text-[var(--muted)]">
             {t("strategies.deskTopEmpty")}
           </p>
@@ -1408,22 +1469,24 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
           <>
             <button
               type="button"
-              disabled={pending || !playbook.strategyKey}
+              disabled={focusBusy || pending || !playbook.strategyKey || Boolean(openingKey)}
               onClick={runSyncAndScan}
               className="rounded-md bg-[var(--accent)] px-3 py-1.5 text-xs font-medium text-[var(--on-accent)] hover:bg-[var(--accent-hover)] disabled:opacity-50"
             >
-              {pending ? t("strategies.syncScanning") : t("strategies.syncAndScan")}
+              {focusBusy || pending ? t("strategies.syncScanning") : t("strategies.syncAndScan")}
             </button>
             <button
               type="button"
-              disabled={!playbook.strategyKey}
+              disabled={!playbook.strategyKey || armOpens}
               onClick={toggleAutoLive}
               className={`rounded-md px-3 py-1.5 text-xs font-medium disabled:opacity-50 ${
                 autoLive
                   ? "border border-[var(--ok)] text-[var(--ok)]"
                   : "border border-[var(--border)] text-[var(--muted)] hover:bg-[var(--hover)]"
               }`}
-              title={t("strategies.autoHint")}
+              title={
+                armOpens ? t("strategies.armPausesAuto") : t("strategies.autoHint")
+              }
             >
               {autoLive ? t("strategies.autoStop") : t("strategies.autoStart")}
             </button>
@@ -1546,6 +1609,7 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
                 account={primaryAccount}
                 tradingEnabled={tradingEnabled}
                 armOpens={armOpens}
+                brokerBusy={deskBusy || focusBusy}
                 openingKey={openingKey}
                 onOpen={openFromPlan}
               />
@@ -1865,6 +1929,7 @@ function HitCard({
   account = null,
   tradingEnabled = false,
   armOpens = false,
+  brokerBusy = false,
   openingKey = null,
   onOpen,
 }: {
@@ -1874,6 +1939,7 @@ function HitCard({
   account?: BrokerAccount | null;
   tradingEnabled?: boolean;
   armOpens?: boolean;
+  brokerBusy?: boolean;
   openingKey?: string | null;
   onOpen?: (
     plan: NonNullable<ReturnType<typeof buildOptionsEntryPlan>>,
@@ -1937,6 +2003,7 @@ function HitCard({
           account={account}
           tradingEnabled={tradingEnabled}
           armOpens={armOpens}
+          brokerBusy={brokerBusy}
           opening={openingKey === rowKey}
           onOpen={onOpen}
           rowKey={rowKey}
@@ -1952,6 +2019,7 @@ function OpenPlanButton({
   account,
   tradingEnabled,
   armOpens,
+  brokerBusy = false,
   opening,
   onOpen,
 }: {
@@ -1960,6 +2028,7 @@ function OpenPlanButton({
   account: BrokerAccount | null;
   tradingEnabled: boolean;
   armOpens: boolean;
+  brokerBusy?: boolean;
   opening: boolean;
   onOpen: (
     plan: NonNullable<ReturnType<typeof buildOptionsEntryPlan>>,
@@ -2017,8 +2086,14 @@ function OpenPlanButton({
       ) : (
         <button
           type="button"
-          disabled={opening || !armOpens}
-          title={!armOpens ? t("strategies.openNeedArm") : undefined}
+          disabled={opening || !armOpens || brokerBusy}
+          title={
+            brokerBusy
+              ? t("strategies.openWaitSync")
+              : !armOpens
+                ? t("strategies.openNeedArm")
+                : undefined
+          }
           onClick={() => onOpen(livePlan, rowKey)}
           className={`rounded px-2 py-0.5 text-[10px] font-medium hover:bg-[var(--hover)] disabled:opacity-40 ${
             sizing.consider
@@ -2046,6 +2121,7 @@ function OptionsPlanBlock({
   account = null,
   tradingEnabled = false,
   armOpens = false,
+  brokerBusy = false,
   opening = false,
   onOpen,
   rowKey,
@@ -2054,6 +2130,7 @@ function OptionsPlanBlock({
   account?: BrokerAccount | null;
   tradingEnabled?: boolean;
   armOpens?: boolean;
+  brokerBusy?: boolean;
   opening?: boolean;
   onOpen?: (
     plan: NonNullable<ReturnType<typeof buildOptionsEntryPlan>>,
@@ -2137,6 +2214,7 @@ function OptionsPlanBlock({
             account={account}
             tradingEnabled={tradingEnabled}
             armOpens={armOpens}
+            brokerBusy={brokerBusy}
             opening={opening}
             onOpen={onOpen}
           />
