@@ -640,15 +640,190 @@ export function nearestStrike(spot: number): number {
   return Math.round(spot * 2) / 2;
 }
 
+export function strikeIncrement(spot: number): number {
+  if (spot >= 200) return 5;
+  if (spot >= 50) return 1;
+  return 0.5;
+}
+
+function roundToStep(value: number, step: number): number {
+  if (!(step > 0)) return Math.round(value * 100) / 100;
+  return Math.round(Math.round(value / step) * step * 100) / 100;
+}
+
+function roundMoney(n: number): number {
+  return Math.round(n * 100) / 100;
+}
+
+/**
+ * Desk heuristic (not a quote): weekly-ish extrinsic at ATM ~1.2% of spot,
+ * decaying as the strike moves OTM. Intrinsic added when ITM.
+ */
+export function estimateOptionPremium(
+  spot: number,
+  strike: number,
+  optionType: "CALL" | "PUT",
+): number {
+  if (!(spot > 0) || !(strike > 0)) return 0;
+  const intrinsic =
+    optionType === "CALL"
+      ? Math.max(spot - strike, 0)
+      : Math.max(strike - spot, 0);
+  const otm =
+    optionType === "CALL"
+      ? Math.max(strike - spot, 0)
+      : Math.max(spot - strike, 0);
+  const atmTv = Math.min(6, Math.max(0.08, spot * 0.012));
+  const width = Math.max(spot * 0.06, strikeIncrement(spot) * 3);
+  const tv = atmTv * Math.exp(-otm / width);
+  return roundMoney(intrinsic + tv);
+}
+
+/**
+ * Pick a listed-style strike whose estimated premium is closest to target.
+ * Walks OTM for cheap targets, slightly ITM if the target is richer than ATM.
+ */
+export function strikeForTargetPremium(
+  spot: number,
+  optionType: "CALL" | "PUT",
+  targetPremium: number,
+): { strike: number; estimatedPremium: number } {
+  const step = strikeIncrement(spot);
+  const atm = nearestStrike(spot);
+  const target = Math.max(0.01, targetPremium);
+
+  const strikeAt = (n: number): number => {
+    const raw = optionType === "CALL" ? atm + n * step : atm - n * step;
+    return roundToStep(Math.max(step, raw), step);
+  };
+
+  const score = (est: number): number => {
+    const over = Math.max(0, est - target);
+    const under = Math.max(0, target - est);
+    return over * 3 + under;
+  };
+
+  let bestStrike = atm;
+  let bestEst = estimateOptionPremium(spot, atm, optionType);
+  let bestScore = score(bestEst);
+
+  for (let n = -12; n <= 40; n += 1) {
+    const k = strikeAt(n);
+    if (!(k > 0)) continue;
+    const est = estimateOptionPremium(spot, k, optionType);
+    const s = score(est);
+    if (s < bestScore - 1e-9) {
+      bestScore = s;
+      bestStrike = k;
+      bestEst = est;
+    }
+  }
+  return { strike: bestStrike, estimatedPremium: bestEst };
+}
+
+export type PlanCapital = {
+  equity: number;
+  cashAvailable: number;
+};
+
+export type PremiumFit =
+  | "optimal"
+  | "optimal_over_10"
+  | "capital"
+  | "unfitted";
+
+/** Keep in sync with DESK_RISK_PCT / MAX_OPEN_RISK_PCT in option-sizing.ts */
+const FIT_RISK_PCT = 0.1;
+const FIT_MAX_PCT = 0.5;
+const MIN_DEBIT = 0.05;
+const DEFAULT_NO_RANGE_DEBIT = 0.5;
+
+/**
+ * Prefer academy mid (or $0.50 if no band). If that 1ct exceeds cash / 50%
+ * equity, size the debit to the 10% consider pocket (or max payable).
+ */
+export function targetDebitForCapital(
+  academyMid: number,
+  capital: PlanCapital,
+): { premium: number; fit: PremiumFit } {
+  const equity = Number(capital.equity) || 0;
+  const cash = Number(capital.cashAvailable) || 0;
+  const preferred = academyMid > 0 ? academyMid : DEFAULT_NO_RANGE_DEBIT;
+  const maxCost10 = equity > 0 ? equity * FIT_RISK_PCT : 0;
+  const maxCost50 = equity > 0 ? equity * FIT_MAX_PCT : 0;
+  const capCost = Math.max(
+    0,
+    Math.min(cash, maxCost50 > 0 ? maxCost50 : cash),
+  );
+  const capPrem = capCost / 100;
+  const max10Prem = maxCost10 / 100;
+  if (capPrem + 1e-9 < MIN_DEBIT) {
+    return {
+      premium: roundMoney(preferred),
+      fit: academyMid > 0 ? "optimal" : "capital",
+    };
+  }
+  if (preferred <= capPrem + 1e-9) {
+    const within10 = preferred <= max10Prem + 1e-9;
+    if (academyMid > 0) {
+      return {
+        premium: roundMoney(preferred),
+        fit: within10 ? "optimal" : "optimal_over_10",
+      };
+    }
+    return {
+      premium: roundMoney(preferred),
+      fit: within10 ? "capital" : "optimal_over_10",
+    };
+  }
+  const fill = max10Prem >= MIN_DEBIT ? Math.min(max10Prem, capPrem) : capPrem;
+  return { premium: roundMoney(Math.max(MIN_DEBIT, fill)), fit: "capital" };
+}
+
+export function planWithDebit(
+  plan: OptionsEntryPlan,
+  debit: number,
+): OptionsEntryPlan {
+  const prem = Math.max(0, roundMoney(Number(debit) || 0));
+  if (Math.abs(prem - plan.entryPremium) < 1e-9) {
+    return { ...plan, entryPremium: prem };
+  }
+  const { strike, estimatedPremium } = strikeForTargetPremium(
+    plan.spot,
+    plan.optionType,
+    prem > 0 ? prem : MIN_DEBIT,
+  );
+  const tp = (pct: number) => (prem > 0 ? roundMoney(prem * (1 + pct)) : 0);
+  const inBand =
+    plan.hasRange &&
+    prem + 1e-9 >= plan.premiumLow &&
+    prem <= plan.premiumHigh + 1e-9;
+  return {
+    ...plan,
+    strike,
+    entryPremium: prem,
+    estimatedPremium,
+    tp10: tp(0.1),
+    tp20: tp(0.2),
+    tp35: tp(0.35),
+    premiumFit: inBand ? "optimal" : "capital",
+  };
+}
+
 export type OptionsEntryPlan = {
   symbol: string;
   optionType: "CALL" | "PUT";
   spot: number;
   strike: number;
+  /** ATM rounded strike before capital / debit fit. */
+  atmStrike: number;
   premiumLow: number;
   premiumHigh: number;
-  /** Mid of academy optimal band — use as planned debit until live quote. */
+  /** Planned LIMIT debit (academy mid, or sized to capital). */
   entryPremium: number;
+  /** Heuristic mid for the chosen strike — confirm on live chain. */
+  estimatedPremium: number;
+  premiumFit: PremiumFit;
   tp10: number;
   tp20: number;
   tp35: number;
@@ -768,6 +943,7 @@ export function buildOptionsEntryPlan(
   side: "long" | "short" | string | null | undefined,
   spotRaw: number | string | null | undefined,
   now = new Date(),
+  capital: PlanCapital | null = null,
 ): OptionsEntryPlan | null {
   const spot =
     typeof spotRaw === "number"
@@ -779,29 +955,44 @@ export function buildOptionsEntryPlan(
 
   const optionType: "CALL" | "PUT" =
     side === "short" || String(side).toLowerCase() === "put" ? "PUT" : "CALL";
-  const strike = nearestStrike(spot);
+  const atmStrike = nearestStrike(spot);
   const band = premiumRangeFor(symbol);
   const premiumLow = band?.optimalLow ?? 0;
   const premiumHigh = band?.optimalHigh ?? 0;
-  const entryPremium = band
-    ? Math.round(((band.optimalLow + band.optimalHigh) / 2) * 100) / 100
+  const academyMid = band
+    ? roundMoney((band.optimalLow + band.optimalHigh) / 2)
     : 0;
 
+  let entryPremium = academyMid;
+  let premiumFit: PremiumFit = band ? "optimal" : "unfitted";
+  if (capital) {
+    const sized = targetDebitForCapital(academyMid, capital);
+    entryPremium = sized.premium;
+    premiumFit = sized.fit;
+  }
+
+  const { strike, estimatedPremium } = strikeForTargetPremium(
+    spot,
+    optionType,
+    entryPremium > 0 ? entryPremium : DEFAULT_NO_RANGE_DEBIT,
+  );
+
   const tp = (pct: number) =>
-    entryPremium > 0
-      ? Math.round(entryPremium * (1 + pct) * 100) / 100
-      : 0;
+    entryPremium > 0 ? roundMoney(entryPremium * (1 + pct)) : 0;
 
   const exp = suggestOptionExpDate(symbol, now);
 
   return {
     symbol: symbol.toUpperCase(),
     optionType,
-    spot: Math.round(spot * 100) / 100,
+    spot: roundMoney(spot),
     strike,
+    atmStrike,
     premiumLow,
     premiumHigh,
     entryPremium,
+    estimatedPremium,
+    premiumFit,
     tp10: tp(0.1),
     tp20: tp(0.2),
     tp35: tp(0.35),

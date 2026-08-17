@@ -318,12 +318,18 @@ const en: Dict = {
   "strategies.optionsExp": "Exp",
   "strategies.optionsExpHoy": "hoy · 0DTE",
   "strategies.optionsPrem": "Prima óptima",
+  "strategies.optionsPlanDebit": "Plan debit",
+  "strategies.optionsAtm": "ATM",
+  "strategies.optionsFit.optimal": "academy optimal",
+  "strategies.optionsFit.optimal_over_10": "academy optimal · over 10% risk",
+  "strategies.optionsFit.capital": "sized to 10% equity (not academy optimal)",
+  "strategies.optionsFit.unfitted": "load capital to size strike",
   "strategies.optionsTp": "TP prima",
   "strategies.optionsNoRange":
     "No academy premium band for this ticker — type the debit from the chain, then Open.",
   "strategies.optionsPremManual": "Debit $",
   "strategies.optionsPlanHint":
-    "Strike ATM · Exp: before 10:00 ET can be today; from 10:00 next session. Watch/IOVA = Friday weekly. Confirm live chain.",
+    "Starts from academy optimal premium; strike/debit drop to 10% equity if that 1ct is too rich (open still allowed ≤50%). Debit is editable. Confirm live chain.",
   "strategies.capitalTitle": "Capital · flag 10% · open ≤50%",
   "strategies.capitalHint":
     "Green flag = 1ct ≤ 10% equity (consider). Open allowed up to 50% of equity if cash covers. Sort stays confluence.",
@@ -780,12 +786,18 @@ const es: Dict = {
   "strategies.optionsExp": "Exp",
   "strategies.optionsExpHoy": "hoy · 0DTE",
   "strategies.optionsPrem": "Prima óptima",
+  "strategies.optionsPlanDebit": "Prima plan",
+  "strategies.optionsAtm": "ATM",
+  "strategies.optionsFit.optimal": "óptimo academia",
+  "strategies.optionsFit.optimal_over_10": "óptimo academia · más del 10% de riesgo",
+  "strategies.optionsFit.capital": "ajustado al 10% del equity (fuera de óptimo)",
+  "strategies.optionsFit.unfitted": "carga capital para ajustar el strike",
   "strategies.optionsTp": "TP prima",
   "strategies.optionsNoRange":
     "Sin rango de academia para este ticker — escribe la prima de la cadena y pulsa Abrir.",
   "strategies.optionsPremManual": "Prima $",
   "strategies.optionsPlanHint":
-    "Strike ATM · Exp: antes de 10:00 ET puede ser hoy; desde 10:00 la próxima sesión. Watch/IOVA = weekly del viernes. Confirma en la cadena.",
+    "Empieza por la prima óptima de academia; si 1ct no cabe, baja strike/prima al 10% del equity (abrir sigue ≤50%). La prima se puede editar. Confirma en la cadena.",
   "strategies.capitalTitle": "Capital · flag 10% · open ≤50%",
   "strategies.capitalHint":
     "Bandera verde = 1ct ≤ 10% del equity (considerar). Abrir permitido hasta 50% si hay cash. El sort sigue por confluencia.",

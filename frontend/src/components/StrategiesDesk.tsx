@@ -29,7 +29,7 @@ import {
   localizedPlaybookLabel,
   localizedPlaybookName,
 } from "@/lib/playbook-localize";
-import { buildOptionsEntryPlan } from "@/lib/options-premium-ranges";
+import { buildOptionsEntryPlan, planWithDebit, type PlanCapital } from "@/lib/options-premium-ranges";
 import { DEFAULT_OTM_PREMIUM, sizeForSymbol, sizeLongOption } from "@/lib/option-sizing";
 import {
   groupInstrumentsForVenue,
@@ -371,6 +371,14 @@ function moneyUsd(n: number | null | undefined): string {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   });
+}
+
+function planCapital(account: BrokerAccount | null): PlanCapital | null {
+  if (!account) return null;
+  return {
+    equity: account.equity ?? 0,
+    cashAvailable: account.available_funds ?? account.cash_balance ?? 0,
+  };
 }
 
 function tooRichCopy(
@@ -1234,6 +1242,8 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
                                       hit.symbol,
                                       hit.last_signal.side,
                                       hit.last_signal.price,
+                                      new Date(),
+                                      planCapital(primaryAccount),
                                     )?.entryPremium ?? undefined)
                                   : undefined
                               }
@@ -1315,6 +1325,8 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
                                   hit.symbol,
                                   hit.last_signal.side,
                                   hit.last_signal.price,
+                                  new Date(),
+                                  planCapital(primaryAccount),
                                 );
                                 if (!plan) return null;
                                 const rowOpenKey = `${hit.symbol}::${hit.strategy}::open`;
@@ -1322,9 +1334,13 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
                                   <div className="space-y-1 text-[10px] leading-snug text-[var(--foreground)]">
                                     <div>
                                       {plan.optionType} strike ≈ {plan.strike}
+                                      {plan.strike !== plan.atmStrike
+                                        ? ` (ATM ${plan.atmStrike})`
+                                        : ""}
                                       {` · Exp ${plan.expLabel}${plan.expIsToday ? " (hoy)" : ""}`}
+                                      {` · debit $${plan.entryPremium}`}
                                       {plan.hasRange
-                                        ? ` · prima ${plan.rangeLabel} · TP 10/20/35: $${plan.tp10}/$${plan.tp20}/$${plan.tp35}`
+                                        ? ` · óptimo ${plan.rangeLabel} · TP 10/20/35: $${plan.tp10}/$${plan.tp20}/$${plan.tp35}`
                                         : ""}
                                     </div>
                                     <OpenPlanButton
@@ -1550,6 +1566,8 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
                                 hit.symbol,
                                 hit.last_signal.side,
                                 hit.last_signal.price,
+                                new Date(),
+                                planCapital(primaryAccount),
                               )?.entryPremium ?? undefined)
                             : undefined
                         }
@@ -1856,6 +1874,8 @@ function HitCard({
           hit.symbol,
           hit.last_signal.side,
           hit.last_signal.price,
+          new Date(),
+          planCapital(account),
         )
       : null;
   const rowKey = `${hit.symbol}::${hit.strategy}::open`;
@@ -1930,10 +1950,15 @@ function OpenPlanButton({
   const [manualPrem, setManualPrem] = useState(
     String(plan.entryPremium > 0 ? plan.entryPremium : DEFAULT_OTM_PREMIUM),
   );
-  const entryPremium = plan.hasRange
-    ? plan.entryPremium
-    : Number(manualPrem);
-  const livePlan = { ...plan, entryPremium };
+  useEffect(() => {
+    setManualPrem(
+      String(plan.entryPremium > 0 ? plan.entryPremium : DEFAULT_OTM_PREMIUM),
+    );
+  }, [plan.symbol, plan.optionType, plan.expIso, plan.entryPremium]);
+  const typed = Number(manualPrem);
+  const livePlan =
+    Number.isFinite(typed) && typed > 0 ? planWithDebit(plan, typed) : plan;
+  const entryPremium = livePlan.entryPremium;
   if (!account) {
     return (
       <p className="text-[10px] text-[var(--muted)]">{t("strategies.capitalNeed")}</p>
@@ -1946,20 +1971,21 @@ function OpenPlanButton({
   });
   return (
     <div className="flex flex-wrap items-center gap-1.5">
-      {plan.hasRange ? null : (
-        <label className="inline-flex items-center gap-1 text-[10px] text-[var(--muted)]">
-          {t("strategies.optionsPremManual")}
-          <input
-            type="number"
-            min={0.01}
-            step={0.01}
-            inputMode="decimal"
-            value={manualPrem}
-            onChange={(e) => setManualPrem(e.target.value)}
-            className="w-16 rounded border border-[var(--border)] bg-[var(--surface)] px-1 py-0.5 text-[11px] tabular-nums text-[var(--foreground)]"
-          />
-        </label>
-      )}
+      <label className="inline-flex items-center gap-1 text-[10px] text-[var(--muted)]">
+        {t("strategies.optionsPremManual")}
+        <input
+          type="number"
+          min={0.01}
+          step={0.01}
+          inputMode="decimal"
+          value={manualPrem}
+          onChange={(e) => setManualPrem(e.target.value)}
+          className="w-16 rounded border border-[var(--border)] bg-[var(--surface)] px-1 py-0.5 text-[11px] tabular-nums text-[var(--foreground)]"
+        />
+      </label>
+      <span className="text-[10px] tabular-nums text-[var(--muted)]">
+        {t("strategies.optionsStrike")} {moneyUsd(livePlan.strike)}
+      </span>
       {!sizing.canOpen ? (
         <p className="text-[10px] leading-snug text-[var(--warn)]">
           {tooRichCopy(t, sizing)}
@@ -2036,6 +2062,12 @@ function OptionsPlanBlock({
       <p className="mt-0.5 text-[11px] leading-snug text-[var(--foreground)]">
         Spot {money(plan.spot)} → {t("strategies.optionsStrike")}{" "}
         <span className="font-semibold tabular-nums">{money(plan.strike)}</span>
+        {plan.strike !== plan.atmStrike ? (
+          <span className="text-[var(--muted)]">
+            {" "}
+            ({t("strategies.optionsAtm")} {money(plan.atmStrike)})
+          </span>
+        ) : null}
         {" · "}
         {t("strategies.optionsExp")}{" "}
         <span className="font-semibold tabular-nums">{plan.expLabel}</span>
@@ -2047,57 +2079,49 @@ function OptionsPlanBlock({
         ) : null}
       </p>
       {plan.hasRange ? (
-        <>
-          <p className="mt-0.5 text-[11px] leading-snug text-[var(--muted)]">
-            {t("strategies.optionsPrem")}: {plan.rangeLabel} · entry ≈{" "}
-            <span className="font-medium text-[var(--foreground)]">
-              {money(plan.entryPremium)}
-            </span>
-          </p>
-          <p className="mt-0.5 text-[11px] leading-snug text-[var(--foreground)]">
-            {t("strategies.optionsTp")}:{" "}
-            <span className="tabular-nums">10% {money(plan.tp10)}</span>
-            {" · "}
-            <span className="tabular-nums">20% {money(plan.tp20)}</span>
-            {" · "}
-            <span className="font-semibold tabular-nums">
-              35% {money(plan.tp35)}
-            </span>
-          </p>
-          {onOpen && rowKey ? (
-            <div className="mt-1.5">
-              <OpenPlanButton
-                plan={plan}
-                rowKey={rowKey}
-                account={account}
-                tradingEnabled={tradingEnabled}
-                armOpens={armOpens}
-                opening={opening}
-                onOpen={onOpen}
-              />
-            </div>
-          ) : null}
-        </>
+        <p className="mt-0.5 text-[11px] leading-snug text-[var(--muted)]">
+          {t("strategies.optionsPrem")}: {plan.rangeLabel}
+        </p>
       ) : (
-        <>
-          <p className="mt-0.5 text-[10px] leading-snug text-[var(--muted)]">
-            {t("strategies.optionsNoRange")}
-          </p>
-          {onOpen && rowKey ? (
-            <div className="mt-1.5">
-              <OpenPlanButton
-                plan={plan}
-                rowKey={rowKey}
-                account={account}
-                tradingEnabled={tradingEnabled}
-                armOpens={armOpens}
-                opening={opening}
-                onOpen={onOpen}
-              />
-            </div>
-          ) : null}
-        </>
+        <p className="mt-0.5 text-[10px] leading-snug text-[var(--muted)]">
+          {t("strategies.optionsNoRange")}
+        </p>
       )}
+      <p className="mt-0.5 text-[11px] leading-snug text-[var(--foreground)]">
+        {t("strategies.optionsPlanDebit")}:{" "}
+        <span className="font-semibold tabular-nums">
+          {money(plan.entryPremium)}
+        </span>
+        <span className="text-[var(--muted)]">
+          {" "}
+          · {t(`strategies.optionsFit.${plan.premiumFit}`)}
+        </span>
+      </p>
+      {plan.entryPremium > 0 ? (
+        <p className="mt-0.5 text-[11px] leading-snug text-[var(--foreground)]">
+          {t("strategies.optionsTp")}:{" "}
+          <span className="tabular-nums">10% {money(plan.tp10)}</span>
+          {" · "}
+          <span className="tabular-nums">20% {money(plan.tp20)}</span>
+          {" · "}
+          <span className="font-semibold tabular-nums">
+            35% {money(plan.tp35)}
+          </span>
+        </p>
+      ) : null}
+      {onOpen && rowKey ? (
+        <div className="mt-1.5">
+          <OpenPlanButton
+            plan={plan}
+            rowKey={rowKey}
+            account={account}
+            tradingEnabled={tradingEnabled}
+            armOpens={armOpens}
+            opening={opening}
+            onOpen={onOpen}
+          />
+        </div>
+      ) : null}
     </div>
   );
 }
