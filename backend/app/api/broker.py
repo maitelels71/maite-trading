@@ -489,6 +489,21 @@ def place_tp_ladder(body: TpLadderRequest) -> TpLadderResponse:
                         message="submitted",
                     )
                 )
+            except ProviderRateLimitError:
+                if not any(leg.ok for leg in legs):
+                    raise
+                all_ok = False
+                legs.append(
+                    TpLadderLeg(
+                        pct=pct,
+                        quantity=qty,
+                        limit_price=limit_px,
+                        order_id=None,
+                        ok=False,
+                        message="schwab-trader 429",
+                    )
+                )
+                break
             except ProviderError as exc:
                 all_ok = False
                 legs.append(

@@ -5,7 +5,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DeskSession, DeskStack } from "@/components/DeskSession";
 import {
   brokerOpenOption,
-  brokerTpLadder,
   fetchBrokerPositions,
   fetchInstruments,
   scanStrategies,
@@ -58,14 +57,11 @@ const CAPITAL_CACHE_KEY = "maite.strategies.capitalCache";
 const CAPITAL_CACHE_MS = 24 * 60 * 60 * 1000;
 const EXP_CHAIN_KEY = "maite.strategies.expChain";
 const EXP_CHAIN_MS = 12 * 60 * 60 * 1000;
-/** After candles/capital, wait before BUY_TO_OPEN. Shared app quota is ~120/min. */
-const OPEN_QUIET_MS = 120_000;
-/** Extra cool-down after a failed Open 429 (second POST still blocked). */
-const RATE_LIMIT_QUIET_MS = 150_000;
-/** Browser wait then one more POST — Lambda cannot sleep 30s (HTTP API ~29s timeout). */
-const OPEN_RETRY_WAIT_SEC = 150;
-const TP_FILL_WAIT_MS = 20_000;
-const TP_FILL_TRIES = 8;
+/** Brief pause after sync so in-flight Schwab GETs finish. Open does not wait minutes. */
+const OPEN_QUIET_MS = 10_000;
+/** Cool-down only after a real Open 429 (honor Schwab Retry-After). */
+const RATE_LIMIT_QUIET_MS = 60_000;
+const OPEN_RETRY_WAIT_SEC = 60;
 const DESK_TOP_N = 5;
 const DESK_SYNC_TFS = ["1h", "1d"] as const;
 const DESK_LOOKBACK_DAYS = 25;
@@ -389,12 +385,6 @@ function formatPct(n: number): string {
   });
 }
 
-function occKey(sym: string): string {
-  return String(sym || "")
-    .toUpperCase()
-    .replace(/\s+/g, "");
-}
-
 function moneyUsd(n: number | null | undefined): string {
   if (n == null || !Number.isFinite(n)) return "—";
   return n.toLocaleString(undefined, {
@@ -426,8 +416,7 @@ function retryAfterSec(err: unknown, fallback: number): number {
   const m = /Retry-After (\d+)/i.exec(msg);
   const n = m ? Number(m[1]) : fallback;
   if (!Number.isFinite(n) || n < 15) return fallback;
-  // Schwab's 60s Retry-After is not enough after Sync & TOP 5 burned the minute.
-  return Math.min(180, Math.max(fallback, Math.round(n) + 90));
+  return Math.min(90, Math.max(30, Math.round(n)));
 }
 
 function brokerErrorCopy(
@@ -678,7 +667,6 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
   const [listedExpRev, setListedExpRev] = useState(0);
   const runGen = useRef(0);
   const deskGen = useRef(0);
-  const tpWatchGen = useRef(0);
 
   const abortBrokerSync = useCallback(() => {
     // Stop further candle requests; leave busy until the in-flight call returns.
@@ -878,93 +866,6 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
     );
   }, [quietRemainSec, t]);
 
-  const placeAutoTpAfterFill = useCallback(
-    async (opts: {
-      accountHash: string;
-      occ: string;
-      fallbackAvg: number;
-      expectedQty: number;
-    }) => {
-      const gen = ++tpWatchGen.current;
-      const tpLabel = opts.expectedQty <= 1 ? "35%" : "10/20/35/50/100";
-      setOpenNote(
-        t("strategies.openOkTpWait")
-          .replace("{sym}", opts.occ)
-          .replace("{tp}", tpLabel),
-      );
-      const sleep = (ms: number) =>
-        new Promise((resolve) => window.setTimeout(resolve, ms));
-      await sleep(TP_FILL_WAIT_MS);
-      for (let i = 0; i < TP_FILL_TRIES; i += 1) {
-        if (gen !== tpWatchGen.current) return;
-        if (!isCashRthNy()) {
-          setOpenNote(t("strategies.openOkTpPending"));
-          return;
-        }
-        try {
-          const posRes = await fetchBrokerPositions({ includeOrders: false });
-          const pos = (posRes.positions ?? []).find(
-            (p) =>
-              p.account_hash === opts.accountHash &&
-              occKey(p.symbol) === occKey(opts.occ) &&
-              Math.abs(p.quantity) >= 1,
-          );
-          if (pos) {
-            const avg =
-              pos.average_price > 0 ? pos.average_price : opts.fallbackAvg;
-            const ladder = await brokerTpLadder({
-              account_hash: pos.account_hash,
-              symbol: pos.symbol,
-              quantity: Math.abs(pos.quantity),
-              asset_type: pos.asset_type || "OPTION",
-              instruction: pos.close_instruction || "SELL_TO_CLOSE",
-              average_price: avg,
-              confirm_live: true,
-              duration: "GOOD_TILL_CANCEL",
-            });
-            if (gen !== tpWatchGen.current) return;
-            const summary = ladder.legs
-              .map(
-                (leg) =>
-                  `${leg.pct}%×${leg.quantity}@${moneyUsd(leg.limit_price)}${
-                    leg.ok ? "" : " FAIL"
-                  }`,
-              )
-              .join(" · ");
-            setOpenNote(
-              t("strategies.openOkTpPlaced")
-                .replace("{sym}", pos.symbol)
-                .replace("{legs}", summary),
-            );
-            if (!ladder.ok) {
-              setOpenError(
-                ladder.message || t("strategies.openTpFail"),
-              );
-            }
-            return;
-          }
-        } catch (err) {
-          if (gen !== tpWatchGen.current) return;
-          const msg = err instanceof Error ? err.message : "";
-          if (/rate limit/i.test(msg)) {
-            setOpenNote(t("strategies.openOkTpPending"));
-            return;
-          }
-          setOpenError(
-            brokerErrorCopy(err, t("strategies.openTpFail"), t),
-          );
-          setOpenNote(t("strategies.openOkTpPending"));
-          return;
-        }
-        if (i < TP_FILL_TRIES - 1) await sleep(TP_FILL_WAIT_MS);
-      }
-      if (gen === tpWatchGen.current) {
-        setOpenNote(t("strategies.openOkTpPending"));
-      }
-    },
-    [t],
-  );
-
   const openFromPlan = useCallback(
     async (
       plan: NonNullable<ReturnType<typeof buildOptionsEntryPlan>>,
@@ -1101,34 +1002,23 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
           }
         }
         if (!res) return;
-        setOpenNote(
-          t("strategies.openOkTpWait")
-            .replace("{sym}", res.option_symbol || livePlan.symbol)
-            .replace("{tp}", qty <= 1 ? "35%" : "10/20/35/50/100"),
-        );
+        setArmOpens(false);
+        window.localStorage.setItem(ARM_OPENS_KEY, "0");
+        setHoldTrader(false);
         setWorkingUnderlyings((prev) => ({
           ...prev,
           [livePlan.symbol.toUpperCase()]: true,
         }));
-        if (res.option_symbol && primaryAccount.hashValue) {
-          void placeAutoTpAfterFill({
-            accountHash: primaryAccount.hashValue,
-            occ: res.option_symbol,
-            fallbackAvg: livePlan.entryPremium,
-            expectedQty: qty,
-          });
-        } else {
-          setOpenNote(
-            t("strategies.openOk")
-              .replace("{sym}", res.option_symbol || livePlan.symbol)
-              .replace("{id}", res.order_id || "—"),
-          );
-        }
+        setOpenNote(
+          t("strategies.openOkGoPositions")
+            .replace("{sym}", res.option_symbol || livePlan.symbol)
+            .replace("{id}", res.order_id || "—"),
+        );
       } finally {
         setOpeningKey(null);
       }
     },
-    [primaryAccount, tradingEnabled, armOpens, t, deskBusy, focusBusy, quietRemainSec, placeAutoTpAfterFill, startSchwabQuiet],
+    [primaryAccount, tradingEnabled, armOpens, t, deskBusy, focusBusy, quietRemainSec, startSchwabQuiet],
   );
 
   useEffect(() => {

@@ -351,7 +351,7 @@ const en: Dict = {
   "strategies.capitalNeed": "Load capital to size opens (10% flag · 50% max).",
   "strategies.armOpens": "Trigger opens",
   "strategies.armOpensBody":
-    "Sync & TOP 5 first (Trigger off). Then check Trigger — that pauses Auto/Sync and waits ~2 min so Schwab can take BUY_TO_OPEN. If Open gets 429, the desk waits ~2.5 min and retries the confirmed order once. After FILL: TP 35% if 1ct, else 10/20/35/50/100.",
+    "1) Sync & TOP 5 with Trigger off. 2) Check Trigger (pauses Auto). 3) Open sends only BUY_TO_OPEN — no auto TP. 4) After FILL, go to Positions → Trigger closes → TP / close.",
   "strategies.openSchwab": "Open {n}× @ {px}",
   "strategies.openTooRich":
     "1ct {cost} = {pct}% of equity. Consider ≤10% ({risk}). Open ≤50% needs {need50} equity.",
@@ -387,14 +387,16 @@ const en: Dict = {
     "Trigger opens pauses Auto TOP 5 / Auto live so Schwab is free for the order.",
   "strategies.openNeedTrading": "Trading disabled on API (SCHWAB_TRADING_ENABLED).",
   "strategies.openConfirm":
-    "Send BUY_TO_OPEN LIMIT {n}× {sym} {type} {strike} exp {exp} @ {px}? OCC {occ}. Cost ≈ {cost} (10% risk {risk}). After FILL: auto TP 35% if 1ct, else 10/20/35/50/100.",
+    "Send BUY_TO_OPEN LIMIT {n}× {sym} {type} {strike} exp {exp} @ {px}? OCC {occ}. Cost ≈ {cost} (10% risk {risk}). Close/TP is a separate order in Positions after FILL.",
   "strategies.openQuoteWait": "Quoting live ask…",
   "strategies.openQuoteFail":
     "Could not get a live ask. Wait ~30s, then Open again — do not send a cheap LIMIT that will never fill.",
   "strategies.openExpWait": "Looking up listed expiration…",
   "strategies.openExpFail":
     "No listed expiration from Schwab for this ticker. Wait ~30s and Open again — do not send a made-up date.",
-  "strategies.openOk": "Submitted {sym} · #{id} · waiting for FILL then auto TP",
+  "strategies.openOk": "Submitted {sym} · #{id}",
+  "strategies.openOkGoPositions":
+    "Submitted {sym} · #{id}. Check TOS → Orders. After FILL: Positions → Trigger closes → TP / close. Do not Open again.",
   "strategies.openOkTpWait":
     "Submitted {sym} · waiting for FILL, then auto TP {tp} (one Schwab check every 20s).",
   "strategies.openOkTpPlaced": "Auto TP placed {sym}: {legs}",
@@ -404,12 +406,12 @@ const en: Dict = {
     "Open sent, but auto TP failed. When the buy FILLS, use Positions → TP 10/20/35/50/100.",
   "strategies.openFail": "Open failed",
   "strategies.rateLimit":
-    "Schwab Trader rate limit. The desk counts down ~90s and this message clears by itself. Do not Open or Refresh Positions until then.",
+    "Schwab Trader rate limit. Wait the countdown, then Open once. Do not Refresh Positions until then.",
   "strategies.tradingDisabledShort": "Trading off",
 
   "positions.title": "Schwab positions",
   "positions.hint":
-    "Positions + working orders from Schwab/TOS. Button TP 10/20/35/50/100 places resting LIMIT sells (scale-out).",
+    "Pick one exit: Auto (market when TP % hits) or Park LIMIT (resting sells in TOS). Not both. Close now always exits now.",
   "positions.refresh": "Refresh",
   "positions.refreshing": "Loading…",
   "positions.holdOpen":
@@ -421,17 +423,17 @@ const en: Dict = {
   "positions.emptyHint": "Refresh to pull open positions from Schwab.",
   "positions.noPositions": "No open positions yet.",
   "positions.noPositionsHint":
-    "TP 10/20/35/50/100 and Close now appear on each open position row. A LIMIT buy is not a position until it FILLS — look at Working orders below, or TOS → Orders, then Refresh.",
+    "Park LIMIT and Close now appear on each open row. A LIMIT buy is not a position until it FILLS — look at Working orders below, or TOS → Orders, then Refresh.",
   "positions.armTitle": "Trigger closes",
   "positions.armBody":
-    "Required for Close now, TP ladder (10/20/35/50/100 limits), and auto-close. Sends real orders to Schwab.",
+    "Arm to send real closes: Auto (market at TP %), Park LIMIT, or Close now. Pick Auto or Park LIMIT — not both.",
   "positions.tradingDisabled":
     "Trading disabled on API (SCHWAB_TRADING_ENABLED). Alerts still work.",
   "positions.needArm": "Turn on Trigger closes first.",
   "positions.needAvg": "Average price missing — cannot build TP limits.",
   "positions.confirmClose": "Place live close order for {symbol}?",
   "positions.confirmLadder":
-    "Place GTC LIMIT sells for {symbol} at +10/20/35/50/100% of avg {avg} (scale-out of {qty})?",
+    "Park GTC LIMIT sells for {symbol} at +10/20/35/50/100% of avg {avg} (scale-out of {qty})? Auto market-close will turn off.",
   "positions.closeNow": "Close now",
   "positions.closeAll": "Close all",
   "positions.confirmCloseAll":
@@ -439,9 +441,15 @@ const en: Dict = {
   "positions.closeAllNote": "Close all: {ok}/{n} submitted · {syms}",
   "positions.closeAllRateLimit":
     "Close all stopped: {ok}/{n} sent, then Schwab rate limit. Wait ~30s and Close all again for the rest.",
-  "positions.tpLadder": "TP 10/20/35/50/100",
+  "positions.tpLadder": "Park LIMIT",
+  "positions.ladderOffBecauseAuto":
+    "Auto is on — it will market-close at TP %. Turn Auto off to park LIMIT sells instead.",
+  "positions.ladderWaiting":
+    "Schwab busy (429) — LIMIT not sent. Waiting {n}s, then one automatic retry. Do not click again.",
+  "positions.ladderRateLimit":
+    "Schwab still busy — LIMIT not in TOS. Wait until the countdown finishes; do not Refresh or Open.",
   "positions.ladderHint":
-    "Pay yourself first: 1ct → 35% only. Extra contracts fill 10/20/35 first, then 50/100.",
+    "Park GTC LIMIT sells now (1ct → +35% only). Turns Auto off. Needs Trigger.",
   "positions.ladderNote": "TP ladder for {symbol}",
   "positions.ordersTitle": "Working / recent orders (Schwab)",
   "positions.ordersEmpty":
@@ -459,10 +467,11 @@ const en: Dict = {
   "positions.colPnl": "P&L %",
   "positions.colTp": "TP %",
   "positions.colAlert": "Alert",
-  "positions.colAuto": "Auto",
+  "positions.colAuto": "Auto mkt",
   "positions.colActions": "Actions",
-  "positions.alertHint": "Browser notify when TP % is reached",
-  "positions.autoHint": "Auto SELL_TO_CLOSE when TP % is reached (needs Trigger)",
+  "positions.alertHint": "Browser notify when TP % is reached (no order)",
+  "positions.autoHint":
+    "Market SELL_TO_CLOSE when TP % hits. Needs Trigger. Disables Park LIMIT.",
   "positions.notifyHit": "Target reached · {pct}%",
   "positions.notifyClosed": "Close order submitted to Schwab",
   "positions.hitNote": "{symbol} hit TP ({pct}%) — alert",
@@ -881,7 +890,7 @@ const es: Dict = {
   "strategies.capitalNeed": "Carga capital para dimensionar (flag 10% · máx 50%).",
   "strategies.armOpens": "Trigger opens",
   "strategies.armOpensBody":
-    "Primero Sync & TOP 5 (Trigger apagado). Luego activa Trigger — pausa Auto/Sync y espera ~2 min para que Schwab acepte BUY_TO_OPEN. Si Open da 429, el desk espera ~2.5 min y reintenta la orden ya confirmada una vez. Tras FILL: TP 35% si 1ct, si no 10/20/35/50/100.",
+    "1) Sync & TOP 5 con Trigger apagado. 2) Activa Trigger (pausa Auto). 3) Open envía solo BUY_TO_OPEN — sin TP auto. 4) Tras FILL: Positions → Trigger cierres → TP / close.",
   "strategies.openSchwab": "Abrir {n}× @ {px}",
   "strategies.openTooRich":
     "1ct {cost} = {pct}% del equity. Considerar ≤10% ({risk}). Open ≤50% pide {need50} de equity.",
@@ -917,14 +926,16 @@ const es: Dict = {
     "Trigger opens pausa Auto TOP 5 / Auto live para dejar Schwab libre para la orden.",
   "strategies.openNeedTrading": "Trading desactivado en API (SCHWAB_TRADING_ENABLED).",
   "strategies.openConfirm":
-    "¿Enviar BUY_TO_OPEN LIMIT {n}× {sym} {type} {strike} exp {exp} @ {px}? OCC {occ}. Costo ≈ {cost} (riesgo 10% {risk}). Tras FILL: TP auto 35% si 1ct, si no 10/20/35/50/100.",
+    "¿Enviar BUY_TO_OPEN LIMIT {n}× {sym} {type} {strike} exp {exp} @ {px}? OCC {occ}. Costo ≈ {cost} (riesgo 10% {risk}). El close/TP es otra orden en Positions tras el FILL.",
   "strategies.openQuoteWait": "Cotizando ask en vivo…",
   "strategies.openQuoteFail":
     "No pude obtener el ask en vivo. Espera ~30s y vuelve a Abrir — no envíes un LIMIT barato que nunca va a llenar.",
   "strategies.openExpWait": "Buscando vencimiento listado…",
   "strategies.openExpFail":
     "Schwab no devolvió un vencimiento listado para este ticker. Espera ~30s y vuelve a Abrir — no envíes una fecha inventada.",
-  "strategies.openOk": "Enviado {sym} · #{id} · esperando FILL y luego TP auto",
+  "strategies.openOk": "Enviado {sym} · #{id}",
+  "strategies.openOkGoPositions":
+    "Enviado {sym} · #{id}. Mira TOS → Orders. Tras FILL: Positions → Trigger cierres → TP / close. No pulses Open otra vez.",
   "strategies.openOkTpWait":
     "Enviado {sym} · esperando FILL, luego TP auto {tp} (un check a Schwab cada 20s).",
   "strategies.openOkTpPlaced": "TP auto enviado {sym}: {legs}",
@@ -934,12 +945,12 @@ const es: Dict = {
     "Open enviado, pero el TP auto falló. Cuando la compra haga FILL, usa Posiciones → TP 10/20/35/50/100.",
   "strategies.openFail": "Open falló",
   "strategies.rateLimit":
-    "Schwab Trader está saturado (rate limit). El desk cuenta ~90s y este aviso se quita solo. No pulses Open ni Refresh en Positions hasta entonces.",
+    "Schwab Trader saturado (429). Espera la cuenta atrás y pulsa Open una vez. No hagas Refresh en Positions hasta entonces.",
   "strategies.tradingDisabledShort": "Trading off",
 
   "positions.title": "Posiciones Schwab",
   "positions.hint":
-    "Posiciones + órdenes working de Schwab/TOS. El botón TP 10/20/35/50/100 crea LIMIT de venta (scale-out).",
+    "Elige un cierre: Auto (mercado al TP %) o Dejar LIMIT (venta en TOS). No los dos. Cerrar ahora sale ya.",
   "positions.refresh": "Actualizar",
   "positions.refreshing": "Cargando…",
   "positions.holdOpen":
@@ -950,17 +961,17 @@ const es: Dict = {
   "positions.emptyHint": "Actualiza para traer posiciones abiertas de Schwab.",
   "positions.noPositions": "Aún no hay posiciones abiertas.",
   "positions.noPositionsHint":
-    "TP 10/20/35/50/100 y Close now salen en cada fila de posición abierta. Un LIMIT de compra no es posición hasta el FILL — mira Órdenes working abajo, o TOS → Orders, y dale Refresh.",
+    "Dejar LIMIT y Cerrar ahora salen en cada fila. Un LIMIT de compra no es posición hasta el FILL — mira Órdenes working abajo, o TOS → Orders, y dale Refresh.",
   "positions.armTitle": "Trigger cierres",
   "positions.armBody":
-    "Obligatorio para Close now, TP ladder (límites 10/20/35/50/100) y auto-close. Envía órdenes reales a Schwab.",
+    "Ármalo para enviar cierres reales: Auto (mercado al TP %), Dejar LIMIT, o Cerrar ahora. Auto o LIMIT — no los dos.",
   "positions.tradingDisabled":
     "Trading desactivado en API (SCHWAB_TRADING_ENABLED). Las alertas sí funcionan.",
   "positions.needArm": "Activa Trigger cierres primero.",
   "positions.needAvg": "Falta avg price — no se pueden crear límites TP.",
   "positions.confirmClose": "¿Enviar orden de cierre live para {symbol}?",
   "positions.confirmLadder":
-    "¿Crear LIMIT GTC de venta para {symbol} a +10/20/35/50/100% del avg {avg} (scale-out de {qty})?",
+    "¿Dejar LIMIT GTC de venta para {symbol} a +10/20/35/50/100% del avg {avg} (scale-out de {qty})? Auto (cierre a mercado) se apaga.",
   "positions.closeNow": "Cerrar ahora",
   "positions.closeAll": "Cerrar todo",
   "positions.confirmCloseAll":
@@ -968,9 +979,15 @@ const es: Dict = {
   "positions.closeAllNote": "Cerrar todo: {ok}/{n} enviadas · {syms}",
   "positions.closeAllRateLimit":
     "Cerrar todo se detuvo: {ok}/{n} enviadas, luego rate limit de Schwab. Espera ~30s y pulsa Cerrar todo otra vez.",
-  "positions.tpLadder": "TP 10/20/35/50/100",
+  "positions.tpLadder": "Dejar LIMIT",
+  "positions.ladderOffBecauseAuto":
+    "Auto está on — cerrará a mercado al TP %. Apaga Auto para dejar LIMIT en TOS.",
+  "positions.ladderWaiting":
+    "Schwab ocupado (429) — la LIMIT no se envió. Esperando {n}s y un reintento automático. No pulses otra vez.",
+  "positions.ladderRateLimit":
+    "Schwab sigue ocupado — la LIMIT no está en TOS. Espera a que termine la cuenta; no hagas Refresh ni Open.",
   "positions.ladderHint":
-    "Cobrarte primero: 1ct → solo 35%. Contratos extra llenan 10/20/35 primero, luego 50/100.",
+    "Deja LIMIT GTC ahora (1ct → solo +35%). Apaga Auto. Necesita Trigger.",
   "positions.ladderNote": "TP ladder para {symbol}",
   "positions.ordersTitle": "Órdenes working / recientes (Schwab)",
   "positions.ordersEmpty":
@@ -988,10 +1005,11 @@ const es: Dict = {
   "positions.colPnl": "P&L %",
   "positions.colTp": "TP %",
   "positions.colAlert": "Alerta",
-  "positions.colAuto": "Auto",
+  "positions.colAuto": "Auto mkt",
   "positions.colActions": "Acciones",
-  "positions.alertHint": "Notificación del browser al llegar al TP %",
-  "positions.autoHint": "Auto SELL_TO_CLOSE al TP % (necesita Trigger)",
+  "positions.alertHint": "Notificación del browser al TP % (no envía orden)",
+  "positions.autoHint":
+    "SELL_TO_CLOSE a mercado al llegar al TP %. Necesita Trigger. Bloquea Dejar LIMIT.",
   "positions.notifyHit": "Target alcanzado · {pct}%",
   "positions.notifyClosed": "Orden de cierre enviada a Schwab",
   "positions.hitNote": "{symbol} tocó TP ({pct}%) — alerta",

@@ -14,10 +14,19 @@ import {
   readHoldTrader,
   subscribeHoldTrader,
 } from "@/lib/schwab-hold";
-import type { BrokerOrder, BrokerPosition, TpWatch } from "@/lib/types";
+import type { BrokerOrder, BrokerPosition, TpLadderResponse, TpWatch } from "@/lib/types";
 
 const WATCH_KEY = "maite.broker.tpWatches";
 const POLL_MS = 20_000;
+const LADDER_RETRY_WAIT_SEC = 150;
+
+function isRateLimitText(msg: string | null | undefined): boolean {
+  return /(?:\b429\b|rate limit)/i.test(msg || "");
+}
+
+function ladderRateLimited(res: TpLadderResponse): boolean {
+  return res.legs.some((leg) => !leg.ok && isRateLimitText(leg.message));
+}
 
 function loadWatches(): TpWatch[] {
   try {
@@ -84,6 +93,7 @@ export function PositionsDesk() {
   const [ordersError, setOrdersError] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  const [ladderBusy, setLadderBusy] = useState(false);
   const [watches, setWatches] = useState<TpWatch[]>(() => loadWatches());
   const [armedConfirm, setArmedConfirm] = useState(false);
   const [holdTrader, setHoldTrader] = useState(() => readHoldTrader());
@@ -95,14 +105,14 @@ export function PositionsDesk() {
     saveWatches(watches);
   }, [watches]);
 
-  const refresh = useCallback(() => {
+  const refresh = useCallback((opts?: { keepError?: boolean }) => {
     if (readHoldTrader()) {
       setHoldTrader(true);
       setNote(t("positions.holdOpen"));
       return;
     }
     startTransition(async () => {
-      setError(null);
+      if (!opts?.keepError) setError(null);
       try {
         const res = await fetchBrokerPositions();
         setPositions(res.positions);
@@ -175,7 +185,7 @@ export function PositionsDesk() {
   );
 
   const tickWatches = useCallback(async () => {
-    if (readHoldTrader()) return;
+    if (readHoldTrader() || pending || ladderBusy) return;
     const active = watches.filter((w) => w.alertOn || w.autoClose);
     if (active.length === 0) return;
 
@@ -259,7 +269,7 @@ export function PositionsDesk() {
         inFlight.current.delete(w.id);
       }
     }
-  }, [watches, armedConfirm, tradingEnabled, t, refresh]);
+  }, [watches, armedConfirm, tradingEnabled, pending, ladderBusy, t, refresh]);
 
   useEffect(() => {
     const id = window.setInterval(() => {
@@ -378,32 +388,75 @@ export function PositionsDesk() {
       .replace("{qty}", String(qty));
     if (!window.confirm(msg)) return;
 
-    startTransition(async () => {
-      setError(null);
-      try {
-        const res = await brokerTpLadder({
-          account_hash: pos.account_hash,
-          symbol: pos.symbol,
-          quantity: qty,
-          asset_type: pos.asset_type,
-          instruction: pos.close_instruction,
-          average_price: pos.average_price,
-          confirm_live: true,
-          duration: "GOOD_TILL_CANCEL",
-        });
-        const summary = res.legs
-          .map(
-            (leg) =>
-              `${leg.pct}%×${leg.quantity}@${money(leg.limit_price)}${leg.ok ? "" : " FAIL"}`,
-          )
-          .join(" · ");
-        setNote(
-          `${t("positions.ladderNote").replace("{symbol}", pos.symbol)} — ${summary}`,
-        );
-        if (!res.ok) setError(res.message);
+    upsertWatch(pos, { autoClose: false });
+
+    const payload = {
+      account_hash: pos.account_hash,
+      symbol: pos.symbol,
+      quantity: qty,
+      asset_type: pos.asset_type,
+      instruction: pos.close_instruction,
+      average_price: pos.average_price,
+      confirm_live: true as const,
+      duration: "GOOD_TILL_CANCEL",
+    };
+
+    const applyResult = (res: TpLadderResponse) => {
+      const summary = res.legs
+        .map((leg) => {
+          const bit = `${leg.pct}%×${leg.quantity}@${money(leg.limit_price)}`;
+          if (leg.ok) return bit;
+          return `${bit} FAIL${leg.message ? ` (${leg.message})` : ""}`;
+        })
+        .join(" · ");
+      setNote(
+        `${t("positions.ladderNote").replace("{symbol}", pos.symbol)} — ${summary}`,
+      );
+      if (res.ok) {
         refresh();
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "TP ladder failed");
+        return;
+      }
+      const failed = res.legs.filter((leg) => !leg.ok);
+      setError(
+        ladderRateLimited(res)
+          ? t("positions.ladderRateLimit")
+          : [res.message, ...failed.map((leg) => leg.message).filter(Boolean)]
+              .filter(Boolean)
+              .join(" — "),
+      );
+      if (!ladderRateLimited(res)) refresh({ keepError: true });
+    };
+
+    startTransition(async () => {
+      setLadderBusy(true);
+      setError(null);
+      const sleep = (ms: number) =>
+        new Promise((resolve) => window.setTimeout(resolve, ms));
+      try {
+        for (let attempt = 0; attempt < 2; attempt += 1) {
+          try {
+            const res = await brokerTpLadder(payload);
+            if (res.ok || !ladderRateLimited(res) || attempt === 1) {
+              applyResult(res);
+              return;
+            }
+          } catch (err) {
+            const raw = err instanceof Error ? err.message : "TP ladder failed";
+            if (!isRateLimitText(raw) || attempt === 1) {
+              setError(
+                isRateLimitText(raw) ? t("positions.ladderRateLimit") : raw,
+              );
+              return;
+            }
+          }
+          for (let n = LADDER_RETRY_WAIT_SEC; n > 0; n -= 1) {
+            setError(t("positions.ladderWaiting").replace("{n}", String(n)));
+            await sleep(1000);
+          }
+          setError(null);
+        }
+      } finally {
+        setLadderBusy(false);
       }
     });
   }
@@ -420,7 +473,7 @@ export function PositionsDesk() {
             {positions.length > 0 ? (
               <button
                 type="button"
-                disabled={pending || !tradingEnabled}
+                disabled={pending || ladderBusy || !tradingEnabled}
                 onClick={closeAll}
                 className="rounded-md border border-[var(--danger)]/40 bg-[var(--danger-soft)] px-3 py-1.5 text-xs font-medium text-[var(--danger)] hover:bg-[var(--hover)] disabled:opacity-50"
               >
@@ -429,12 +482,12 @@ export function PositionsDesk() {
             ) : null}
             <button
               type="button"
-              disabled={pending || holdTrader}
+              disabled={pending || ladderBusy || holdTrader}
               title={holdTrader ? t("positions.holdOpen") : undefined}
               onClick={refresh}
               className="shrink-0 rounded-md bg-[var(--accent)] px-3 py-1.5 text-xs font-medium text-[var(--on-accent)] hover:bg-[var(--accent-hover)] disabled:opacity-50"
             >
-              {pending ? t("positions.refreshing") : t("positions.refresh")}
+              {pending || ladderBusy ? t("positions.refreshing") : t("positions.refresh")}
             </button>
           </div>
         }
@@ -505,6 +558,7 @@ export function PositionsDesk() {
                   const w = watches.find((row) => row.id === id);
                   const pnl = w?.lastPnlPct ?? pos.pnl_pct;
                   const mark = w?.lastMark ?? pos.mark;
+                  const autoOn = Boolean(w?.autoClose);
                   return (
                     <tr
                       key={id}
@@ -581,7 +635,7 @@ export function PositionsDesk() {
                         <div className="flex flex-col gap-1">
                           <button
                             type="button"
-                            disabled={pending || !tradingEnabled}
+                            disabled={pending || ladderBusy || !tradingEnabled}
                             onClick={() => placeTpLadder(pos)}
                             className="rounded border border-[var(--ok)]/40 bg-[var(--ok-soft)] px-2 py-1 text-[10px] font-medium text-[var(--ok)] hover:bg-[var(--hover)] disabled:opacity-40"
                             title={t("positions.ladderHint")}
@@ -590,16 +644,18 @@ export function PositionsDesk() {
                           </button>
                           <button
                             type="button"
-                            disabled={pending || !tradingEnabled}
+                            disabled={pending || ladderBusy || !tradingEnabled}
                             onClick={() => closeNow(pos)}
                             className="rounded border border-[var(--border)] px-2 py-1 text-[10px] font-medium hover:bg-[var(--hover)] disabled:opacity-40"
                           >
                             {t("positions.closeNow")}
                           </button>
                         </div>
-                        {w?.lastStatus ? (
+                        {autoOn || w?.lastStatus ? (
                           <div className="mt-1 max-w-[10rem] text-[9px] leading-snug text-[var(--muted)]">
-                            {w.lastStatus}
+                            {autoOn ? t("positions.ladderOffBecauseAuto") : null}
+                            {autoOn && w?.lastStatus ? " · " : null}
+                            {w?.lastStatus || null}
                           </div>
                         ) : null}
                       </td>
