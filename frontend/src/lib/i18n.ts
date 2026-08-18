@@ -344,7 +344,7 @@ const en: Dict = {
   "strategies.capitalNeed": "Load capital to size opens (10% flag · 50% max).",
   "strategies.armOpens": "Trigger opens",
   "strategies.armOpensBody":
-    "Required to send BUY_TO_OPEN to Schwab. Pauses Auto sync so the order is not blocked. After FILL the desk sends default TP (35% if 1ct, else 10/20/35/50/100).",
+    "Off by default so Auto and Sync can run. Turn on only when you are ready to send BUY_TO_OPEN — that pauses Auto so Schwab is free for the order. After FILL the desk sends default TP (35% if 1ct, else 10/20/35/50/100).",
   "strategies.openSchwab": "Open {n}× @ {px}",
   "strategies.openTooRich":
     "1ct {cost} = {pct}% of equity. Consider ≤10% ({risk}). Open ≤50% needs {need50} equity.",
@@ -378,7 +378,7 @@ const en: Dict = {
     "Open sent, but auto TP failed. When the buy FILLS, use Positions → TP 10/20/35/50/100.",
   "strategies.openFail": "Open failed",
   "strategies.rateLimit":
-    "Schwab Trader rate limit. Wait ~30 seconds, then retry. Do not click Load capital repeatedly.",
+    "Schwab Trader rate limit. Wait ~30 seconds. Do not Refresh Positions or send another Open until then.",
   "strategies.tradingDisabledShort": "Trading off",
 
   "positions.title": "Schwab positions",
@@ -393,7 +393,7 @@ const en: Dict = {
   "positions.emptyHint": "Refresh to pull open positions from Schwab.",
   "positions.noPositions": "No open positions yet.",
   "positions.noPositionsHint":
-    "TP 10/20/35/50/100 and Close now appear on each open position row. A REJECTED / canceled / working buy does not create a position — wait until it FILLS in TOS, then Refresh.",
+    "TP 10/20/35/50/100 and Close now appear on each open position row. A LIMIT buy is not a position until it FILLS — look at Working orders below, or TOS → Orders, then Refresh.",
   "positions.armTitle": "Trigger closes",
   "positions.armBody":
     "Required for Close now, TP ladder (10/20/35/50/100 limits), and auto-close. Sends real orders to Schwab.",
@@ -416,6 +416,10 @@ const en: Dict = {
     "Pay yourself first: 1ct → 35% only. Extra contracts fill 10/20/35 first, then 50/100.",
   "positions.ladderNote": "TP ladder for {symbol}",
   "positions.ordersTitle": "Working / recent orders (Schwab)",
+  "positions.ordersEmpty":
+    "No orders in this pull. A LIMIT Open sits in Schwab until FILL. Wait ~30s, Refresh, or check TOS → Orders (not Positions).",
+  "positions.ordersRateLimit":
+    "Could not load orders ({detail}). Positions may still be empty until FILL. Wait ~30s and Refresh.",
   "positions.colWhen": "When (ET)",
   "positions.colStatus": "Status",
   "positions.colSide": "Side",
@@ -842,7 +846,7 @@ const es: Dict = {
   "strategies.capitalNeed": "Carga capital para dimensionar (flag 10% · máx 50%).",
   "strategies.armOpens": "Trigger opens",
   "strategies.armOpensBody":
-    "Obligatorio para enviar BUY_TO_OPEN a Schwab. Pausa el Auto sync para no bloquear la orden. Tras el FILL el desk envía TP por defecto (35% si 1ct, si no 10/20/35/50/100).",
+    "Apagado por defecto para que Auto y Sync corran. Actívalo solo cuando vayas a enviar BUY_TO_OPEN — eso pausa Auto para dejar Schwab libre. Tras el FILL el desk envía TP por defecto (35% si 1ct, si no 10/20/35/50/100).",
   "strategies.openSchwab": "Abrir {n}× @ {px}",
   "strategies.openTooRich":
     "1ct {cost} = {pct}% del equity. Considerar ≤10% ({risk}). Open ≤50% pide {need50} de equity.",
@@ -876,7 +880,7 @@ const es: Dict = {
     "Open enviado, pero el TP auto falló. Cuando la compra haga FILL, usa Posiciones → TP 10/20/35/50/100.",
   "strategies.openFail": "Open falló",
   "strategies.rateLimit":
-    "Schwab Trader está saturado (rate limit). Espera ~30 segundos y reintenta. No pulses Load capital varias veces.",
+    "Schwab Trader está saturado (rate limit). Espera ~30 segundos. No hagas Refresh en Positions ni otro Open hasta entonces.",
   "strategies.tradingDisabledShort": "Trading off",
 
   "positions.title": "Posiciones Schwab",
@@ -890,7 +894,7 @@ const es: Dict = {
   "positions.emptyHint": "Actualiza para traer posiciones abiertas de Schwab.",
   "positions.noPositions": "Aún no hay posiciones abiertas.",
   "positions.noPositionsHint":
-    "TP 10/20/35/50/100 y Close now salen en cada fila de posición abierta. Una orden REJECTED / cancelada / working no crea posición — espera a que FILL en TOS y dale Refresh.",
+    "TP 10/20/35/50/100 y Close now salen en cada fila de posición abierta. Un LIMIT de compra no es posición hasta el FILL — mira Órdenes working abajo, o TOS → Orders, y dale Refresh.",
   "positions.armTitle": "Trigger cierres",
   "positions.armBody":
     "Obligatorio para Close now, TP ladder (límites 10/20/35/50/100) y auto-close. Envía órdenes reales a Schwab.",
@@ -913,6 +917,10 @@ const es: Dict = {
     "Cobrarte primero: 1ct → solo 35%. Contratos extra llenan 10/20/35 primero, luego 50/100.",
   "positions.ladderNote": "TP ladder para {symbol}",
   "positions.ordersTitle": "Órdenes working / recientes (Schwab)",
+  "positions.ordersEmpty":
+    "No hay órdenes en esta carga. Un Open LIMIT se queda en Schwab hasta el FILL. Espera ~30s, Refresh, o mira TOS → Orders (no Positions).",
+  "positions.ordersRateLimit":
+    "No se pudieron cargar órdenes ({detail}). La posición aparece tras el FILL. Espera ~30s y Refresh.",
   "positions.colWhen": "Cuándo (ET)",
   "positions.colStatus": "Status",
   "positions.colSide": "Lado",

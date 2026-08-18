@@ -375,9 +375,10 @@ export type BrokerPositionsResponse = {
   trading_enabled: boolean;
   accounts: BrokerAccount[];
   positions: BrokerPosition[];
-  orders?: BrokerOrder[];
-  risk_pct?: number;
-  error?: string | null;
+    orders?: BrokerOrder[];
+    risk_pct?: number;
+    error?: string | null;
+    orders_error?: string | null;
 };
 
 export type BrokerOrder = {

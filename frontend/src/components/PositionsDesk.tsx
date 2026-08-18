@@ -77,6 +77,7 @@ export function PositionsDesk() {
   const [accountLabels, setAccountLabels] = useState<string[]>([]);
   const [tradingEnabled, setTradingEnabled] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [ordersError, setOrdersError] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const [watches, setWatches] = useState<TpWatch[]>(() => loadWatches());
@@ -94,6 +95,7 @@ export function PositionsDesk() {
         const res = await fetchBrokerPositions();
         setPositions(res.positions);
         setOrders(res.orders ?? []);
+        setOrdersError(res.orders_error ?? null);
         const labels = res.accounts
           .map((a) => a.accountNumber)
           .filter((n): n is string => Boolean(n && String(n).trim()));
@@ -120,6 +122,7 @@ export function PositionsDesk() {
         setError(err instanceof Error ? err.message : "Failed to load positions");
         setPositions([]);
         setOrders([]);
+        setOrdersError(null);
         setAccountLabels([]);
       }
     });
@@ -598,11 +601,16 @@ export function PositionsDesk() {
           </div>
         ) : null}
 
-        {orders.length > 0 ? (
-          <div className="mt-3">
-            <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.06em] text-[var(--muted)]">
-              {t("positions.ordersTitle")}
-            </p>
+        {ordersError ? (
+          <div className="mt-3 rounded-md border border-amber-300/60 bg-[var(--warn-soft)] px-3 py-2 text-[11px] leading-snug text-[var(--warn)]">
+            {t("positions.ordersRateLimit").replace("{detail}", ordersError)}
+          </div>
+        ) : null}
+        <div className="mt-3">
+          <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.06em] text-[var(--muted)]">
+            {t("positions.ordersTitle")}
+          </p>
+          {orders.length > 0 ? (
             <div className="overflow-auto rounded-lg border border-[var(--border)]">
               <table className="min-w-full text-left text-xs">
                 <thead className="bg-[var(--surface-muted)] text-[var(--muted)]">
@@ -646,8 +654,12 @@ export function PositionsDesk() {
                 </tbody>
               </table>
             </div>
-          </div>
-        ) : null}
+          ) : !pending ? (
+            <p className="rounded-md border border-[var(--border)] bg-[var(--surface-muted)] px-3 py-2 text-[11px] leading-snug text-[var(--muted)]">
+              {t("positions.ordersEmpty")}
+            </p>
+          ) : null}
+        </div>
       </DeskSession>
     </DeskStack>
   );

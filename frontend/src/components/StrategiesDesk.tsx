@@ -367,11 +367,6 @@ function readAutoDesk(): boolean {
   return window.localStorage.getItem(AUTO_DESK_KEY) === "1";
 }
 
-function readArmOpens(): boolean {
-  if (typeof window === "undefined") return false;
-  return window.localStorage.getItem(ARM_OPENS_KEY) === "1";
-}
-
 function formatPct(n: number): string {
   if (!Number.isFinite(n)) return "—";
   return n.toLocaleString(undefined, {
@@ -578,9 +573,10 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
   }, []);
 
   useEffect(() => {
-    const armed = readArmOpens();
-    setArmOpens(armed);
-    const blockAuto = armed || (venue === "schwab" && isCashAutoOffNy());
+    // Trigger opens always starts off so Auto / Sync can run. Arm only when ready to send.
+    setArmOpens(false);
+    window.localStorage.setItem(ARM_OPENS_KEY, "0");
+    const blockAuto = venue === "schwab" && isCashAutoOffNy();
     if (blockAuto) {
       setAutoLive(false);
       setAutoDesk(false);
@@ -646,7 +642,6 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
 
   const loadCapital = useCallback(async (force = false) => {
     if (venue !== "schwab") return;
-    const now = Date.now();
     if (!force) {
       const cached = readCapitalCache();
       if (cached) {
@@ -670,9 +665,8 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
         setCapitalError(null);
         return;
       }
-      if (capitalFetchedAt.current && now - capitalFetchedAt.current < 20_000) {
-        return;
-      }
+      setCapitalNote(t("strategies.capitalNeed"));
+      return;
     }
     setCapitalPending(true);
     setCapitalError(null);
@@ -713,12 +707,6 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
 
   useEffect(() => {
     if (venue !== "schwab") return;
-    if (readCapitalCache()) {
-      void loadCapital();
-      return;
-    }
-    // After hours: do not hit Schwab Trader just to paint equity.
-    if (!isCashRthNy()) return;
     void loadCapital();
   }, [venue, loadCapital]);
 
@@ -807,6 +795,11 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
           }
         } catch (err) {
           if (gen !== tpWatchGen.current) return;
+          const msg = err instanceof Error ? err.message : "";
+          if (/rate limit/i.test(msg)) {
+            setOpenNote(t("strategies.openOkTpPending"));
+            return;
+          }
           setOpenError(
             brokerErrorCopy(err, t("strategies.openTpFail"), t),
           );

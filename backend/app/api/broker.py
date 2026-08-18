@@ -27,7 +27,7 @@ router = APIRouter(prefix="/broker", tags=["broker"])
 
 RATE_LIMIT_DETAIL = (
     "Schwab Trader rate limit. Wait ~30 seconds, then retry. "
-    "Avoid extra Load capital clicks."
+    "Do not Refresh Positions or send another Open until then."
 )
 
 
@@ -38,6 +38,7 @@ class PositionsResponse(BaseModel):
     orders: list[dict] = []
     risk_pct: float = DESK_RISK_PCT
     error: str | None = None
+    orders_error: str | None = None
 
 
 class CloseOrderRequest(BaseModel):
@@ -167,6 +168,7 @@ def get_positions(
             account_rows.append(base)
 
         orders: list[dict] = []
+        orders_error: str | None = None
         if include_orders:
             for h in hashes:
                 hv = h.get("hashValue")
@@ -175,8 +177,10 @@ def get_positions(
                 try:
                     raw_orders = trader.list_orders(hv)
                 except ProviderRateLimitError:
+                    orders_error = RATE_LIMIT_DETAIL
                     break
-                except ProviderError:
+                except ProviderError as exc:
+                    orders_error = str(exc)
                     continue
                 for row in raw_orders:
                     norm = normalize_order(
@@ -205,6 +209,7 @@ def get_positions(
             positions=positions,
             orders=orders,
             risk_pct=DESK_RISK_PCT,
+            orders_error=orders_error,
         )
     except ProviderNotConfiguredError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
