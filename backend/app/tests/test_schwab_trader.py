@@ -78,10 +78,29 @@ def test_split_tp_ladder_quantities():
     from app.providers.schwab_trader import split_tp_ladder_quantities
 
     assert split_tp_ladder_quantities(1) == [(35.0, 1)]
-    assert split_tp_ladder_quantities(2) == [(20.0, 1), (35.0, 1)]
+    assert split_tp_ladder_quantities(2) == [(10.0, 1), (20.0, 1)]
     assert split_tp_ladder_quantities(3) == [(10.0, 1), (20.0, 1), (35.0, 1)]
-    assert split_tp_ladder_quantities(4) == [(10.0, 1), (20.0, 1), (35.0, 2)]
-    assert split_tp_ladder_quantities(5) == [(10.0, 1), (20.0, 1), (35.0, 3)]
+    assert split_tp_ladder_quantities(4) == [
+        (10.0, 1),
+        (20.0, 1),
+        (35.0, 1),
+        (50.0, 1),
+    ]
+    assert split_tp_ladder_quantities(5) == [
+        (10.0, 1),
+        (20.0, 1),
+        (35.0, 1),
+        (50.0, 1),
+        (100.0, 1),
+    ]
+    assert split_tp_ladder_quantities(6) == [
+        (10.0, 1),
+        (20.0, 1),
+        (35.0, 2),
+        (50.0, 1),
+        (100.0, 1),
+    ]
+    assert split_tp_ladder_quantities(0) == []
 
 
 def test_build_occ_option_symbol():

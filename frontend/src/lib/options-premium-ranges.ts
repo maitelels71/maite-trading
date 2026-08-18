@@ -806,6 +806,8 @@ export function planWithDebit(
     tp10: tp(0.1),
     tp20: tp(0.2),
     tp35: tp(0.35),
+    tp50: tp(0.5),
+    tp100: tp(1.0),
     premiumFit: inBand ? "optimal" : "capital",
   };
 }
@@ -827,6 +829,8 @@ export type OptionsEntryPlan = {
   tp10: number;
   tp20: number;
   tp35: number;
+  tp50: number;
+  tp100: number;
   rangeLabel: string;
   minmaxLabel: string;
   hasRange: boolean;
@@ -996,6 +1000,8 @@ export function buildOptionsEntryPlan(
     tp10: tp(0.1),
     tp20: tp(0.2),
     tp35: tp(0.35),
+    tp50: tp(0.5),
+    tp100: tp(1.0),
     rangeLabel: band?.optimalLabel ?? "—",
     minmaxLabel: band?.minmaxLabel ?? "—",
     hasRange: Boolean(band),

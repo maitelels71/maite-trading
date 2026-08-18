@@ -9,6 +9,7 @@ from zoneinfo import ZoneInfo
 ET = ZoneInfo("America/New_York")
 # Regular cash equity open; before this we treat "today" as not yet operative.
 RTH_OPEN = time(9, 30)
+RTH_CLOSE = time(16, 0)
 # CME Globex: weekly open Sunday 18:00 ET, weekly close Friday 17:00 ET.
 # Weekday maintenance halt 17:00–18:00 ET.
 GLOBEX_REOPEN = time(18, 0)
@@ -38,6 +39,15 @@ def is_globex_open(now: datetime | None = None) -> bool:
         return clock < GLOBEX_HALT
     # Mon–Thu: closed only during the daily 17:00–18:00 halt
     return not (GLOBEX_HALT <= clock < GLOBEX_REOPEN)
+
+
+def is_cash_rth(now: datetime | None = None) -> bool:
+    """True during NYSE/Nasdaq regular hours: weekday 09:30–16:00 ET."""
+    ts = now.astimezone(ET) if now is not None else datetime.now(ET)
+    if ts.weekday() >= 5:
+        return False
+    clock = ts.timetz().replace(tzinfo=None)
+    return RTH_OPEN <= clock < RTH_CLOSE
 
 
 def resolve_operative_session_date(

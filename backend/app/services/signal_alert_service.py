@@ -213,6 +213,9 @@ def _sync_for_alerts(*, db: Any = None) -> None:
         (_FUTURES_PROVIDER, FUTURES_ALERT_STRATEGIES),
     ]
     for provider_name, strategies in jobs:
+        if provider_name == _OPTIONS_PROVIDER:
+            # Same OAuth app as live BUY_TO_OPEN — scan Dynamo candles only.
+            continue
         tfs = _timeframes_for(strategies)
         lookback = _lookback_days(strategies)
         start = end - timedelta(days=lookback)

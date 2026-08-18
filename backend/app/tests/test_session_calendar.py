@@ -2,6 +2,7 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 from app.domain.session_calendar import (
+    is_cash_rth,
     is_globex_open,
     resolve_operative_session_date,
 )
@@ -56,6 +57,14 @@ def test_futures_monday_pre_rth_uses_monday() -> None:
     )
     # Cash desk still waits for 9:30
     assert resolve_operative_session_date(now).isoformat() == "2026-08-14"
+
+
+def test_cash_rth_weekday_window() -> None:
+    assert is_cash_rth(datetime(2026, 8, 17, 9, 29, tzinfo=ET)) is False
+    assert is_cash_rth(datetime(2026, 8, 17, 9, 30, tzinfo=ET)) is True
+    assert is_cash_rth(datetime(2026, 8, 17, 15, 59, tzinfo=ET)) is True
+    assert is_cash_rth(datetime(2026, 8, 17, 16, 0, tzinfo=ET)) is False
+    assert is_cash_rth(datetime(2026, 8, 15, 12, 0, tzinfo=ET)) is False  # Saturday
 
 
 def test_futures_friday_after_globex_close_keeps_friday() -> None:

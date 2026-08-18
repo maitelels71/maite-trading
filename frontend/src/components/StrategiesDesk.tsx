@@ -12,6 +12,7 @@ import {
 import { DeskSession, DeskStack } from "@/components/DeskSession";
 import {
   brokerOpenOption,
+  brokerTpLadder,
   fetchBrokerPositions,
   fetchInstruments,
   scanStrategies,
@@ -52,10 +53,12 @@ const AUTO_LIVE_KEY = "maite.strategies.autoLive";
 const AUTO_DESK_KEY = "maite.strategies.autoDesk";
 const ARM_OPENS_KEY = "maite.strategies.armOpens";
 const CAPITAL_CACHE_KEY = "maite.strategies.capitalCache";
-const CAPITAL_CACHE_MS = 15 * 60 * 1000;
+const CAPITAL_CACHE_MS = 24 * 60 * 60 * 1000;
 /** After candles/capital, wait before BUY_TO_OPEN so Schwab's 429 window can clear. */
 const OPEN_QUIET_MS = 15_000;
 const OPEN_RETRY_WAIT_SEC = 25;
+const TP_FILL_WAIT_MS = 20_000;
+const TP_FILL_TRIES = 8;
 const DESK_TOP_N = 5;
 const DESK_SYNC_TFS = ["1h", "1d"] as const;
 const DESK_LOOKBACK_DAYS = 25;
@@ -302,6 +305,22 @@ function isPremarketOrClosedNy(now = new Date(), venue: Venue = "schwab"): boole
   return p.hh < 9 || (p.hh === 9 && p.mm < 30);
 }
 
+/** NYSE/Nasdaq regular hours — weekday 9:30–4:00 ET. */
+function isCashRthNy(now = new Date()): boolean {
+  const p = nyParts(now);
+  const today = `${p.y}-${String(p.m).padStart(2, "0")}-${String(p.day).padStart(2, "0")}`;
+  const [y, m, day] = today.split("-").map(Number);
+  const wd = new Date(Date.UTC(y, m - 1, day, 12)).getUTCDay();
+  if (wd === 0 || wd === 6) return false;
+  const minutes = p.hh * 60 + p.mm;
+  return minutes >= 9 * 60 + 30 && minutes < 16 * 60;
+}
+
+/** Auto 2.5m stays off in premarket and RTH so Schwab is free for Open. */
+function isCashAutoOffNy(now = new Date()): boolean {
+  return isPremarketOrClosedNy(now, "schwab") || isCashRthNy(now);
+}
+
 /** NY date + time for scan stamps (avoids “is this yesterday?” confusion). */
 function formatNyDateTime(isoOrDate: string | Date, locale: string): string {
   const d = typeof isoOrDate === "string" ? new Date(isoOrDate) : isoOrDate;
@@ -368,6 +387,12 @@ function formatPct(n: number): string {
   });
 }
 
+function occKey(sym: string): string {
+  return String(sym || "")
+    .toUpperCase()
+    .replace(/\s+/g, "");
+}
+
 function moneyUsd(n: number | null | undefined): string {
   if (n == null || !Number.isFinite(n)) return "—";
   return n.toLocaleString(undefined, {
@@ -405,7 +430,7 @@ type CapitalCache = {
 function readCapitalCache(): CapitalCache | null {
   if (typeof window === "undefined") return null;
   try {
-    const raw = window.sessionStorage.getItem(CAPITAL_CACHE_KEY);
+    const raw = window.localStorage.getItem(CAPITAL_CACHE_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as CapitalCache;
     if (!parsed?.at || Date.now() - parsed.at > CAPITAL_CACHE_MS) return null;
@@ -424,7 +449,7 @@ function writeCapitalCache(accounts: BrokerAccount[], tradingEnabled: boolean) {
       accounts,
       tradingEnabled,
     };
-    window.sessionStorage.setItem(CAPITAL_CACHE_KEY, JSON.stringify(payload));
+    window.localStorage.setItem(CAPITAL_CACHE_KEY, JSON.stringify(payload));
   } catch {
     // ignore quota
   }
@@ -537,6 +562,10 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
   const [checkedSteps, setCheckedSteps] = useState<Record<string, boolean>>({});
   const [autoLive, setAutoLive] = useState(false);
   const [autoDesk, setAutoDesk] = useState(false);
+  const autoLiveRef = useRef(false);
+  const autoDeskRef = useRef(false);
+  autoLiveRef.current = autoLive;
+  autoDeskRef.current = autoDesk;
   const [instruments, setInstruments] = useState<Instrument[]>([]);
   const [brokerAccounts, setBrokerAccounts] = useState<BrokerAccount[]>([]);
   const [tradingEnabled, setTradingEnabled] = useState(false);
@@ -549,6 +578,7 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
   const [openingKey, setOpeningKey] = useState<string | null>(null);
   const runGen = useRef(0);
   const deskGen = useRef(0);
+  const tpWatchGen = useRef(0);
 
   const abortBrokerSync = useCallback(() => {
     // Stop further candle requests; leave busy until the in-flight call returns.
@@ -559,7 +589,8 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
   useEffect(() => {
     const armed = readArmOpens();
     setArmOpens(armed);
-    if (armed) {
+    const blockAuto = armed || (venue === "schwab" && isCashAutoOffNy());
+    if (blockAuto) {
       setAutoLive(false);
       setAutoDesk(false);
       window.localStorage.setItem(AUTO_LIVE_KEY, "0");
@@ -577,17 +608,27 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
       setAutoLive(live);
       setAutoDesk(desk);
     }
-  }, []);
+  }, [venue]);
 
   useEffect(() => {
     const tick = () => {
-      setSessionDate(operativeSessionNyIso(new Date(), venue));
-      setPremarket(isPremarketOrClosedNy(new Date(), venue));
+      const now = new Date();
+      setSessionDate(operativeSessionNyIso(now, venue));
+      setPremarket(isPremarketOrClosedNy(now, venue));
+      if (venue === "schwab" && isCashAutoOffNy(now)) {
+        if (autoLiveRef.current || autoDeskRef.current) abortBrokerSync();
+        autoLiveRef.current = false;
+        autoDeskRef.current = false;
+        setAutoLive(false);
+        setAutoDesk(false);
+        window.localStorage.setItem(AUTO_LIVE_KEY, "0");
+        window.localStorage.setItem(AUTO_DESK_KEY, "0");
+      }
     };
     tick();
     const id = window.setInterval(tick, 30_000);
     return () => window.clearInterval(id);
-  }, [venue]);
+  }, [venue, abortBrokerSync]);
 
   useEffect(() => {
     let cancelled = false;
@@ -680,9 +721,14 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
   }, [venue, t]);
 
   useEffect(() => {
-    if (venue === "schwab") {
+    if (venue !== "schwab") return;
+    if (readCapitalCache()) {
       void loadCapital();
+      return;
     }
+    // After hours: do not hit Schwab Trader just to paint equity.
+    if (!isCashRthNy()) return;
+    void loadCapital();
   }, [venue, loadCapital]);
 
   useEffect(() => {
@@ -703,6 +749,88 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
   const quietRemainSec = Math.max(0, Math.ceil((quietUntil - nowTick) / 1000));
   const schwabBusy = deskBusy || focusBusy || quietRemainSec > 0;
 
+  const placeAutoTpAfterFill = useCallback(
+    async (opts: {
+      accountHash: string;
+      occ: string;
+      fallbackAvg: number;
+      expectedQty: number;
+    }) => {
+      const gen = ++tpWatchGen.current;
+      const tpLabel = opts.expectedQty <= 1 ? "35%" : "10/20/35/50/100";
+      setOpenNote(
+        t("strategies.openOkTpWait")
+          .replace("{sym}", opts.occ)
+          .replace("{tp}", tpLabel),
+      );
+      const sleep = (ms: number) =>
+        new Promise((resolve) => window.setTimeout(resolve, ms));
+      await sleep(TP_FILL_WAIT_MS);
+      for (let i = 0; i < TP_FILL_TRIES; i += 1) {
+        if (gen !== tpWatchGen.current) return;
+        if (!isCashRthNy()) {
+          setOpenNote(t("strategies.openOkTpPending"));
+          return;
+        }
+        try {
+          const posRes = await fetchBrokerPositions({ includeOrders: false });
+          const pos = (posRes.positions ?? []).find(
+            (p) =>
+              p.account_hash === opts.accountHash &&
+              occKey(p.symbol) === occKey(opts.occ) &&
+              Math.abs(p.quantity) >= 1,
+          );
+          if (pos) {
+            const avg =
+              pos.average_price > 0 ? pos.average_price : opts.fallbackAvg;
+            const ladder = await brokerTpLadder({
+              account_hash: pos.account_hash,
+              symbol: pos.symbol,
+              quantity: Math.abs(pos.quantity),
+              asset_type: pos.asset_type || "OPTION",
+              instruction: pos.close_instruction || "SELL_TO_CLOSE",
+              average_price: avg,
+              confirm_live: true,
+              duration: "GOOD_TILL_CANCEL",
+            });
+            if (gen !== tpWatchGen.current) return;
+            const summary = ladder.legs
+              .map(
+                (leg) =>
+                  `${leg.pct}%×${leg.quantity}@${moneyUsd(leg.limit_price)}${
+                    leg.ok ? "" : " FAIL"
+                  }`,
+              )
+              .join(" · ");
+            setOpenNote(
+              t("strategies.openOkTpPlaced")
+                .replace("{sym}", pos.symbol)
+                .replace("{legs}", summary),
+            );
+            if (!ladder.ok) {
+              setOpenError(
+                ladder.message || t("strategies.openTpFail"),
+              );
+            }
+            return;
+          }
+        } catch (err) {
+          if (gen !== tpWatchGen.current) return;
+          setOpenError(
+            brokerErrorCopy(err, t("strategies.openTpFail"), t),
+          );
+          setOpenNote(t("strategies.openOkTpPending"));
+          return;
+        }
+        if (i < TP_FILL_TRIES - 1) await sleep(TP_FILL_WAIT_MS);
+      }
+      if (gen === tpWatchGen.current) {
+        setOpenNote(t("strategies.openOkTpPending"));
+      }
+    },
+    [t],
+  );
+
   const openFromPlan = useCallback(
     async (
       plan: NonNullable<ReturnType<typeof buildOptionsEntryPlan>>,
@@ -718,6 +846,10 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
       }
       if (!armOpens) {
         setOpenError(t("strategies.openNeedArm"));
+        return;
+      }
+      if (!isCashRthNy()) {
+        setOpenError(t("strategies.openNeedRth"));
         return;
       }
       if (deskBusy || focusBusy || quietRemainSec > 0) {
@@ -791,10 +923,24 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
           res = await brokerOpenOption(payload);
         }
         setOpenNote(
-          t("strategies.openOk")
+          t("strategies.openOkTpWait")
             .replace("{sym}", res.option_symbol || plan.symbol)
-            .replace("{id}", res.order_id || "—"),
+            .replace("{tp}", qty <= 1 ? "35%" : "10/20/35/50/100"),
         );
+        if (res.option_symbol && primaryAccount.hashValue) {
+          void placeAutoTpAfterFill({
+            accountHash: primaryAccount.hashValue,
+            occ: res.option_symbol,
+            fallbackAvg: plan.entryPremium,
+            expectedQty: qty,
+          });
+        } else {
+          setOpenNote(
+            t("strategies.openOk")
+              .replace("{sym}", res.option_symbol || plan.symbol)
+              .replace("{id}", res.order_id || "—"),
+          );
+        }
       } catch (err) {
         setOpenError(
           brokerErrorCopy(err, t("strategies.openFail"), t),
@@ -803,7 +949,7 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
         setOpeningKey(null);
       }
     },
-    [primaryAccount, tradingEnabled, armOpens, t, deskBusy, focusBusy, quietRemainSec],
+    [primaryAccount, tradingEnabled, armOpens, t, deskBusy, focusBusy, quietRemainSec, placeAutoTpAfterFill],
   );
 
   useEffect(() => {
@@ -1113,9 +1259,12 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
     });
   }, [runDeskTop5]);
 
+  const autoBlocked = venue === "schwab" && isCashAutoOffNy();
+
   function toggleAutoLive() {
     setAutoLive((prev) => {
       const next = !prev;
+      if (next && venue === "schwab" && isCashAutoOffNy()) return false;
       window.localStorage.setItem(AUTO_LIVE_KEY, next ? "1" : "0");
       // Only one auto at a time — TOP 5 + Focus together doubles broker sync
       if (next) {
@@ -1129,6 +1278,7 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
   function toggleAutoDesk() {
     setAutoDesk((prev) => {
       const next = !prev;
+      if (next && venue === "schwab" && isCashAutoOffNy()) return false;
       window.localStorage.setItem(AUTO_DESK_KEY, next ? "1" : "0");
       if (next) {
         setAutoLive(false);
@@ -1139,7 +1289,7 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
   }
 
   useEffect(() => {
-    if (!autoLive || armOpens || !playbook?.strategyKey) return;
+    if (!autoLive || armOpens || autoBlocked || !playbook?.strategyKey) return;
     const kickoff = window.setTimeout(() => {
       if (deskBusyRef.current || focusBusyRef.current) return;
       void syncAndScan(undefined, { fromAuto: true });
@@ -1152,10 +1302,10 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
       window.clearTimeout(kickoff);
       window.clearInterval(id);
     };
-  }, [autoLive, armOpens, playbook?.strategyKey, playbook?.id, venue, syncAndScan]);
+  }, [autoLive, armOpens, autoBlocked, playbook?.strategyKey, playbook?.id, venue, syncAndScan]);
 
   useEffect(() => {
-    if (!autoDesk || armOpens || deskStrategyKeys.length === 0) return;
+    if (!autoDesk || armOpens || autoBlocked || deskStrategyKeys.length === 0) return;
     const kickoff = window.setTimeout(() => {
       if (deskBusyRef.current || focusBusyRef.current) return;
       void runDeskTop5({ fromAuto: true });
@@ -1168,7 +1318,7 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
       window.clearTimeout(kickoff);
       window.clearInterval(id);
     };
-  }, [autoDesk, armOpens, deskStrategyKeys.length, venue, runDeskTop5]);
+  }, [autoDesk, armOpens, autoBlocked, deskStrategyKeys.length, venue, runDeskTop5]);
 
   const matches = useMemo(
     () => sortScanBoard((scan?.hits ?? []).filter((h) => h.matched)),
@@ -1331,7 +1481,7 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
             </button>
             <button
               type="button"
-              disabled={deskStrategyKeys.length === 0 || armOpens}
+              disabled={deskStrategyKeys.length === 0 || armOpens || autoBlocked}
               onClick={toggleAutoDesk}
               className={`shrink-0 rounded-md px-3 py-1.5 text-xs font-medium disabled:opacity-50 ${
                 autoDesk
@@ -1339,9 +1489,11 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
                   : "border border-[var(--border)] text-[var(--muted)] hover:bg-[var(--hover)]"
               }`}
               title={
-                armOpens
-                  ? t("strategies.armPausesAuto")
-                  : t("strategies.deskAutoHint")
+                autoBlocked
+                  ? t("strategies.autoOffSession")
+                  : armOpens
+                    ? t("strategies.armPausesAuto")
+                    : t("strategies.deskAutoHint")
               }
             >
               {autoDesk ? t("strategies.autoStop") : t("strategies.autoStart")}
@@ -1526,7 +1678,7 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
                                       {` · Exp ${plan.expLabel}${plan.expIsToday ? " (hoy)" : ""}`}
                                       {` · debit $${plan.entryPremium}`}
                                       {plan.hasRange
-                                        ? ` · óptimo ${plan.rangeLabel} · TP 10/20/35: $${plan.tp10}/$${plan.tp20}/$${plan.tp35}`
+                                        ? ` · óptimo ${plan.rangeLabel} · TP 10/20/35/50/100: $${plan.tp10}/$${plan.tp20}/$${plan.tp35}/$${plan.tp50}/$${plan.tp100}`
                                         : ""}
                                     </div>
                                     <OpenPlanButton
@@ -1591,7 +1743,7 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
             </button>
             <button
               type="button"
-              disabled={!playbook.strategyKey || armOpens}
+              disabled={!playbook.strategyKey || armOpens || autoBlocked}
               onClick={toggleAutoLive}
               className={`rounded-md px-3 py-1.5 text-xs font-medium disabled:opacity-50 ${
                 autoLive
@@ -1599,7 +1751,11 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
                   : "border border-[var(--border)] text-[var(--muted)] hover:bg-[var(--hover)]"
               }`}
               title={
-                armOpens ? t("strategies.armPausesAuto") : t("strategies.autoHint")
+                autoBlocked
+                  ? t("strategies.autoOffSession")
+                  : armOpens
+                    ? t("strategies.armPausesAuto")
+                    : t("strategies.autoHint")
               }
             >
               {autoLive ? t("strategies.autoStop") : t("strategies.autoStart")}
@@ -2163,6 +2319,7 @@ function OpenPlanButton({
   ) => void;
 }) {
   const { t } = useLocale();
+  const rthOpen = isCashRthNy();
   const [manualPrem, setManualPrem] = useState(
     String(plan.entryPremium > 0 ? plan.entryPremium : DEFAULT_OTM_PREMIUM),
   );
@@ -2209,6 +2366,10 @@ function OpenPlanButton({
       ) : !tradingEnabled ? (
         <p className="text-[10px] text-[var(--muted)]">
           {t("strategies.tradingDisabledShort")}
+        </p>
+      ) : !rthOpen ? (
+        <p className="text-[10px] leading-snug text-[var(--warn)]">
+          {t("strategies.openNeedRth")}
         </p>
       ) : (
         <button
@@ -2330,8 +2491,12 @@ function OptionsPlanBlock({
           {" · "}
           <span className="tabular-nums">20% {money(plan.tp20)}</span>
           {" · "}
+          <span className="tabular-nums">35% {money(plan.tp35)}</span>
+          {" · "}
+          <span className="tabular-nums">50% {money(plan.tp50)}</span>
+          {" · "}
           <span className="font-semibold tabular-nums">
-            35% {money(plan.tp35)}
+            100% {money(plan.tp100)}
           </span>
         </p>
       ) : null}

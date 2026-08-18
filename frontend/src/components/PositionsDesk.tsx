@@ -282,6 +282,70 @@ export function PositionsDesk() {
     });
   }
 
+  function closeAll() {
+    if (!armedConfirm) {
+      setError(t("positions.needArm"));
+      return;
+    }
+    if (positions.length === 0) return;
+    const snapshot = [...positions];
+    if (
+      !window.confirm(
+        t("positions.confirmCloseAll").replace("{n}", String(snapshot.length)),
+      )
+    ) {
+      return;
+    }
+    startTransition(async () => {
+      setError(null);
+      const okSyms: string[] = [];
+      let rateLimited = false;
+      let lastErr = "";
+      for (let i = 0; i < snapshot.length; i += 1) {
+        const pos = snapshot[i];
+        const label = pos.underlying || pos.symbol;
+        try {
+          await brokerClosePosition({
+            account_hash: pos.account_hash,
+            symbol: pos.symbol,
+            quantity: Math.abs(pos.quantity),
+            asset_type: pos.asset_type,
+            instruction: pos.close_instruction,
+            confirm_live: true,
+          });
+          okSyms.push(label);
+          if (i < snapshot.length - 1) {
+            await new Promise((r) => window.setTimeout(r, 800));
+          }
+        } catch (err) {
+          lastErr = err instanceof Error ? err.message : "Close failed";
+          if (/rate limit/i.test(lastErr)) {
+            rateLimited = true;
+            break;
+          }
+        }
+      }
+      if (okSyms.length > 0) {
+        setNote(
+          t("positions.closeAllNote")
+            .replace("{ok}", String(okSyms.length))
+            .replace("{n}", String(snapshot.length))
+            .replace("{syms}", okSyms.join(", ")),
+        );
+      }
+      if (rateLimited) {
+        setError(
+          t("positions.closeAllRateLimit")
+            .replace("{ok}", String(okSyms.length))
+            .replace("{n}", String(snapshot.length)),
+        );
+      } else if (okSyms.length < snapshot.length) {
+        setError(lastErr || "Close all failed");
+      }
+      refresh();
+    });
+  }
+
   function placeTpLadder(pos: BrokerPosition) {
     if (!armedConfirm) {
       setError(t("positions.needArm"));
@@ -336,14 +400,26 @@ export function PositionsDesk() {
         title={t("positions.title")}
         hint={t("positions.hint")}
         actions={
-          <button
-            type="button"
-            disabled={pending}
-            onClick={refresh}
-            className="shrink-0 rounded-md bg-[var(--accent)] px-3 py-1.5 text-xs font-medium text-[var(--on-accent)] hover:bg-[var(--accent-hover)] disabled:opacity-50"
-          >
-            {pending ? t("positions.refreshing") : t("positions.refresh")}
-          </button>
+          <div className="flex shrink-0 items-center gap-1.5">
+            {positions.length > 0 ? (
+              <button
+                type="button"
+                disabled={pending || !tradingEnabled}
+                onClick={closeAll}
+                className="rounded-md border border-[var(--danger)]/40 bg-[var(--danger-soft)] px-3 py-1.5 text-xs font-medium text-[var(--danger)] hover:bg-[var(--hover)] disabled:opacity-50"
+              >
+                {t("positions.closeAll")}
+              </button>
+            ) : null}
+            <button
+              type="button"
+              disabled={pending}
+              onClick={refresh}
+              className="shrink-0 rounded-md bg-[var(--accent)] px-3 py-1.5 text-xs font-medium text-[var(--on-accent)] hover:bg-[var(--accent-hover)] disabled:opacity-50"
+            >
+              {pending ? t("positions.refreshing") : t("positions.refresh")}
+            </button>
+          </div>
         }
       >
         {note ? (

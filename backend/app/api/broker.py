@@ -11,6 +11,7 @@ from app.providers.exceptions import (
     ProviderNotConfiguredError,
     ProviderRateLimitError,
 )
+from app.domain.session_calendar import is_cash_rth
 from app.providers.schwab_trader import (
     DESK_RISK_PCT,
     SchwabTrader,
@@ -223,6 +224,11 @@ def open_option_position(body: OpenOrderRequest) -> OpenOrderResponse:
             status_code=400,
             detail="confirm_live must be true to place a live open order",
         )
+    if not is_cash_rth():
+        raise HTTPException(
+            status_code=400,
+            detail="Cash RTH is 9:30–4:00 ET. Open tomorrow after the open — do not retry after hours.",
+        )
     try:
         trader = SchwabTrader()
         if (
@@ -304,7 +310,7 @@ def open_option_position(body: OpenOrderRequest) -> OpenOrderResponse:
             order_id=result.get("order_id"),
             status=str(result.get("status") or "submitted"),
             message=(
-                "BUY_TO_OPEN submitted · after fill use Positions → TP 10/20/35"
+                "BUY_TO_OPEN submitted · after fill use Positions → TP 10/20/35/50/100"
             ),
             option_symbol=option_symbol,
             limit_price=limit_px,
@@ -363,7 +369,7 @@ def close_position(body: CloseOrderRequest) -> CloseOrderResponse:
 
 @router.post("/orders/tp-ladder", response_model=TpLadderResponse)
 def place_tp_ladder(body: TpLadderRequest) -> TpLadderResponse:
-    """Place scale-out LIMIT SELL_TO_CLOSE (or SELL) at +10% / +20% / +35% of avg."""
+    """Place scale-out LIMIT SELL_TO_CLOSE (or SELL) at +10/20/35/50/100% of avg."""
     if not body.confirm_live:
         raise HTTPException(
             status_code=400,

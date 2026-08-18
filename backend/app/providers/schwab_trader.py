@@ -224,8 +224,8 @@ class SchwabTrader:
             timeout=30.0,
             extra_headers={"Content-Type": "application/json"},
             json=body,
-            retries=3,
-            max_wait=8.0,
+            retries=1,
+            max_wait=4.0,
         )
         if resp.status_code not in (200, 201):
             raise_for_provider_response(resp, provider="schwab-trader")
@@ -282,22 +282,33 @@ class SchwabTrader:
         return [row for row in data if isinstance(row, dict)]
 
 
+TP_LADDER_PCTS = (10.0, 20.0, 35.0, 50.0, 100.0)
+
+
 def split_tp_ladder_quantities(quantity: float) -> list[tuple[float, int]]:
-    """Scale-out qtys for 10% / 20% / 35%. Returns [(pct, qty), ...]."""
+    """Scale-out qtys for 10/20/35/50/100%. Returns [(pct, qty), ...].
+
+    Pay yourself first: nearest rungs, then 50/100 only with leftover size.
+    1ct stays at 35% (spread eats a 10% on cheap weeklies). Remainder (qty 6+)
+    lands on 35%, the lock-in target — not 100%.
+    """
     qty = int(abs(quantity))
     if qty <= 0:
         return []
     if qty == 1:
         return [(35.0, 1)]
-    if qty == 2:
-        return [(20.0, 1), (35.0, 1)]
-    base = qty // 3
-    rem = qty % 3
-    return [
-        (10.0, base),
-        (20.0, base),
-        (35.0, base + rem),
-    ]
+    if qty < len(TP_LADDER_PCTS):
+        rungs = TP_LADDER_PCTS[:qty]
+        return [(pct, 1) for pct in rungs]
+    base = qty // len(TP_LADDER_PCTS)
+    rem = qty % len(TP_LADDER_PCTS)
+    lock_i = TP_LADDER_PCTS.index(35.0)
+    legs: list[tuple[float, int]] = []
+    for i, pct in enumerate(TP_LADDER_PCTS):
+        n = base + (rem if i == lock_i else 0)
+        if n > 0:
+            legs.append((pct, n))
+    return legs
 
 
 DESK_RISK_PCT = 0.10  # consider / less-risk flag
