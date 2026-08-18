@@ -63,6 +63,8 @@ const EXP_CHAIN_KEY = "maite.strategies.expChain";
 const EXP_CHAIN_MS = 12 * 60 * 60 * 1000;
 /** After candles/capital, wait before BUY_TO_OPEN so Schwab's 429 window can clear. */
 const OPEN_QUIET_MS = 15_000;
+/** Extra cool-down after a Schwab 429 so the red banner can count down and clear. */
+const RATE_LIMIT_QUIET_MS = 30_000;
 const OPEN_RETRY_WAIT_SEC = 25;
 const TP_FILL_WAIT_MS = 20_000;
 const TP_FILL_TRIES = 8;
@@ -605,7 +607,6 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
   const [openError, setOpenError] = useState<string | null>(null);
   const [openingKey, setOpeningKey] = useState<string | null>(null);
   const [listedExpRev, setListedExpRev] = useState(0);
-  const expInflight = useRef<Set<string>>(new Set());
   const runGen = useRef(0);
   const deskGen = useRef(0);
   const tpWatchGen = useRef(0);
@@ -779,6 +780,21 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
   const quietRemainSec = Math.max(0, Math.ceil((quietUntil - nowTick) / 1000));
   const schwabBusy = deskBusy || focusBusy || quietRemainSec > 0;
 
+  const startSchwabQuiet = useCallback((ms = RATE_LIMIT_QUIET_MS) => {
+    setQuietUntil(Date.now() + ms);
+    setNowTick(Date.now());
+  }, []);
+
+  useEffect(() => {
+    if (quietRemainSec > 0) return;
+    setOpenError((prev) =>
+      prev && /rate limit/i.test(prev) ? null : prev,
+    );
+    setDeskError((prev) =>
+      prev && /rate limit/i.test(prev) ? null : prev,
+    );
+  }, [quietRemainSec]);
+
   const placeAutoTpAfterFill = useCallback(
     async (opts: {
       accountHash: string;
@@ -906,15 +922,20 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
           persistExpChainCache();
           setListedExpRev((n) => n + 1);
         } catch (err) {
-          setOpenNote(null);
           const msg = err instanceof Error ? err.message : "";
-          setOpenError(
-            /rate limit/i.test(msg) ? msg : t("strategies.openExpFail"),
-          );
-          return;
+          if (/rate limit/i.test(msg)) {
+            // Keep Friday/index exp on the plan; still try live ask.
+            listed = null;
+          } else {
+            setOpenNote(null);
+            setOpenError(t("strategies.openExpFail"));
+            return;
+          }
         }
       }
-      const picked = pickListedExpiration(listed ?? [], new Date());
+      const picked = listed?.length
+        ? pickListedExpiration(listed, new Date())
+        : plan.expIso;
       if (!picked) {
         setOpenNote(null);
         setOpenError(t("strategies.openExpFail"));
@@ -934,11 +955,12 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
       } catch (err) {
         setOpenNote(null);
         const msg = err instanceof Error ? err.message : "";
-        setOpenError(
-          /rate limit/i.test(msg)
-            ? msg
-            : t("strategies.openQuoteFail"),
-        );
+        if (/rate limit/i.test(msg)) {
+          startSchwabQuiet();
+          setOpenError(t("strategies.rateLimit"));
+        } else {
+          setOpenError(t("strategies.openQuoteFail"));
+        }
         return;
       }
       setOpenNote(null);
@@ -1030,14 +1052,14 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
           );
         }
       } catch (err) {
-        setOpenError(
-          brokerErrorCopy(err, t("strategies.openFail"), t),
-        );
+        const copy = brokerErrorCopy(err, t("strategies.openFail"), t);
+        if (/rate limit/i.test(copy)) startSchwabQuiet();
+        setOpenError(copy);
       } finally {
         setOpeningKey(null);
       }
     },
-    [primaryAccount, tradingEnabled, armOpens, t, deskBusy, focusBusy, quietRemainSec, placeAutoTpAfterFill],
+    [primaryAccount, tradingEnabled, armOpens, t, deskBusy, focusBusy, quietRemainSec, placeAutoTpAfterFill, startSchwabQuiet],
   );
 
   useEffect(() => {
@@ -1328,7 +1350,9 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
         }
       } catch (err) {
         if (gen !== deskGen.current) return;
-        setDeskError(err instanceof Error ? err.message : "Desk scan failed");
+        const copy = brokerErrorCopy(err, "Desk scan failed", t);
+        if (/rate limit/i.test(copy)) startSchwabQuiet();
+        setDeskError(copy);
         setDeskGroups([]);
       }
       } finally {
@@ -1338,7 +1362,7 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
         }
       }
     },
-    [deskStrategyKeys, deskUniverse, universe, venue, t, locale, syncAndScan, armOpens],
+    [deskStrategyKeys, deskUniverse, universe, venue, t, locale, syncAndScan, armOpens, startSchwabQuiet],
   );
 
   const runSyncAndScan = useCallback(() => {
@@ -1417,40 +1441,6 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
     [scan],
   );
   const board = useMemo(() => sortScanBoard(scan?.hits ?? []), [scan]);
-
-  useEffect(() => {
-    if (venue !== "schwab") return;
-    if (deskBusy || focusBusy || quietRemainSec > 0) return;
-    const symbols = new Set<string>();
-    for (const g of deskGroups) {
-      for (const h of g.hits) symbols.add(h.symbol.toUpperCase());
-    }
-    for (const h of matches) symbols.add(h.symbol.toUpperCase());
-    const missing = [...symbols].filter(
-      (s) => !listedExpirationsFor(s) && !expInflight.current.has(s),
-    );
-    if (!missing.length) return;
-    let cancelled = false;
-    void (async () => {
-      for (const sym of missing) {
-        if (cancelled) return;
-        expInflight.current.add(sym);
-        try {
-          const res = await brokerOptionExpirations(sym);
-          rememberListedExpirations(sym, res.dates ?? []);
-          persistExpChainCache();
-          if (!cancelled) setListedExpRev((n) => n + 1);
-        } catch {
-          // Friday/index fallback stays until Open retries the chain.
-        } finally {
-          expInflight.current.delete(sym);
-        }
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [venue, deskGroups, matches, deskBusy, focusBusy, quietRemainSec]);
 
   const planFor = (
     symbol: string,
@@ -1597,8 +1587,12 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
           {openNote ? (
             <p className="mt-1.5 text-[11px] text-[var(--ok)]">{openNote}</p>
           ) : null}
-          {openError ? (
-            <p className="mt-1 text-[11px] text-[var(--danger)]">{openError}</p>
+          {openError || quietRemainSec > 0 ? (
+            <p className="mt-1 text-[11px] text-[var(--danger)]">
+              {quietRemainSec > 0
+                ? t("strategies.openWaitQuiet").replace("{n}", String(quietRemainSec))
+                : openError}
+            </p>
           ) : null}
         </div>
       ) : null}

@@ -384,7 +384,7 @@ const en: Dict = {
     "Open sent, but auto TP failed. When the buy FILLS, use Positions → TP 10/20/35/50/100.",
   "strategies.openFail": "Open failed",
   "strategies.rateLimit":
-    "Schwab Trader rate limit. Wait ~30 seconds. Do not Refresh Positions or send another Open until then.",
+    "Schwab Trader rate limit. The desk counts down ~30s and this message clears by itself. Do not Open or Refresh Positions until then.",
   "strategies.tradingDisabledShort": "Trading off",
 
   "positions.title": "Schwab positions",
@@ -892,7 +892,7 @@ const es: Dict = {
     "Open enviado, pero el TP auto falló. Cuando la compra haga FILL, usa Posiciones → TP 10/20/35/50/100.",
   "strategies.openFail": "Open falló",
   "strategies.rateLimit":
-    "Schwab Trader está saturado (rate limit). Espera ~30 segundos. No hagas Refresh en Positions ni otro Open hasta entonces.",
+    "Schwab Trader está saturado (rate limit). El desk cuenta ~30s y este aviso se quita solo. No pulses Open ni Refresh en Positions hasta entonces.",
   "strategies.tradingDisabledShort": "Trading off",
 
   "positions.title": "Posiciones Schwab",
