@@ -187,3 +187,50 @@ def test_normalize_account_summaries():
     assert rows[0]["risk_budget"] == 10_000.0
     assert rows[0]["available_funds"] == 18_000.0
 
+
+def test_build_occ_option_symbol():
+    from app.providers.schwab_trader import build_occ_option_symbol
+
+    assert build_occ_option_symbol("NFLX", "2026-08-19", "CALL", 88) == (
+        "NFLX  260819C00088000"
+    )
+
+
+def test_parse_option_quote_prices_uses_ask_as_fillable():
+    from app.providers.schwab_trader import (
+        parse_option_quote_prices,
+        pick_quote_blob,
+    )
+
+    occ = "NFLX  260819C00088000"
+    quotes = {
+        "NFLX  260819C00088000": {
+            "symbol": occ,
+            "quote": {"bidPrice": 0.11, "askPrice": 0.40, "mark": 0.25},
+        }
+    }
+    blob = pick_quote_blob(quotes, occ)
+    px = parse_option_quote_prices(blob)
+    assert px["bid"] == 0.11
+    assert px["ask"] == 0.40
+    assert px["fillable"] == 0.40
+
+    spaced = pick_quote_blob({"NFLX260819C00088000": quotes[occ]}, occ)
+    assert parse_option_quote_prices(spaced)["fillable"] == 0.40
+
+
+def test_parse_expiration_dates():
+    from app.providers.schwab_trader import parse_expiration_dates
+
+    dates = parse_expiration_dates(
+        {
+            "expirationList": [
+                {"expirationDate": "2026-08-21", "expirationType": "W"},
+                {"expirationDate": "2026-08-19T20:00:00Z"},
+                {"expirationDate": "2026-09-18"},
+            ]
+        }
+    )
+    assert dates == ["2026-08-19", "2026-08-21", "2026-09-18"]
+    assert parse_expiration_dates({}) == []
+

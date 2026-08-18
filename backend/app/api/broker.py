@@ -19,6 +19,8 @@ from app.providers.schwab_trader import (
     normalize_account_summaries,
     normalize_order,
     normalize_positions,
+    parse_option_quote_prices,
+    pick_quote_blob,
     size_long_option,
     split_tp_ladder_quantities,
 )
@@ -88,6 +90,20 @@ class OpenOrderResponse(BaseModel):
     cost: float | None = None
     risk_budget: float | None = None
     http_status: int | None = None
+
+
+class OptionQuoteResponse(BaseModel):
+    occ: str
+    bid: float | None = None
+    ask: float | None = None
+    mark: float | None = None
+    last: float | None = None
+    fillable: float | None = None
+
+
+class OptionExpirationsResponse(BaseModel):
+    symbol: str
+    dates: list[str]
 
 
 class TpCheckRequest(BaseModel):
@@ -217,6 +233,51 @@ def get_positions(
         raise HTTPException(status_code=429, detail=RATE_LIMIT_DETAIL) from exc
     except ProviderError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@router.get("/option-quote", response_model=OptionQuoteResponse)
+def option_quote(
+    underlying: str = Query(...),
+    exp_iso: str = Query(...),
+    option_type: str = Query(default="CALL"),
+    strike: float = Query(..., gt=0),
+) -> OptionQuoteResponse:
+    """Live bid/ask for one OCC so Open can LIMIT at a fillable debit."""
+    try:
+        occ = build_occ_option_symbol(underlying, exp_iso, option_type, strike)
+        trader = SchwabTrader()
+        quotes = trader.get_quotes([occ])
+        blob = pick_quote_blob(quotes, occ)
+        px = parse_option_quote_prices(blob)
+        return OptionQuoteResponse(occ=occ, **px)
+    except ProviderNotConfiguredError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except ProviderRateLimitError as exc:
+        raise HTTPException(status_code=429, detail=RATE_LIMIT_DETAIL) from exc
+    except ProviderError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@router.get("/option-expirations", response_model=OptionExpirationsResponse)
+def option_expirations(symbol: str = Query(...)) -> OptionExpirationsResponse:
+    """Listed OCC expiration dates from Schwab (not a calendar guess)."""
+    try:
+        trader = SchwabTrader()
+        dates = trader.get_expiration_dates(symbol)
+        return OptionExpirationsResponse(
+            symbol=str(symbol).strip().upper(),
+            dates=dates,
+        )
+    except ProviderNotConfiguredError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except ProviderRateLimitError as exc:
+        raise HTTPException(status_code=429, detail=RATE_LIMIT_DETAIL) from exc
+    except ProviderError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 

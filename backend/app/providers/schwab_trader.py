@@ -20,6 +20,8 @@ SCHWAB_MARKETDATA_BASE = "https://api.schwabapi.com/marketdata/v1"
 
 _HASH_CACHE: tuple[float, list[dict[str, str]]] | None = None
 _HASH_TTL_SEC = 300.0
+_EXP_CHAIN_CACHE: dict[str, tuple[float, list[str]]] = {}
+_EXP_CHAIN_TTL_SEC = 6 * 3600.0
 
 
 def _retry_after_seconds(
@@ -152,6 +154,28 @@ class SchwabTrader:
         if not isinstance(data, dict):
             return {}
         return {str(k): v for k, v in data.items() if isinstance(v, dict)}
+
+    def get_expiration_dates(self, symbol: str) -> list[str]:
+        """Listed option expirations (Schwab /expirationchain). Cached ~6h."""
+        global _EXP_CHAIN_CACHE
+        sym = str(symbol or "").strip().upper()
+        if not sym:
+            raise ProviderError("symbol required for expiration chain")
+        now = time.monotonic()
+        hit = _EXP_CHAIN_CACHE.get(sym)
+        if hit is not None and now - hit[0] < _EXP_CHAIN_TTL_SEC:
+            return hit[1]
+        resp = self._trader_request(
+            "GET",
+            f"{SCHWAB_MARKETDATA_BASE}/expirationchain",
+            timeout=20.0,
+            params={"symbol": sym},
+        )
+        raise_for_provider_response(resp, provider="schwab-expirations")
+        data = resp.json()
+        dates = parse_expiration_dates(data)
+        _EXP_CHAIN_CACHE[sym] = (now, dates)
+        return dates
 
     def place_order(
         self,
@@ -315,6 +339,32 @@ DESK_RISK_PCT = 0.10  # consider / less-risk flag
 MAX_OPEN_RISK_PCT = 0.50  # hard cap to send BUY_TO_OPEN
 
 
+def parse_expiration_dates(data: Any) -> list[str]:
+    """YYYY-MM-DD list from Schwab expirationchain JSON."""
+    if isinstance(data, dict):
+        rows = data.get("expirationList") or data.get("expiration_list") or []
+    elif isinstance(data, list):
+        rows = data
+    else:
+        rows = []
+    out: list[str] = []
+    for row in rows:
+        raw = ""
+        if isinstance(row, str):
+            raw = row
+        elif isinstance(row, dict):
+            raw = str(
+                row.get("expirationDate")
+                or row.get("expiration_date")
+                or row.get("optionExpirationDate")
+                or ""
+            )
+        iso = raw.strip()[:10]
+        if len(iso) == 10 and iso[4] == "-" and iso[7] == "-":
+            out.append(iso)
+    return sorted(set(out))
+
+
 def build_occ_option_symbol(
     underlying: str,
     exp_iso: str,
@@ -338,6 +388,63 @@ def build_occ_option_symbol(
         raise ProviderError("strike must be > 0")
     strike_int = int(round(float(strike) * 1000))
     return f"{root6}{yymmdd}{cp}{strike_int:08d}"
+
+
+def _first_px(src: dict[str, Any], *keys: str) -> float | None:
+    for k in keys:
+        v = src.get(k)
+        if v is None or v == "":
+            continue
+        try:
+            n = float(v)
+        except (TypeError, ValueError):
+            continue
+        if n > 0:
+            return n
+    return None
+
+
+def pick_quote_blob(quotes: dict[str, Any], occ: str) -> dict[str, Any]:
+    """Match Schwab quote keys that may differ in spacing from our OCC."""
+    if not isinstance(quotes, dict) or not occ:
+        return {}
+    if occ in quotes and isinstance(quotes[occ], dict):
+        return quotes[occ]
+    occ_u = occ.upper()
+    compact = occ_u.replace(" ", "")
+    for k, v in quotes.items():
+        if not isinstance(v, dict):
+            continue
+        ku = str(k).upper()
+        if ku == occ_u or ku.replace(" ", "") == compact:
+            return v
+        sym = str(v.get("symbol") or "").upper()
+        if sym == occ_u or sym.replace(" ", "") == compact:
+            return v
+    if len(quotes) == 1:
+        only = next(iter(quotes.values()))
+        if isinstance(only, dict):
+            return only
+    return {}
+
+
+def parse_option_quote_prices(blob: dict[str, Any]) -> dict[str, float | None]:
+    """Bid/ask/mark plus fillable debit (ask, else mark, else last)."""
+    q = blob.get("quote") if isinstance(blob.get("quote"), dict) else blob
+    if not isinstance(q, dict):
+        q = {}
+    bid = _first_px(q, "bidPrice", "bid")
+    ask = _first_px(q, "askPrice", "ask")
+    mark = _first_px(q, "mark", "markPrice")
+    last = _first_px(q, "lastPrice", "last")
+    fillable = ask or mark or last
+    return {
+        "bid": round(bid, 2) if bid is not None else None,
+        "ask": round(ask, 2) if ask is not None else None,
+        "mark": round(mark, 2) if mark is not None else None,
+        "last": round(last, 2) if last is not None else None,
+        "fillable": round(float(fillable), 2) if fillable is not None else None,
+    }
 
 
 def size_long_option(

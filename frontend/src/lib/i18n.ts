@@ -327,14 +327,14 @@ const en: Dict = {
   "strategies.optionsAtm": "ATM",
   "strategies.optionsFit.optimal": "academy optimal",
   "strategies.optionsFit.optimal_over_10": "academy optimal · over 10% risk",
-  "strategies.optionsFit.capital": "sized to 10% equity (not academy optimal)",
+  "strategies.optionsFit.capital": "sized to max payable ≤50% (not academy optimal)",
   "strategies.optionsFit.unfitted": "load capital to size strike",
   "strategies.optionsTp": "TP prima",
   "strategies.optionsNoRange":
     "No academy premium band for this ticker — type the debit from the chain, then Open.",
   "strategies.optionsPremManual": "Debit $",
   "strategies.optionsPlanHint":
-    "Starts from academy optimal premium; strike/debit drop to 10% equity if that 1ct is too rich (open still allowed ≤50%). Debit is editable. Confirm live chain.",
+    "Open quotes the live ask and LIMIT uses that so the order can fill. 10% is only the green consider flag; strike sizes up to 50% equity. Debit is a hint until Open.",
   "strategies.capitalTitle": "Capital · flag 10% · open ≤50%",
   "strategies.capitalHint":
     "Green flag = 1ct ≤ 10% equity (consider). Open allowed up to 50% of equity if cash covers. Sort stays confluence.",
@@ -351,7 +351,7 @@ const en: Dict = {
   "strategies.openNeedCash": "Cash {cash} — need {more} more to buy 1ct {cost}.",
   "strategies.openOverRisk": "Open 1× @ {px} · {pct}% risk",
   "strategies.openConfirmOverRisk":
-    "1ct costs {cost} = {pct}% of equity {eq} (consider ≤10%, max 50%). Send BUY_TO_OPEN anyway?",
+    "Live ask {px}. 1ct costs {cost} = {pct}% of equity {eq} (consider ≤10%, max 50%). Send BUY_TO_OPEN LIMIT at the live ask so it can fill?",
   "strategies.riskConsiderHint": "Consider — 1ct is {pct}% of equity (≤10%).",
   "strategies.riskOtherHint": "1ct is {pct}% of equity. Open allowed up to 50%.",
   "strategies.openNeedArm": "Turn on Trigger opens first.",
@@ -367,7 +367,13 @@ const en: Dict = {
     "Trigger opens pauses Auto TOP 5 / Auto live so Schwab is free for the order.",
   "strategies.openNeedTrading": "Trading disabled on API (SCHWAB_TRADING_ENABLED).",
   "strategies.openConfirm":
-    "Send BUY_TO_OPEN LIMIT {n}× {sym} {type} {strike} exp {exp} @ {px}? Cost ≈ {cost} (10% risk {risk}). After FILL: auto TP 35% if 1ct, else 10/20/35/50/100.",
+    "Send BUY_TO_OPEN LIMIT {n}× {sym} {type} {strike} exp {exp} @ live ask {px}? Cost ≈ {cost} (10% risk {risk}). After FILL: auto TP 35% if 1ct, else 10/20/35/50/100.",
+  "strategies.openQuoteWait": "Quoting live ask…",
+  "strategies.openQuoteFail":
+    "Could not get a live ask. Wait ~30s, then Open again — do not send a cheap LIMIT that will never fill.",
+  "strategies.openExpWait": "Looking up listed expiration…",
+  "strategies.openExpFail":
+    "No listed expiration from Schwab for this ticker. Wait ~30s and Open again — do not send a made-up date.",
   "strategies.openOk": "Submitted {sym} · #{id} · waiting for FILL then auto TP",
   "strategies.openOkTpWait":
     "Submitted {sym} · waiting for FILL, then auto TP {tp} (one Schwab check every 20s).",
@@ -829,14 +835,14 @@ const es: Dict = {
   "strategies.optionsAtm": "ATM",
   "strategies.optionsFit.optimal": "óptimo academia",
   "strategies.optionsFit.optimal_over_10": "óptimo academia · más del 10% de riesgo",
-  "strategies.optionsFit.capital": "ajustado al 10% del equity (fuera de óptimo)",
+  "strategies.optionsFit.capital": "ajustado al máximo pagable ≤50% (fuera de óptimo)",
   "strategies.optionsFit.unfitted": "carga capital para ajustar el strike",
   "strategies.optionsTp": "TP prima",
   "strategies.optionsNoRange":
     "Sin rango de academia para este ticker — escribe la prima de la cadena y pulsa Abrir.",
   "strategies.optionsPremManual": "Prima $",
   "strategies.optionsPlanHint":
-    "Empieza por la prima óptima de academia; si 1ct no cabe, baja strike/prima al 10% del equity (abrir sigue ≤50%). La prima se puede editar. Confirma en la cadena.",
+    "Open cotiza el ask en vivo y el LIMIT usa ese precio para que pueda llenar. El 10% es solo la bandera verde; el strike se ajusta hasta 50% del equity. La prima es una pista hasta pulsar Abrir.",
   "strategies.capitalTitle": "Capital · flag 10% · open ≤50%",
   "strategies.capitalHint":
     "Bandera verde = 1ct ≤ 10% del equity (considerar). Abrir permitido hasta 50% si hay cash. El sort sigue por confluencia.",
@@ -853,7 +859,7 @@ const es: Dict = {
   "strategies.openNeedCash": "Cash {cash} — te faltan {more} para 1ct {cost}.",
   "strategies.openOverRisk": "Abrir 1× @ {px} · riesgo {pct}%",
   "strategies.openConfirmOverRisk":
-    "1ct cuesta {cost} = {pct}% del equity {eq} (considerar ≤10%, máx 50%). ¿Enviar BUY_TO_OPEN igual?",
+    "Ask en vivo {px}. 1ct cuesta {cost} = {pct}% del equity {eq} (considerar ≤10%, máx 50%). ¿Enviar BUY_TO_OPEN LIMIT al ask para que pueda llenar?",
   "strategies.riskConsiderHint": "Considerar — 1ct es {pct}% del equity (≤10%).",
   "strategies.riskOtherHint": "1ct es {pct}% del equity. Abrir permitido hasta 50%.",
   "strategies.openNeedArm": "Activa Trigger opens primero.",
@@ -869,7 +875,13 @@ const es: Dict = {
     "Trigger opens pausa Auto TOP 5 / Auto live para dejar Schwab libre para la orden.",
   "strategies.openNeedTrading": "Trading desactivado en API (SCHWAB_TRADING_ENABLED).",
   "strategies.openConfirm":
-    "¿Enviar BUY_TO_OPEN LIMIT {n}× {sym} {type} {strike} exp {exp} @ {px}? Costo ≈ {cost} (riesgo 10% {risk}). Tras FILL: TP auto 35% si 1ct, si no 10/20/35/50/100.",
+    "¿Enviar BUY_TO_OPEN LIMIT {n}× {sym} {type} {strike} exp {exp} @ ask en vivo {px}? Costo ≈ {cost} (riesgo 10% {risk}). Tras FILL: TP auto 35% si 1ct, si no 10/20/35/50/100.",
+  "strategies.openQuoteWait": "Cotizando ask en vivo…",
+  "strategies.openQuoteFail":
+    "No pude obtener el ask en vivo. Espera ~30s y vuelve a Abrir — no envíes un LIMIT barato que nunca va a llenar.",
+  "strategies.openExpWait": "Buscando vencimiento listado…",
+  "strategies.openExpFail":
+    "Schwab no devolvió un vencimiento listado para este ticker. Espera ~30s y vuelve a Abrir — no envíes una fecha inventada.",
   "strategies.openOk": "Enviado {sym} · #{id} · esperando FILL y luego TP auto",
   "strategies.openOkTpWait":
     "Enviado {sym} · esperando FILL, luego TP auto {tp} (un check a Schwab cada 20s).",

@@ -299,6 +299,36 @@ export async function fetchBrokerPositions(opts?: {
   return request(`/broker/positions${qs}`);
 }
 
+export async function brokerOptionQuote(params: {
+  underlying: string;
+  option_type: string;
+  strike: number;
+  exp_iso: string;
+}): Promise<{
+  occ: string;
+  bid: number | null;
+  ask: number | null;
+  mark: number | null;
+  last: number | null;
+  fillable: number | null;
+}> {
+  const q = new URLSearchParams({
+    underlying: params.underlying,
+    option_type: params.option_type,
+    strike: String(params.strike),
+    exp_iso: params.exp_iso,
+  });
+  return request(`/broker/option-quote?${q.toString()}`);
+}
+
+export async function brokerOptionExpirations(symbol: string): Promise<{
+  symbol: string;
+  dates: string[];
+}> {
+  const q = new URLSearchParams({ symbol });
+  return request(`/broker/option-expirations?${q.toString()}`);
+}
+
 export async function brokerOpenOption(payload: {
   account_hash: string;
   underlying: string;

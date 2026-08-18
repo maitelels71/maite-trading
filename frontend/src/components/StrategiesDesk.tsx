@@ -5,6 +5,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DeskSession, DeskStack } from "@/components/DeskSession";
 import {
   brokerOpenOption,
+  brokerOptionExpirations,
+  brokerOptionQuote,
   brokerTpLadder,
   fetchBrokerPositions,
   fetchInstruments,
@@ -23,7 +25,17 @@ import {
   localizedPlaybookLabel,
   localizedPlaybookName,
 } from "@/lib/playbook-localize";
-import { buildOptionsEntryPlan, planWithDebit, type PlanCapital } from "@/lib/options-premium-ranges";
+import {
+  buildOptionsEntryPlan,
+  listedExpirationSnapshot,
+  listedExpirationsFor,
+  pickListedExpiration,
+  planAtExpiration,
+  planAtLiveDebit,
+  planWithDebit,
+  rememberListedExpirations,
+  type PlanCapital,
+} from "@/lib/options-premium-ranges";
 import { DEFAULT_OTM_PREMIUM, sizeForSymbol, sizeLongOption } from "@/lib/option-sizing";
 import {
   groupInstrumentsForVenue,
@@ -47,6 +59,8 @@ const AUTO_DESK_KEY = "maite.strategies.autoDesk";
 const ARM_OPENS_KEY = "maite.strategies.armOpens";
 const CAPITAL_CACHE_KEY = "maite.strategies.capitalCache";
 const CAPITAL_CACHE_MS = 24 * 60 * 60 * 1000;
+const EXP_CHAIN_KEY = "maite.strategies.expChain";
+const EXP_CHAIN_MS = 12 * 60 * 60 * 1000;
 /** After candles/capital, wait before BUY_TO_OPEN so Schwab's 429 window can clear. */
 const OPEN_QUIET_MS = 15_000;
 const OPEN_RETRY_WAIT_SEC = 25;
@@ -443,6 +457,34 @@ function writeCapitalCache(accounts: BrokerAccount[], tradingEnabled: boolean) {
   }
 }
 
+function hydrateExpChainCache() {
+  if (typeof window === "undefined") return;
+  try {
+    const raw = window.localStorage.getItem(EXP_CHAIN_KEY);
+    if (!raw) return;
+    const parsed = JSON.parse(raw) as { at?: number; bySymbol?: Record<string, string[]> };
+    if (!parsed?.at || Date.now() - parsed.at > EXP_CHAIN_MS) return;
+    if (!parsed.bySymbol || typeof parsed.bySymbol !== "object") return;
+    for (const [sym, dates] of Object.entries(parsed.bySymbol)) {
+      if (Array.isArray(dates)) rememberListedExpirations(sym, dates);
+    }
+  } catch {
+    // ignore
+  }
+}
+
+function persistExpChainCache() {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(
+      EXP_CHAIN_KEY,
+      JSON.stringify({ at: Date.now(), bySymbol: listedExpirationSnapshot() }),
+    );
+  } catch {
+    // ignore quota
+  }
+}
+
 function tooRichCopy(
   t: (key: string) => string,
   sizing: ReturnType<typeof sizeLongOption>,
@@ -562,6 +604,8 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
   const [openNote, setOpenNote] = useState<string | null>(null);
   const [openError, setOpenError] = useState<string | null>(null);
   const [openingKey, setOpeningKey] = useState<string | null>(null);
+  const [listedExpRev, setListedExpRev] = useState(0);
+  const expInflight = useRef<Set<string>>(new Set());
   const runGen = useRef(0);
   const deskGen = useRef(0);
   const tpWatchGen = useRef(0);
@@ -570,6 +614,13 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
     // Stop further candle requests; leave busy until the in-flight call returns.
     runGen.current += 1;
     deskGen.current += 1;
+  }, []);
+
+  useEffect(() => {
+    hydrateExpChainCache();
+    if (Object.keys(listedExpirationSnapshot()).length) {
+      setListedExpRev((n) => n + 1);
+    }
   }, []);
 
   useEffect(() => {
@@ -844,8 +895,60 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
         );
         return;
       }
+      setOpenError(null);
+      setOpenNote(t("strategies.openExpWait"));
+      let listed = listedExpirationsFor(plan.symbol);
+      if (!listed?.length) {
+        try {
+          const res = await brokerOptionExpirations(plan.symbol);
+          listed = res.dates ?? [];
+          rememberListedExpirations(plan.symbol, listed);
+          persistExpChainCache();
+          setListedExpRev((n) => n + 1);
+        } catch (err) {
+          setOpenNote(null);
+          const msg = err instanceof Error ? err.message : "";
+          setOpenError(
+            /rate limit/i.test(msg) ? msg : t("strategies.openExpFail"),
+          );
+          return;
+        }
+      }
+      const picked = pickListedExpiration(listed ?? [], new Date());
+      if (!picked) {
+        setOpenNote(null);
+        setOpenError(t("strategies.openExpFail"));
+        return;
+      }
+      const expPlan = planAtExpiration(plan, picked);
+      setOpenNote(t("strategies.openQuoteWait"));
+      let fillable = 0;
+      try {
+        const q = await brokerOptionQuote({
+          underlying: expPlan.symbol,
+          option_type: expPlan.optionType,
+          strike: expPlan.strike,
+          exp_iso: expPlan.expIso,
+        });
+        fillable = Number(q.fillable) || 0;
+      } catch (err) {
+        setOpenNote(null);
+        const msg = err instanceof Error ? err.message : "";
+        setOpenError(
+          /rate limit/i.test(msg)
+            ? msg
+            : t("strategies.openQuoteFail"),
+        );
+        return;
+      }
+      setOpenNote(null);
+      if (!(fillable > 0)) {
+        setOpenError(t("strategies.openQuoteFail"));
+        return;
+      }
+      const livePlan = planAtLiveDebit(expPlan, fillable);
       const sizing = sizeLongOption({
-        entryPremium: plan.entryPremium,
+        entryPremium: livePlan.entryPremium,
         equity: primaryAccount.equity ?? 0,
         cashAvailable:
           primaryAccount.available_funds ?? primaryAccount.cash_balance ?? 0,
@@ -859,17 +962,18 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
       const ok = window.confirm(
         overRisk
           ? t("strategies.openConfirmOverRisk")
+              .replace("{px}", moneyUsd(livePlan.entryPremium))
               .replace("{cost}", moneyUsd(sizing.costPerContract))
               .replace("{pct}", formatPct(sizing.actualRiskPct))
               .replace("{eq}", moneyUsd(sizing.equity))
               .replace("{risk}", moneyUsd(sizing.riskBudget))
           : t("strategies.openConfirm")
               .replace("{n}", String(qty))
-              .replace("{sym}", plan.symbol)
-              .replace("{type}", plan.optionType)
-              .replace("{strike}", moneyUsd(plan.strike))
-              .replace("{exp}", plan.expLabel)
-              .replace("{px}", moneyUsd(plan.entryPremium))
+              .replace("{sym}", livePlan.symbol)
+              .replace("{type}", livePlan.optionType)
+              .replace("{strike}", moneyUsd(livePlan.strike))
+              .replace("{exp}", livePlan.expLabel)
+              .replace("{px}", moneyUsd(livePlan.entryPremium))
               .replace("{cost}", moneyUsd(sizing.costPerContract * qty))
               .replace("{risk}", moneyUsd(sizing.riskBudget)),
       );
@@ -879,11 +983,11 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
       setOpenNote(null);
       const payload = {
         account_hash: primaryAccount.hashValue,
-        underlying: plan.symbol,
-        option_type: plan.optionType,
-        strike: plan.strike,
-        exp_iso: plan.expIso,
-        entry_premium: plan.entryPremium,
+        underlying: livePlan.symbol,
+        option_type: livePlan.optionType,
+        strike: livePlan.strike,
+        exp_iso: livePlan.expIso,
+        entry_premium: livePlan.entryPremium,
         quantity: qty,
         confirm_live: true as const,
         equity: primaryAccount.equity ?? 0,
@@ -908,20 +1012,20 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
         }
         setOpenNote(
           t("strategies.openOkTpWait")
-            .replace("{sym}", res.option_symbol || plan.symbol)
+            .replace("{sym}", res.option_symbol || livePlan.symbol)
             .replace("{tp}", qty <= 1 ? "35%" : "10/20/35/50/100"),
         );
         if (res.option_symbol && primaryAccount.hashValue) {
           void placeAutoTpAfterFill({
             accountHash: primaryAccount.hashValue,
             occ: res.option_symbol,
-            fallbackAvg: plan.entryPremium,
+            fallbackAvg: livePlan.entryPremium,
             expectedQty: qty,
           });
         } else {
           setOpenNote(
             t("strategies.openOk")
-              .replace("{sym}", res.option_symbol || plan.symbol)
+              .replace("{sym}", res.option_symbol || livePlan.symbol)
               .replace("{id}", res.order_id || "—"),
           );
         }
@@ -1314,6 +1418,55 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
   );
   const board = useMemo(() => sortScanBoard(scan?.hits ?? []), [scan]);
 
+  useEffect(() => {
+    if (venue !== "schwab") return;
+    if (deskBusy || focusBusy || quietRemainSec > 0) return;
+    const symbols = new Set<string>();
+    for (const g of deskGroups) {
+      for (const h of g.hits) symbols.add(h.symbol.toUpperCase());
+    }
+    for (const h of matches) symbols.add(h.symbol.toUpperCase());
+    const missing = [...symbols].filter(
+      (s) => !listedExpirationsFor(s) && !expInflight.current.has(s),
+    );
+    if (!missing.length) return;
+    let cancelled = false;
+    void (async () => {
+      for (const sym of missing) {
+        if (cancelled) return;
+        expInflight.current.add(sym);
+        try {
+          const res = await brokerOptionExpirations(sym);
+          rememberListedExpirations(sym, res.dates ?? []);
+          persistExpChainCache();
+          if (!cancelled) setListedExpRev((n) => n + 1);
+        } catch {
+          // Friday/index fallback stays until Open retries the chain.
+        } finally {
+          expInflight.current.delete(sym);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [venue, deskGroups, matches, deskBusy, focusBusy, quietRemainSec]);
+
+  const planFor = (
+    symbol: string,
+    side: string | null | undefined,
+    price: number | string | null | undefined,
+  ) => {
+    void listedExpRev;
+    return buildOptionsEntryPlan(
+      symbol,
+      side,
+      price,
+      new Date(),
+      planCapital(primaryAccount),
+    );
+  };
+
   function toggleStep(id: string) {
     setCheckedSteps((prev) => ({ ...prev, [id]: !prev[id] }));
   }
@@ -1563,12 +1716,10 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
                               account={primaryAccount}
                               entryPremium={
                                 venue === "schwab" && hit.last_signal
-                                  ? (buildOptionsEntryPlan(
+                                  ? (planFor(
                                       hit.symbol,
                                       hit.last_signal.side,
                                       hit.last_signal.price,
-                                      new Date(),
-                                      planCapital(primaryAccount),
                                     )?.entryPremium ?? undefined)
                                   : undefined
                               }
@@ -1645,12 +1796,10 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
                             <div>{hit.last_signal?.reason ?? hit.detail}</div>
                             {venue === "schwab" && hit.last_signal ? (
                               (() => {
-                                const plan = buildOptionsEntryPlan(
+                                const plan = planFor(
                                   hit.symbol,
                                   hit.last_signal.side,
                                   hit.last_signal.price,
-                                  new Date(),
-                                  planCapital(primaryAccount),
                                 );
                                 if (!plan) return null;
                                 const rowOpenKey = `${hit.symbol}::${hit.strategy}::open`;
@@ -1914,12 +2063,10 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
                         account={primaryAccount}
                         entryPremium={
                           venue === "schwab" && hit.last_signal
-                            ? (buildOptionsEntryPlan(
+                            ? (planFor(
                                 hit.symbol,
                                 hit.last_signal.side,
                                 hit.last_signal.price,
-                                new Date(),
-                                planCapital(primaryAccount),
                               )?.entryPremium ?? undefined)
                             : undefined
                         }

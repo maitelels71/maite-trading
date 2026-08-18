@@ -1,7 +1,9 @@
-import { WATCH_SYMBOLS } from "@/lib/instrument-groups";
+import { INDEX_ETF_SYMBOLS } from "@/lib/instrument-groups";
 
-/** Names without weekday dailies — Friday weeklies only (USAR/UUUU/ONDS + IOVA). */
-const WEEKLY_FRIDAY_SYMBOLS = new Set([...WATCH_SYMBOLS, "IOVA"]);
+/** SPY/QQQ/IWM list weekday 0DTE. Single names (NFLX, AAPL, …) are Friday weeklies. */
+function hasWeekdayExpirations(symbol: string): boolean {
+  return INDEX_ETF_SYMBOLS.has(symbol.trim().toUpperCase());
+}
 
 /** Investep Academy option premium ranges (rango_precios_opciones_2026-06-16.xls). */
 
@@ -740,7 +742,8 @@ const DEFAULT_NO_RANGE_DEBIT = 0.5;
 
 /**
  * Prefer academy mid (or $0.50 if no band). If that 1ct exceeds cash / 50%
- * equity, size the debit to the 10% consider pocket (or max payable).
+ * equity, size to the max payable (≤50%/cash) so LIMIT can still fill.
+ * The 10% pocket is only the green consider flag, not the order price.
  */
 export function targetDebitForCapital(
   academyMid: number,
@@ -776,7 +779,7 @@ export function targetDebitForCapital(
       fit: within10 ? "capital" : "optimal_over_10",
     };
   }
-  const fill = max10Prem >= MIN_DEBIT ? Math.min(max10Prem, capPrem) : capPrem;
+  const fill = capPrem;
   return { premium: roundMoney(Math.max(MIN_DEBIT, fill)), fit: "capital" };
 }
 
@@ -809,6 +812,25 @@ export function planWithDebit(
     tp50: tp(0.5),
     tp100: tp(1.0),
     premiumFit: inBand ? "optimal" : "capital",
+  };
+}
+
+/** Keep strike; set LIMIT/TPs to a live debit (do not re-walk OTM). */
+export function planAtLiveDebit(
+  plan: OptionsEntryPlan,
+  debit: number,
+): OptionsEntryPlan {
+  const prem = Math.max(0, roundMoney(Number(debit) || 0));
+  const tp = (pct: number) => (prem > 0 ? roundMoney(prem * (1 + pct)) : 0);
+  return {
+    ...plan,
+    entryPremium: prem,
+    estimatedPremium: prem,
+    tp10: tp(0.1),
+    tp20: tp(0.2),
+    tp35: tp(0.35),
+    tp50: tp(0.5),
+    tp100: tp(1.0),
   };
 }
 
@@ -908,31 +930,84 @@ function formatExpShort(isoDate: string): string {
   }).format(dt);
 }
 
+const listedExpStore: Record<string, string[]> = {};
+
+export function rememberListedExpirations(symbol: string, dates: string[]): void {
+  const key = symbol.trim().toUpperCase();
+  listedExpStore[key] = [
+    ...new Set(dates.filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d))),
+  ].sort();
+}
+
+export function listedExpirationsFor(symbol: string): string[] | null {
+  const hit = listedExpStore[symbol.trim().toUpperCase()];
+  return hit && hit.length ? hit : null;
+}
+
+export function listedExpirationSnapshot(): Record<string, string[]> {
+  return { ...listedExpStore };
+}
+
+/** First listed OCC date on/after the desk start (today before 10:00 ET, else tomorrow). */
+export function pickListedExpiration(
+  listed: string[],
+  now = new Date(),
+): string | null {
+  const clock = nyClock(now);
+  const before10 = clock.hh < 10;
+  const start =
+    before10 && clock.weekday !== 0 && clock.weekday !== 6
+      ? clock.iso
+      : addDaysIso(clock.iso, 1);
+  const dates = [
+    ...new Set(listed.filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d))),
+  ].sort();
+  for (const d of dates) {
+    if (d >= start) return d;
+  }
+  return null;
+}
+
+export function planAtExpiration(
+  plan: OptionsEntryPlan,
+  expIso: string,
+  now = new Date(),
+): OptionsEntryPlan {
+  const clock = nyClock(now);
+  return {
+    ...plan,
+    expIso,
+    expLabel: formatExpShort(expIso),
+    expIsToday: expIso === clock.iso,
+  };
+}
+
 /**
- * Desk expiry helper (no live chain):
- * - Before 10:00 ET → next session exp, including today
- * - From 10:00 ET → next session after today
- * Liquid 0DTE names (SPY/QQQ/IWM + megacaps): Mon–Fri.
- * Watch / IOVA: Friday weeklies only (ONDS has no Tue/Wed dailies).
- * Confirm on live chain.
+ * Desk expiry: prefer Schwab listed dates. Fallback if the chain is not loaded yet:
+ * - Before 10:00 ET → next listed-style exp, including today
+ * - From 10:00 ET → next after today
+ * SPY/QQQ/IWM: weekday 0DTE. Everyone else: Friday weekly.
  */
 export function suggestOptionExpDate(
   symbol: string,
   now = new Date(),
+  listedExps?: string[] | null,
 ): Pick<OptionsEntryPlan, "expIso" | "expLabel" | "expIsToday" | "expRule"> {
   const clock = nyClock(now);
   const before10 = clock.hh < 10;
   const expRule: "before_10" | "from_10" = before10 ? "before_10" : "from_10";
-  // Before 10am on a weekday → today can be the exp. Otherwise start tomorrow.
   const start =
     before10 && clock.weekday !== 0 && clock.weekday !== 6
       ? clock.iso
       : addDaysIso(clock.iso, 1);
 
-  const weekly = WEEKLY_FRIDAY_SYMBOLS.has(symbol.trim().toUpperCase());
-  const expIso = weekly
-    ? nextFridayOnOrAfter(start)
-    : nextWeekdayOnOrAfter(start);
+  const listed = listedExps ?? listedExpirationsFor(symbol);
+  const fromChain = listed?.length ? pickListedExpiration(listed, now) : null;
+  const expIso =
+    fromChain ??
+    (hasWeekdayExpirations(symbol)
+      ? nextWeekdayOnOrAfter(start)
+      : nextFridayOnOrAfter(start));
 
   return {
     expIso,
@@ -948,6 +1023,7 @@ export function buildOptionsEntryPlan(
   spotRaw: number | string | null | undefined,
   now = new Date(),
   capital: PlanCapital | null = null,
+  listedExpirations: string[] | null = null,
 ): OptionsEntryPlan | null {
   const spot =
     typeof spotRaw === "number"
@@ -980,11 +1056,15 @@ export function buildOptionsEntryPlan(
     optionType,
     entryPremium > 0 ? entryPremium : DEFAULT_NO_RANGE_DEBIT,
   );
+  // LIMIT at this strike's model premium, not the 10% budget number.
+  if (estimatedPremium > 0) {
+    entryPremium = estimatedPremium;
+  }
 
   const tp = (pct: number) =>
     entryPremium > 0 ? roundMoney(entryPremium * (1 + pct)) : 0;
 
-  const exp = suggestOptionExpDate(symbol, now);
+  const exp = suggestOptionExpDate(symbol, now, listedExpirations);
 
   return {
     symbol: symbol.toUpperCase(),
