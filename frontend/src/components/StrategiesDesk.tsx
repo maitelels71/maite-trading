@@ -5,8 +5,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DeskSession, DeskStack } from "@/components/DeskSession";
 import {
   brokerOpenOption,
-  brokerOptionExpirations,
-  brokerOptionQuote,
   brokerTpLadder,
   fetchBrokerPositions,
   fetchInstruments,
@@ -27,12 +25,7 @@ import {
 } from "@/lib/playbook-localize";
 import {
   buildOptionsEntryPlan,
-  listedExpPrefersFriday,
   listedExpirationSnapshot,
-  listedExpirationsFor,
-  pickListedExpiration,
-  planAtExpiration,
-  planAtLiveDebit,
   planWithDebit,
   rememberListedExpirations,
   type PlanCapital,
@@ -496,18 +489,6 @@ function hydrateExpChainCache() {
     }
   } catch {
     // ignore
-  }
-}
-
-function persistExpChainCache() {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(
-      EXP_CHAIN_KEY,
-      JSON.stringify({ at: Date.now(), bySymbol: listedExpirationSnapshot() }),
-    );
-  } catch {
-    // ignore quota
   }
 }
 
@@ -983,87 +964,11 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
         );
         return;
       }
+      // One Schwab call only: POST BUY_TO_OPEN. Quote/exp GETs were 429-ing
+      // before the order ever left, so Open looked "always busy".
       setOpenError(null);
-      setOpenNote(t("strategies.openExpWait"));
-      let listed = listedExpirationsFor(plan.symbol);
-      if (!listed?.length) {
-        try {
-          const res = await brokerOptionExpirations(plan.symbol);
-          listed = res.dates ?? [];
-          rememberListedExpirations(plan.symbol, listed);
-          persistExpChainCache();
-          setListedExpRev((n) => n + 1);
-        } catch (err) {
-          const msg = err instanceof Error ? err.message : "";
-          if (/rate limit/i.test(msg)) {
-            // Keep Friday/index exp on the plan; still try live ask.
-            listed = null;
-          } else {
-            setOpenNote(null);
-            setOpenError(t("strategies.openExpFail"));
-            return;
-          }
-        }
-      }
-      const picked = listed?.length
-        ? pickListedExpiration(
-            listed,
-            new Date(),
-            listedExpPrefersFriday(plan.symbol),
-          )
-        : plan.expIso;
-      if (!picked) {
-        setOpenNote(null);
-        setOpenError(t("strategies.openExpFail"));
-        return;
-      }
-      const expPlan = planAtExpiration(plan, picked);
-      setOpenNote(t("strategies.openQuoteWait"));
-      let fillable = 0;
-      let quotedPlan = expPlan;
-      try {
-        const q = await brokerOptionQuote({
-          underlying: quotedPlan.symbol,
-          option_type: quotedPlan.optionType,
-          strike: quotedPlan.strike,
-          exp_iso: quotedPlan.expIso,
-        });
-        fillable = Number(q.fillable) || 0;
-        if (!(fillable > 0) && listed?.length) {
-          const next = pickListedExpiration(
-            listed.filter((d) => d > quotedPlan.expIso),
-            new Date(),
-            listedExpPrefersFriday(plan.symbol),
-          );
-          if (next && next !== quotedPlan.expIso) {
-            quotedPlan = planAtExpiration(plan, next);
-            const q2 = await brokerOptionQuote({
-              underlying: quotedPlan.symbol,
-              option_type: quotedPlan.optionType,
-              strike: quotedPlan.strike,
-              exp_iso: quotedPlan.expIso,
-            });
-            fillable = Number(q2.fillable) || 0;
-          }
-        }
-      } catch (err) {
-        setOpenNote(null);
-        const msg = err instanceof Error ? err.message : "";
-        if (/rate limit/i.test(msg)) {
-          openFailed429Ref.current = true;
-          startSchwabQuiet();
-          setOpenError(t("strategies.openNotSent429"));
-        } else {
-          setOpenError(t("strategies.openQuoteFail"));
-        }
-        return;
-      }
       setOpenNote(null);
-      if (!(fillable > 0)) {
-        setOpenError(t("strategies.openQuoteFail"));
-        return;
-      }
-      const livePlan = planAtLiveDebit(quotedPlan, fillable);
+      const livePlan = plan;
       const sizing = sizeLongOption({
         entryPremium: livePlan.entryPremium,
         equity: primaryAccount.equity ?? 0,

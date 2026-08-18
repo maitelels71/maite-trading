@@ -70,7 +70,7 @@ class SchwabTrader:
         *,
         timeout: float = 30.0,
         extra_headers: dict[str, str] | None = None,
-        retries: int = 3,
+        retries: int = 1,
         max_wait: float = 4.0,
         **kwargs: Any,
     ) -> httpx.Response:

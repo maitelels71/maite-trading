@@ -358,7 +358,7 @@ const en: Dict = {
   "strategies.openNeedCash": "Cash {cash} — need {more} more to buy 1ct {cost}.",
   "strategies.openOverRisk": "Open 1× @ {px} · {pct}% risk",
   "strategies.openConfirmOverRisk":
-    "Live ask {px}. 1ct costs {cost} = {pct}% of equity {eq} (consider ≤10%, max 50%). Send BUY_TO_OPEN LIMIT at the live ask so it can fill?",
+    "LIMIT {px}. 1ct costs {cost} = {pct}% of equity {eq} (consider ≤10%, max 50%). Send BUY_TO_OPEN at this debit (the price on the Open button)?",
   "strategies.riskConsiderHint": "Consider — 1ct is {pct}% of equity (≤10%).",
   "strategies.riskOtherHint": "1ct is {pct}% of equity. Open allowed up to 50%.",
   "strategies.openNeedArm": "Turn on Trigger opens first.",
@@ -378,7 +378,7 @@ const en: Dict = {
     "Trigger opens pauses Auto TOP 5 / Auto live so Schwab is free for the order.",
   "strategies.openNeedTrading": "Trading disabled on API (SCHWAB_TRADING_ENABLED).",
   "strategies.openConfirm":
-    "Send BUY_TO_OPEN LIMIT {n}× {sym} {type} {strike} exp {exp} @ live ask {px}? Cost ≈ {cost} (10% risk {risk}). After FILL: auto TP 35% if 1ct, else 10/20/35/50/100.",
+    "Send BUY_TO_OPEN LIMIT {n}× {sym} {type} {strike} exp {exp} @ {px}? Cost ≈ {cost} (10% risk {risk}). After FILL: auto TP 35% if 1ct, else 10/20/35/50/100.",
   "strategies.openQuoteWait": "Quoting live ask…",
   "strategies.openQuoteFail":
     "Could not get a live ask. Wait ~30s, then Open again — do not send a cheap LIMIT that will never fill.",
@@ -877,7 +877,7 @@ const es: Dict = {
   "strategies.openNeedCash": "Cash {cash} — te faltan {more} para 1ct {cost}.",
   "strategies.openOverRisk": "Abrir 1× @ {px} · riesgo {pct}%",
   "strategies.openConfirmOverRisk":
-    "Ask en vivo {px}. 1ct cuesta {cost} = {pct}% del equity {eq} (considerar ≤10%, máx 50%). ¿Enviar BUY_TO_OPEN LIMIT al ask para que pueda llenar?",
+    "LIMIT {px}. 1ct cuesta {cost} = {pct}% del equity {eq} (considerar ≤10%, máx 50%). ¿Enviar BUY_TO_OPEN a este débito (el precio del botón Open)?",
   "strategies.riskConsiderHint": "Considerar — 1ct es {pct}% del equity (≤10%).",
   "strategies.riskOtherHint": "1ct es {pct}% del equity. Abrir permitido hasta 50%.",
   "strategies.openNeedArm": "Activa Trigger opens primero.",
@@ -897,7 +897,7 @@ const es: Dict = {
     "Trigger opens pausa Auto TOP 5 / Auto live para dejar Schwab libre para la orden.",
   "strategies.openNeedTrading": "Trading desactivado en API (SCHWAB_TRADING_ENABLED).",
   "strategies.openConfirm":
-    "¿Enviar BUY_TO_OPEN LIMIT {n}× {sym} {type} {strike} exp {exp} @ ask en vivo {px}? Costo ≈ {cost} (riesgo 10% {risk}). Tras FILL: TP auto 35% si 1ct, si no 10/20/35/50/100.",
+    "¿Enviar BUY_TO_OPEN LIMIT {n}× {sym} {type} {strike} exp {exp} @ {px}? Costo ≈ {cost} (riesgo 10% {risk}). Tras FILL: TP auto 35% si 1ct, si no 10/20/35/50/100.",
   "strategies.openQuoteWait": "Cotizando ask en vivo…",
   "strategies.openQuoteFail":
     "No pude obtener el ask en vivo. Espera ~30s y vuelve a Abrir — no envíes un LIMIT barato que nunca va a llenar.",
