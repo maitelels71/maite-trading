@@ -350,6 +350,9 @@ Resources:
           AllowedMethods: [GET, HEAD, OPTIONS]
           CachedMethods: [GET, HEAD]
           Compress: true
+          MinTTL: 0
+          DefaultTTL: 0
+          MaxTTL: 60
           ForwardedValues:
             QueryString: false
             Cookies:
@@ -457,6 +460,9 @@ Resources:
           AllowedMethods: [GET, HEAD, OPTIONS]
           CachedMethods: [GET, HEAD]
           Compress: true
+          MinTTL: 0
+          DefaultTTL: 0
+          MaxTTL: 60
           ForwardedValues:
             QueryString: false
             Cookies:

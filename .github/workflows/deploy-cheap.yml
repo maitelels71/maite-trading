@@ -119,7 +119,8 @@ jobs:
           NEXT_PUBLIC_APP_MODE: options
         run: |
           npm run build
-          aws s3 sync out/ "s3://${{ steps.out.outputs.bucket }}/" --delete
+          aws s3 sync out/ "s3://${{ steps.out.outputs.bucket }}/" --delete \
+            --cache-control "max-age=0, no-cache, must-revalidate"
           aws cloudfront create-invalidation \
             --distribution-id "${{ steps.out.outputs.cf_id }}" \
             --paths "/*"
@@ -132,7 +133,8 @@ jobs:
         run: |
           rm -rf out .next
           npm run build
-          aws s3 sync out/ "s3://${{ steps.out.outputs.futures_bucket }}/" --delete
+          aws s3 sync out/ "s3://${{ steps.out.outputs.futures_bucket }}/" --delete \
+            --cache-control "max-age=0, no-cache, must-revalidate"
           aws cloudfront create-invalidation \
             --distribution-id "${{ steps.out.outputs.futures_cf_id }}" \
             --paths "/*"

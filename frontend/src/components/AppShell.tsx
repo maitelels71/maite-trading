@@ -24,6 +24,7 @@ import {
   APP_MODE_LABEL,
   APP_VENUE,
 } from "@/lib/app-mode";
+import { DESK_VERSION } from "@/lib/desk-version";
 
 type AppView =
   | "analyzer"
@@ -236,6 +237,12 @@ function AppShellInner() {
                 );
               })}
             </nav>
+            <span
+              className="tabular-nums text-[10px] font-semibold text-[var(--muted)]"
+              title={DESK_VERSION}
+            >
+              {DESK_VERSION}
+            </span>
             <SettingsMenu
               adminActive={view === "admin"}
               adminHref={viewHref("admin")}
