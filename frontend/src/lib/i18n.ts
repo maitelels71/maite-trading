@@ -351,7 +351,7 @@ const en: Dict = {
   "strategies.capitalNeed": "Load capital to size opens (10% flag · 50% max).",
   "strategies.armOpens": "Trigger opens",
   "strategies.armOpensBody":
-    "Off by default so Auto and Sync can run. Turn on only when you are ready to send BUY_TO_OPEN — that pauses Auto so Schwab is free for the order. After FILL the desk sends default TP (35% if 1ct, else 10/20/35/50/100).",
+    "Sync & TOP 5 first (Trigger off). Then check Trigger — that pauses Auto/Sync and waits ~32s so Schwab can take BUY_TO_OPEN. If the first POST is still busy, the desk waits 32s and sends the confirmed order once. After FILL: TP 35% if 1ct, else 10/20/35/50/100.",
   "strategies.openSchwab": "Open {n}× @ {px}",
   "strategies.openTooRich":
     "1ct {cost} = {pct}% of equity. Consider ≤10% ({risk}). Open ≤50% needs {need50} equity.",
@@ -367,11 +367,14 @@ const en: Dict = {
   "strategies.openWaitSync":
     "Wait until candle sync finishes, then Open. Auto is paused while Trigger opens is on.",
   "strategies.openWaitQuiet":
-    "Schwab still cooling down. Open in {n}s.",
+    "Schwab cooling after Sync. Open in {n}s — do not skip this wait.",
   "strategies.openRetryWait":
-    "Schwab busy. Order was NOT sent. Wait {n}s, then click Open again.",
+    "Schwab locked. Sending the confirmed order in {n}s…",
+  "strategies.openSendingWait":
+    "Schwab locked. Sending the confirmed order in {n}s…",
+  "strategies.openSendingNow": "Sending the confirmed order now…",
   "strategies.openNotSent429":
-    "Order was NOT sent — Schwab was busy. Wait the countdown, then click Open again and press OK.",
+    "Order was NOT sent — Schwab stayed busy after the wait. Wait the countdown, then Open and OK once more.",
   "strategies.openReadyRetry":
     "Schwab is free again. Click Open and press OK.",
   "strategies.armPausesAuto":
@@ -870,7 +873,7 @@ const es: Dict = {
   "strategies.capitalNeed": "Carga capital para dimensionar (flag 10% · máx 50%).",
   "strategies.armOpens": "Trigger opens",
   "strategies.armOpensBody":
-    "Apagado por defecto para que Auto y Sync corran. Actívalo solo cuando vayas a enviar BUY_TO_OPEN — eso pausa Auto para dejar Schwab libre. Tras el FILL el desk envía TP por defecto (35% si 1ct, si no 10/20/35/50/100).",
+    "Primero Sync & TOP 5 (Trigger apagado). Luego activa Trigger — pausa Auto/Sync y espera ~32s para que Schwab acepte BUY_TO_OPEN. Si el primer POST sigue ocupado, el desk espera 32s y envía la orden ya confirmada una vez. Tras FILL: TP 35% si 1ct, si no 10/20/35/50/100.",
   "strategies.openSchwab": "Abrir {n}× @ {px}",
   "strategies.openTooRich":
     "1ct {cost} = {pct}% del equity. Considerar ≤10% ({risk}). Open ≤50% pide {need50} de equity.",
@@ -886,11 +889,14 @@ const es: Dict = {
   "strategies.openWaitSync":
     "Espera a que termine el sync de velas y luego Open. Auto está pausado mientras Trigger opens está activo.",
   "strategies.openWaitQuiet":
-    "Schwab aún se está enfriando. Open en {n}s.",
+    "Schwab se enfría tras el Sync. Open en {n}s — no saltes esta espera.",
   "strategies.openRetryWait":
-    "Schwab ocupado. La orden NO se envió. Espera {n}s y pulsa Open otra vez.",
+    "Schwab bloqueado. Enviando la orden ya confirmada en {n}s…",
+  "strategies.openSendingWait":
+    "Schwab bloqueado. Enviando la orden ya confirmada en {n}s…",
+  "strategies.openSendingNow": "Enviando la orden ya confirmada ahora…",
   "strategies.openNotSent429":
-    "La orden NO se envió — Schwab estaba ocupado. Espera la cuenta atrás, pulsa Open otra vez y OK.",
+    "La orden NO se envió — Schwab siguió ocupado tras la espera. Espera la cuenta atrás, pulsa Open y OK otra vez.",
   "strategies.openReadyRetry":
     "Schwab ya está libre. Pulsa Open y confirma OK.",
   "strategies.armPausesAuto":

@@ -56,10 +56,12 @@ const CAPITAL_CACHE_KEY = "maite.strategies.capitalCache";
 const CAPITAL_CACHE_MS = 24 * 60 * 60 * 1000;
 const EXP_CHAIN_KEY = "maite.strategies.expChain";
 const EXP_CHAIN_MS = 12 * 60 * 60 * 1000;
-/** After candles/capital, wait before BUY_TO_OPEN so Schwab's 429 window can clear. */
-const OPEN_QUIET_MS = 15_000;
-/** Extra cool-down after a Schwab 429 so the red banner can count down and clear. */
-const RATE_LIMIT_QUIET_MS = 30_000;
+/** After candles/capital, wait before BUY_TO_OPEN. Schwab locks ~29s after a burst. */
+const OPEN_QUIET_MS = 32_000;
+/** Extra cool-down after a failed Open 429 (second POST still blocked). */
+const RATE_LIMIT_QUIET_MS = 32_000;
+/** Browser wait then one more POST — Lambda cannot sleep 30s (HTTP API ~29s timeout). */
+const OPEN_RETRY_WAIT_SEC = 32;
 const TP_FILL_WAIT_MS = 20_000;
 const TP_FILL_TRIES = 8;
 const DESK_TOP_N = 5;
@@ -398,6 +400,12 @@ function moneyUsd(n: number | null | undefined): string {
     currency: "USD",
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
+  });
+}
+
+function sleepMs(ms: number) {
+  return new Promise<void>((resolve) => {
+    window.setTimeout(resolve, ms);
   });
 }
 
@@ -1020,7 +1028,36 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
           primaryAccount.available_funds ?? primaryAccount.cash_balance ?? 0,
       };
       try {
-        const res = await brokerOpenOption(payload);
+        let res: Awaited<ReturnType<typeof brokerOpenOption>> | null = null;
+        for (let attempt = 0; attempt < 2; attempt += 1) {
+          try {
+            res = await brokerOpenOption(payload);
+            break;
+          } catch (err) {
+            const copy = brokerErrorCopy(err, t("strategies.openFail"), t);
+            const rateLimited = /rate limit/i.test(copy);
+            if (!rateLimited || attempt === 1) {
+              if (rateLimited) {
+                openFailed429Ref.current = true;
+                startSchwabQuiet();
+                setOpenNote(null);
+                setOpenError(t("strategies.openNotSent429"));
+              } else {
+                setOpenError(copy);
+              }
+              return;
+            }
+            // First POST 429: wait in the browser, then send the same confirmed order once.
+            for (let n = OPEN_RETRY_WAIT_SEC; n > 0; n -= 1) {
+              setOpenNote(
+                t("strategies.openSendingWait").replace("{n}", String(n)),
+              );
+              await sleepMs(1000);
+            }
+            setOpenNote(t("strategies.openSendingNow"));
+          }
+        }
+        if (!res) return;
         setOpenNote(
           t("strategies.openOkTpWait")
             .replace("{sym}", res.option_symbol || livePlan.symbol)
@@ -1043,16 +1080,6 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
               .replace("{sym}", res.option_symbol || livePlan.symbol)
               .replace("{id}", res.order_id || "—"),
           );
-        }
-      } catch (err) {
-        const copy = brokerErrorCopy(err, t("strategies.openFail"), t);
-        if (/rate limit/i.test(copy)) {
-          openFailed429Ref.current = true;
-          startSchwabQuiet();
-          setOpenNote(null);
-          setOpenError(t("strategies.openNotSent429"));
-        } else {
-          setOpenError(copy);
         }
       } finally {
         setOpeningKey(null);
@@ -1548,7 +1575,7 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
             </div>
             <button
               type="button"
-              disabled={capitalPending || deskBusy || focusBusy}
+              disabled={capitalPending || deskBusy || focusBusy || armOpens}
               onClick={() => void loadCapital(true)}
               className="rounded-md border border-[var(--border)] px-2.5 py-1 text-[11px] font-medium hover:bg-[var(--hover)] disabled:opacity-50"
             >
@@ -1585,6 +1612,7 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
                   setAutoLive(false);
                   window.localStorage.setItem(AUTO_DESK_KEY, "0");
                   window.localStorage.setItem(AUTO_LIVE_KEY, "0");
+                  startSchwabQuiet(OPEN_QUIET_MS);
                 }
               }}
             />
@@ -1629,7 +1657,12 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
           <>
             <button
               type="button"
-              disabled={deskBusy || deskStrategyKeys.length === 0 || Boolean(openingKey)}
+              disabled={
+                deskBusy ||
+                deskStrategyKeys.length === 0 ||
+                Boolean(openingKey) ||
+                armOpens
+              }
               onClick={runDeskScan}
               className="shrink-0 cursor-pointer rounded-md bg-[var(--accent)] px-3 py-1.5 text-xs font-medium text-[var(--on-accent)] hover:bg-[var(--accent-hover)] disabled:cursor-not-allowed disabled:opacity-50"
             >
@@ -1902,7 +1935,12 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
           <>
             <button
               type="button"
-              disabled={focusBusy || !playbook.strategyKey || Boolean(openingKey)}
+              disabled={
+                focusBusy ||
+                !playbook.strategyKey ||
+                Boolean(openingKey) ||
+                armOpens
+              }
               onClick={runSyncAndScan}
               className="rounded-md bg-[var(--accent)] px-3 py-1.5 text-xs font-medium text-[var(--on-accent)] hover:bg-[var(--accent-hover)] disabled:opacity-50"
             >
