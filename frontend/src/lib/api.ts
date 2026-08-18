@@ -42,9 +42,11 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       );
     }
     if (res.status === 429) {
+      const retryMatch = /Retry-After (\d+)/i.exec(detail);
+      const retryAfter = retryMatch ? Number(retryMatch[1]) : 60;
       throw new Error(
         detail ||
-          "Schwab Trader rate limit. Wait ~30 seconds, then retry.",
+          `Schwab 429. Retry-After ${retryAfter}s. Wait, then retry.`,
       );
     }
     throw new Error(detail || `Request failed (${res.status})`);

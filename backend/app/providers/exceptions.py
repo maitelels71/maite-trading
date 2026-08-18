@@ -15,3 +15,14 @@ class ProviderNotConfiguredError(ProviderError):
 
 class ProviderRateLimitError(ProviderError):
     """Upstream rate limit hit."""
+
+    def __init__(
+        self,
+        message: str = "rate limit exceeded",
+        *,
+        retry_after: float | None = None,
+        body: str = "",
+    ) -> None:
+        super().__init__(message)
+        self.retry_after = retry_after
+        self.body = body

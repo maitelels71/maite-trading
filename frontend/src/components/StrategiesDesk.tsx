@@ -61,7 +61,7 @@ const OPEN_QUIET_MS = 32_000;
 /** Extra cool-down after a failed Open 429 (second POST still blocked). */
 const RATE_LIMIT_QUIET_MS = 32_000;
 /** Browser wait then one more POST — Lambda cannot sleep 30s (HTTP API ~29s timeout). */
-const OPEN_RETRY_WAIT_SEC = 32;
+const OPEN_RETRY_WAIT_SEC = 60;
 const TP_FILL_WAIT_MS = 20_000;
 const TP_FILL_TRIES = 8;
 const DESK_TOP_N = 5;
@@ -407,6 +407,20 @@ function sleepMs(ms: number) {
   return new Promise<void>((resolve) => {
     window.setTimeout(resolve, ms);
   });
+}
+
+function isSchwabBusyErr(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : "";
+  return /(?:\b429\b|rate limit)/i.test(msg);
+}
+
+function retryAfterSec(err: unknown, fallback: number): number {
+  const msg = err instanceof Error ? err.message : "";
+  const m = /Retry-After (\d+)/i.exec(msg);
+  if (!m) return fallback;
+  const n = Number(m[1]);
+  if (!Number.isFinite(n) || n < 15) return fallback;
+  return Math.min(120, Math.max(30, Math.round(n)));
 }
 
 function brokerErrorCopy(
@@ -989,6 +1003,7 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
         return;
       }
       const qty = sizing.contracts;
+      setOpenNote(t("strategies.openConfirmLook"));
       const ok = window.confirm(
         overRisk
           ? t("strategies.openConfirmOverRisk")
@@ -1034,21 +1049,21 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
             res = await brokerOpenOption(payload);
             break;
           } catch (err) {
-            const copy = brokerErrorCopy(err, t("strategies.openFail"), t);
-            const rateLimited = /rate limit/i.test(copy);
+            const raw = err instanceof Error ? err.message : t("strategies.openFail");
+            const rateLimited = isSchwabBusyErr(err);
             if (!rateLimited || attempt === 1) {
               if (rateLimited) {
                 openFailed429Ref.current = true;
                 startSchwabQuiet();
                 setOpenNote(null);
-                setOpenError(t("strategies.openNotSent429"));
+                setOpenError(raw || t("strategies.openNotSent429"));
               } else {
-                setOpenError(copy);
+                setOpenError(raw);
               }
               return;
             }
-            // First POST 429: wait in the browser, then send the same confirmed order once.
-            for (let n = OPEN_RETRY_WAIT_SEC; n > 0; n -= 1) {
+            const waitSec = retryAfterSec(err, OPEN_RETRY_WAIT_SEC);
+            for (let n = waitSec; n > 0; n -= 1) {
               setOpenNote(
                 t("strategies.openSendingWait").replace("{n}", String(n)),
               );

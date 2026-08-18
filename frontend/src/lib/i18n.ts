@@ -376,7 +376,9 @@ const en: Dict = {
   "strategies.openNotSent429":
     "Order was NOT sent — Schwab stayed busy after the wait. Wait the countdown, then Open and OK once more.",
   "strategies.openReadyRetry":
-    "Schwab is free again. Click Open and press OK.",
+    "Wait finished. Click Open — a browser OK dialog must appear. Press OK to send. If no dialog, the click did not start.",
+  "strategies.openConfirmLook":
+    "Look for the browser OK dialog (behind this window if needed). OK sends the order. Cancel does not.",
   "strategies.armPausesAuto":
     "Trigger opens pauses Auto TOP 5 / Auto live so Schwab is free for the order.",
   "strategies.openNeedTrading": "Trading disabled on API (SCHWAB_TRADING_ENABLED).",
@@ -898,7 +900,9 @@ const es: Dict = {
   "strategies.openNotSent429":
     "La orden NO se envió — Schwab siguió ocupado tras la espera. Espera la cuenta atrás, pulsa Open y OK otra vez.",
   "strategies.openReadyRetry":
-    "Schwab ya está libre. Pulsa Open y confirma OK.",
+    "Espera terminada. Pulsa Open — debe salir el diálogo OK del navegador. OK envía la orden. Si no hay diálogo, el clic no arrancó.",
+  "strategies.openConfirmLook":
+    "Busca el diálogo OK del navegador (puede estar detrás de esta ventana). OK envía la orden. Cancelar no.",
   "strategies.armPausesAuto":
     "Trigger opens pausa Auto TOP 5 / Auto live para dejar Schwab libre para la orden.",
   "strategies.openNeedTrading": "Trading desactivado en API (SCHWAB_TRADING_ENABLED).",

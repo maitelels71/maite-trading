@@ -33,6 +33,18 @@ RATE_LIMIT_DETAIL = (
 )
 
 
+def _rate_limit_http(exc: ProviderRateLimitError) -> HTTPException:
+    n = 60
+    raw = getattr(exc, "retry_after", None)
+    if raw is not None and float(raw) > 0:
+        n = int(min(max(float(raw), 30), 120))
+    return HTTPException(
+        status_code=429,
+        detail=f"Schwab 429. Retry-After {n}s. {exc}",
+        headers={"Retry-After": str(n)},
+    )
+
+
 class PositionsResponse(BaseModel):
     trading_enabled: bool
     accounts: list[dict]
@@ -230,7 +242,7 @@ def get_positions(
     except ProviderNotConfiguredError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except ProviderRateLimitError as exc:
-        raise HTTPException(status_code=429, detail=RATE_LIMIT_DETAIL) from exc
+        raise _rate_limit_http(exc) from exc
     except ProviderError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     except Exception as exc:  # noqa: BLE001
@@ -255,7 +267,7 @@ def option_quote(
     except ProviderNotConfiguredError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except ProviderRateLimitError as exc:
-        raise HTTPException(status_code=429, detail=RATE_LIMIT_DETAIL) from exc
+        raise _rate_limit_http(exc) from exc
     except ProviderError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:  # noqa: BLE001
@@ -275,7 +287,7 @@ def option_expirations(symbol: str = Query(...)) -> OptionExpirationsResponse:
     except ProviderNotConfiguredError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except ProviderRateLimitError as exc:
-        raise HTTPException(status_code=429, detail=RATE_LIMIT_DETAIL) from exc
+        raise _rate_limit_http(exc) from exc
     except ProviderError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:  # noqa: BLE001
@@ -390,7 +402,7 @@ def open_option_position(body: OpenOrderRequest) -> OpenOrderResponse:
     except ProviderNotConfiguredError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except ProviderRateLimitError as exc:
-        raise HTTPException(status_code=429, detail=RATE_LIMIT_DETAIL) from exc
+        raise _rate_limit_http(exc) from exc
     except ProviderError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     except Exception as exc:  # noqa: BLE001
@@ -426,7 +438,7 @@ def close_position(body: CloseOrderRequest) -> CloseOrderResponse:
     except ProviderNotConfiguredError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except ProviderRateLimitError as exc:
-        raise HTTPException(status_code=429, detail=RATE_LIMIT_DETAIL) from exc
+        raise _rate_limit_http(exc) from exc
     except ProviderError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     except Exception as exc:  # noqa: BLE001
@@ -502,7 +514,7 @@ def place_tp_ladder(body: TpLadderRequest) -> TpLadderResponse:
     except ProviderNotConfiguredError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except ProviderRateLimitError as exc:
-        raise HTTPException(status_code=429, detail=RATE_LIMIT_DETAIL) from exc
+        raise _rate_limit_http(exc) from exc
     except ProviderError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     except Exception as exc:  # noqa: BLE001
@@ -585,7 +597,7 @@ def tp_check(body: TpCheckRequest) -> TpCheckResponse:
     except ProviderNotConfiguredError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except ProviderRateLimitError as exc:
-        raise HTTPException(status_code=429, detail=RATE_LIMIT_DETAIL) from exc
+        raise _rate_limit_http(exc) from exc
     except ProviderError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     except Exception as exc:  # noqa: BLE001
