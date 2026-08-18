@@ -285,7 +285,7 @@ const en: Dict = {
   "sticky.hint":
     "Visual cheat-sheets — open a session, tap a card to zoom.",
   "sticky.boardCr": "Strategies · CR",
-  "sticky.boardCrHint": "Creando Riquezas CR01–CR08 setup diagrams.",
+  "sticky.boardCrHint": "Creando Riquezas CR01–CR11 setup diagrams.",
   "sticky.boardE": "Strategies · E",
   "sticky.boardEHint": "BB desk E01–E04 setup diagrams.",
   "sticky.boardMl": "Strategies · Maylels",
@@ -351,14 +351,14 @@ const en: Dict = {
   "strategies.capitalNeed": "Load capital to size opens (10% flag · 50% max).",
   "strategies.armOpens": "Trigger opens",
   "strategies.armOpensBody":
-    "Sync & TOP 5 first (Trigger off). Then check Trigger — that pauses Auto/Sync and waits ~32s so Schwab can take BUY_TO_OPEN. If the first POST is still busy, the desk waits 32s and sends the confirmed order once. After FILL: TP 35% if 1ct, else 10/20/35/50/100.",
+    "Sync & TOP 5 first (Trigger off). Then check Trigger — that pauses Auto/Sync and waits ~90s so Schwab can take BUY_TO_OPEN. If Open gets 429, the desk waits ~90s and sends the confirmed order once. After FILL: TP 35% if 1ct, else 10/20/35/50/100.",
   "strategies.openSchwab": "Open {n}× @ {px}",
   "strategies.openTooRich":
     "1ct {cost} = {pct}% of equity. Consider ≤10% ({risk}). Open ≤50% needs {need50} equity.",
   "strategies.openNeedCash": "Cash {cash} — need {more} more to buy 1ct {cost}.",
   "strategies.openOverRisk": "Open 1× @ {px} · {pct}% risk",
   "strategies.openConfirmOverRisk":
-    "LIMIT {px}. 1ct costs {cost} = {pct}% of equity {eq} (consider ≤10%, max 50%). Send BUY_TO_OPEN at this debit (the price on the Open button)?",
+    "LIMIT {px}. 1ct costs {cost} = {pct}% of equity {eq} (consider ≤10%, max 50%). OCC {occ}. Send BUY_TO_OPEN at this debit (the price on the Open button)?",
   "strategies.riskConsiderHint": "Consider — 1ct is {pct}% of equity (≤10%).",
   "strategies.riskOtherHint": "1ct is {pct}% of equity. Open allowed up to 50%.",
   "strategies.openNeedArm": "Turn on Trigger opens first.",
@@ -367,14 +367,18 @@ const en: Dict = {
   "strategies.openWaitSync":
     "Wait until candle sync finishes, then Open. Auto is paused while Trigger opens is on.",
   "strategies.openWaitQuiet":
-    "Schwab cooling after Sync. Open in {n}s — do not skip this wait.",
+    "Schwab cooling. Open in {n}s — do not skip this wait.",
   "strategies.openRetryWait":
     "Schwab locked. Sending the confirmed order in {n}s…",
   "strategies.openSendingWait":
     "Schwab locked. Sending the confirmed order in {n}s…",
   "strategies.openSendingNow": "Sending the confirmed order now…",
   "strategies.openNotSent429":
-    "Order was NOT sent — Schwab stayed busy after the wait. Wait the countdown, then Open and OK once more.",
+    "Order was NOT sent — Schwab stayed busy after the wait.",
+  "strategies.openNotSent429Next":
+    "Wait the countdown, then Open and OK once more. Check TOS → Orders in case a LIMIT is already working.",
+  "strategies.openTimeoutMaybeSent":
+    "Open timed out. The LIMIT may already be at Schwab — check TOS → Orders before clicking Open again.",
   "strategies.openReadyRetry":
     "Wait finished. Click Open — a browser OK dialog must appear. Press OK to send. If no dialog, the click did not start.",
   "strategies.openConfirmLook":
@@ -383,7 +387,7 @@ const en: Dict = {
     "Trigger opens pauses Auto TOP 5 / Auto live so Schwab is free for the order.",
   "strategies.openNeedTrading": "Trading disabled on API (SCHWAB_TRADING_ENABLED).",
   "strategies.openConfirm":
-    "Send BUY_TO_OPEN LIMIT {n}× {sym} {type} {strike} exp {exp} @ {px}? Cost ≈ {cost} (10% risk {risk}). After FILL: auto TP 35% if 1ct, else 10/20/35/50/100.",
+    "Send BUY_TO_OPEN LIMIT {n}× {sym} {type} {strike} exp {exp} @ {px}? OCC {occ}. Cost ≈ {cost} (10% risk {risk}). After FILL: auto TP 35% if 1ct, else 10/20/35/50/100.",
   "strategies.openQuoteWait": "Quoting live ask…",
   "strategies.openQuoteFail":
     "Could not get a live ask. Wait ~30s, then Open again — do not send a cheap LIMIT that will never fill.",
@@ -400,7 +404,7 @@ const en: Dict = {
     "Open sent, but auto TP failed. When the buy FILLS, use Positions → TP 10/20/35/50/100.",
   "strategies.openFail": "Open failed",
   "strategies.rateLimit":
-    "Schwab Trader rate limit. The desk counts down ~30s and this message clears by itself. Do not Open or Refresh Positions until then.",
+    "Schwab Trader rate limit. The desk counts down ~90s and this message clears by itself. Do not Open or Refresh Positions until then.",
   "strategies.tradingDisabledShort": "Trading off",
 
   "positions.title": "Schwab positions",
@@ -408,6 +412,8 @@ const en: Dict = {
     "Positions + working orders from Schwab/TOS. Button TP 10/20/35/50/100 places resting LIMIT sells (scale-out).",
   "positions.refresh": "Refresh",
   "positions.refreshing": "Loading…",
+  "positions.holdOpen":
+    "Trigger opens is on in Session — Positions refresh/TP poll is paused so Open can reach Schwab.",
   "positions.loaded":
     "Loaded {n} positions · {accounts} account(s) · {orders} orders",
   "positions.accountsLabel": "Account #",
@@ -809,7 +815,7 @@ const es: Dict = {
   "sticky.hint":
     "Cheatsheets visuales — abre una sesión, toca una tarjeta para ampliar.",
   "sticky.boardCr": "Estrategias · CR",
-  "sticky.boardCrHint": "Diagramas Creando Riquezas CR01–CR08.",
+  "sticky.boardCrHint": "Diagramas Creando Riquezas CR01–CR11.",
   "sticky.boardE": "Estrategias · E",
   "sticky.boardEHint": "Diagramas BB desk E01–E04.",
   "sticky.boardMl": "Estrategias · Maylels",
@@ -875,14 +881,14 @@ const es: Dict = {
   "strategies.capitalNeed": "Carga capital para dimensionar (flag 10% · máx 50%).",
   "strategies.armOpens": "Trigger opens",
   "strategies.armOpensBody":
-    "Primero Sync & TOP 5 (Trigger apagado). Luego activa Trigger — pausa Auto/Sync y espera ~32s para que Schwab acepte BUY_TO_OPEN. Si el primer POST sigue ocupado, el desk espera 32s y envía la orden ya confirmada una vez. Tras FILL: TP 35% si 1ct, si no 10/20/35/50/100.",
+    "Primero Sync & TOP 5 (Trigger apagado). Luego activa Trigger — pausa Auto/Sync y espera ~90s para que Schwab acepte BUY_TO_OPEN. Si Open da 429, el desk espera ~90s y envía la orden ya confirmada una vez. Tras FILL: TP 35% si 1ct, si no 10/20/35/50/100.",
   "strategies.openSchwab": "Abrir {n}× @ {px}",
   "strategies.openTooRich":
     "1ct {cost} = {pct}% del equity. Considerar ≤10% ({risk}). Open ≤50% pide {need50} de equity.",
   "strategies.openNeedCash": "Cash {cash} — te faltan {more} para 1ct {cost}.",
   "strategies.openOverRisk": "Abrir 1× @ {px} · riesgo {pct}%",
   "strategies.openConfirmOverRisk":
-    "LIMIT {px}. 1ct cuesta {cost} = {pct}% del equity {eq} (considerar ≤10%, máx 50%). ¿Enviar BUY_TO_OPEN a este débito (el precio del botón Open)?",
+    "LIMIT {px}. 1ct cuesta {cost} = {pct}% del equity {eq} (considerar ≤10%, máx 50%). OCC {occ}. ¿Enviar BUY_TO_OPEN a este débito (el precio del botón Open)?",
   "strategies.riskConsiderHint": "Considerar — 1ct es {pct}% del equity (≤10%).",
   "strategies.riskOtherHint": "1ct es {pct}% del equity. Abrir permitido hasta 50%.",
   "strategies.openNeedArm": "Activa Trigger opens primero.",
@@ -891,14 +897,18 @@ const es: Dict = {
   "strategies.openWaitSync":
     "Espera a que termine el sync de velas y luego Open. Auto está pausado mientras Trigger opens está activo.",
   "strategies.openWaitQuiet":
-    "Schwab se enfría tras el Sync. Open en {n}s — no saltes esta espera.",
+    "Schwab se enfría. Open en {n}s — no saltes esta espera.",
   "strategies.openRetryWait":
     "Schwab bloqueado. Enviando la orden ya confirmada en {n}s…",
   "strategies.openSendingWait":
     "Schwab bloqueado. Enviando la orden ya confirmada en {n}s…",
   "strategies.openSendingNow": "Enviando la orden ya confirmada ahora…",
   "strategies.openNotSent429":
-    "La orden NO se envió — Schwab siguió ocupado tras la espera. Espera la cuenta atrás, pulsa Open y OK otra vez.",
+    "La orden NO se envió — Schwab siguió ocupado tras la espera.",
+  "strategies.openNotSent429Next":
+    "Espera la cuenta atrás, pulsa Open y OK otra vez. Mira TOS → Orders por si ya hay un LIMIT working.",
+  "strategies.openTimeoutMaybeSent":
+    "Open se quedó sin tiempo. El LIMIT puede estar ya en Schwab — mira TOS → Orders antes de pulsar Open otra vez.",
   "strategies.openReadyRetry":
     "Espera terminada. Pulsa Open — debe salir el diálogo OK del navegador. OK envía la orden. Si no hay diálogo, el clic no arrancó.",
   "strategies.openConfirmLook":
@@ -907,7 +917,7 @@ const es: Dict = {
     "Trigger opens pausa Auto TOP 5 / Auto live para dejar Schwab libre para la orden.",
   "strategies.openNeedTrading": "Trading desactivado en API (SCHWAB_TRADING_ENABLED).",
   "strategies.openConfirm":
-    "¿Enviar BUY_TO_OPEN LIMIT {n}× {sym} {type} {strike} exp {exp} @ {px}? Costo ≈ {cost} (riesgo 10% {risk}). Tras FILL: TP auto 35% si 1ct, si no 10/20/35/50/100.",
+    "¿Enviar BUY_TO_OPEN LIMIT {n}× {sym} {type} {strike} exp {exp} @ {px}? OCC {occ}. Costo ≈ {cost} (riesgo 10% {risk}). Tras FILL: TP auto 35% si 1ct, si no 10/20/35/50/100.",
   "strategies.openQuoteWait": "Cotizando ask en vivo…",
   "strategies.openQuoteFail":
     "No pude obtener el ask en vivo. Espera ~30s y vuelve a Abrir — no envíes un LIMIT barato que nunca va a llenar.",
@@ -924,7 +934,7 @@ const es: Dict = {
     "Open enviado, pero el TP auto falló. Cuando la compra haga FILL, usa Posiciones → TP 10/20/35/50/100.",
   "strategies.openFail": "Open falló",
   "strategies.rateLimit":
-    "Schwab Trader está saturado (rate limit). El desk cuenta ~30s y este aviso se quita solo. No pulses Open ni Refresh en Positions hasta entonces.",
+    "Schwab Trader está saturado (rate limit). El desk cuenta ~90s y este aviso se quita solo. No pulses Open ni Refresh en Positions hasta entonces.",
   "strategies.tradingDisabledShort": "Trading off",
 
   "positions.title": "Posiciones Schwab",
@@ -932,6 +942,8 @@ const es: Dict = {
     "Posiciones + órdenes working de Schwab/TOS. El botón TP 10/20/35/50/100 crea LIMIT de venta (scale-out).",
   "positions.refresh": "Actualizar",
   "positions.refreshing": "Cargando…",
+  "positions.holdOpen":
+    "Trigger opens está activo en Session — Positions no refresca ni hace poll de TP para dejar Schwab libre para Open.",
   "positions.loaded": "{n} posiciones · {accounts} cuenta(s) · {orders} órdenes",
   "positions.accountsLabel": "Cuenta #",
   "positions.colAccount": "Cuenta",

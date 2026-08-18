@@ -1,11 +1,14 @@
 /**
  * Ownership / About metadata (non-translated fields).
  * Copy strings live in i18n (`about.ownership`, `about.disclaimer`).
+ * Version is DESK_VERSION — bump that file on every ship.
  */
+
+import { DESK_VERSION } from "@/lib/desk-version";
 
 export const ABOUT = {
   productName: "Trading Like a Boss",
-  version: "0.1.0",
+  version: DESK_VERSION,
   copyrightHolder: "Maylels LLC",
   copyrightYear: 2026,
   email: "maylels@gmail.com",

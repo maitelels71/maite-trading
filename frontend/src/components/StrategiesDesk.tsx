@@ -24,6 +24,7 @@ import {
   localizedPlaybookName,
 } from "@/lib/playbook-localize";
 import {
+  buildOccOptionSymbol,
   buildOptionsEntryPlan,
   listedExpirationSnapshot,
   planWithDebit,
@@ -35,6 +36,7 @@ import {
   groupInstrumentsForVenue,
   WATCH_SYMBOLS,
 } from "@/lib/instrument-groups";
+import { setHoldTrader } from "@/lib/schwab-hold";
 import {
   FALLBACK_INSTRUMENTS,
   TIMEFRAMES,
@@ -56,12 +58,12 @@ const CAPITAL_CACHE_KEY = "maite.strategies.capitalCache";
 const CAPITAL_CACHE_MS = 24 * 60 * 60 * 1000;
 const EXP_CHAIN_KEY = "maite.strategies.expChain";
 const EXP_CHAIN_MS = 12 * 60 * 60 * 1000;
-/** After candles/capital, wait before BUY_TO_OPEN. Schwab locks ~29s after a burst. */
-const OPEN_QUIET_MS = 32_000;
+/** After candles/capital, wait before BUY_TO_OPEN. Shared app quota is ~120/min. */
+const OPEN_QUIET_MS = 90_000;
 /** Extra cool-down after a failed Open 429 (second POST still blocked). */
-const RATE_LIMIT_QUIET_MS = 32_000;
+const RATE_LIMIT_QUIET_MS = 90_000;
 /** Browser wait then one more POST — Lambda cannot sleep 30s (HTTP API ~29s timeout). */
-const OPEN_RETRY_WAIT_SEC = 60;
+const OPEN_RETRY_WAIT_SEC = 90;
 const TP_FILL_WAIT_MS = 20_000;
 const TP_FILL_TRIES = 8;
 const DESK_TOP_N = 5;
@@ -414,13 +416,18 @@ function isSchwabBusyErr(err: unknown): boolean {
   return /(?:\b429\b|rate limit)/i.test(msg);
 }
 
+function isGatewayTimeout(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : "";
+  return /(?:\b504\b|\b503\b|timed out)/i.test(msg);
+}
+
 function retryAfterSec(err: unknown, fallback: number): number {
   const msg = err instanceof Error ? err.message : "";
   const m = /Retry-After (\d+)/i.exec(msg);
   if (!m) return fallback;
   const n = Number(m[1]);
   if (!Number.isFinite(n) || n < 15) return fallback;
-  return Math.min(120, Math.max(30, Math.round(n)));
+  return Math.min(120, Math.max(90, Math.round(n)));
 }
 
 function brokerErrorCopy(
@@ -690,6 +697,7 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
     // Trigger opens always starts off so Auto / Sync can run. Arm only when ready to send.
     setArmOpens(false);
     window.localStorage.setItem(ARM_OPENS_KEY, "0");
+    setHoldTrader(false);
     const blockAuto = venue === "schwab" && isCashAutoOffNy();
     if (blockAuto) {
       setAutoLive(false);
@@ -1003,6 +1011,12 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
         return;
       }
       const qty = sizing.contracts;
+      const occ = buildOccOptionSymbol(
+        livePlan.symbol,
+        livePlan.expIso,
+        livePlan.optionType,
+        livePlan.strike,
+      );
       setOpenNote(t("strategies.openConfirmLook"));
       const ok = window.confirm(
         overRisk
@@ -1012,6 +1026,7 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
               .replace("{pct}", formatPct(sizing.actualRiskPct))
               .replace("{eq}", moneyUsd(sizing.equity))
               .replace("{risk}", moneyUsd(sizing.riskBudget))
+              .replace("{occ}", occ || "—")
           : t("strategies.openConfirm")
               .replace("{n}", String(qty))
               .replace("{sym}", livePlan.symbol)
@@ -1020,7 +1035,8 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
               .replace("{exp}", livePlan.expLabel)
               .replace("{px}", moneyUsd(livePlan.entryPremium))
               .replace("{cost}", moneyUsd(sizing.costPerContract * qty))
-              .replace("{risk}", moneyUsd(sizing.riskBudget)),
+              .replace("{risk}", moneyUsd(sizing.riskBudget))
+              .replace("{occ}", occ || "—"),
       );
       if (!ok) {
         setOpenNote(t("strategies.openCancelled"));
@@ -1050,13 +1066,22 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
             break;
           } catch (err) {
             const raw = err instanceof Error ? err.message : t("strategies.openFail");
+            if (isGatewayTimeout(err)) {
+              setOpenError(t("strategies.openTimeoutMaybeSent"));
+              return;
+            }
             const rateLimited = isSchwabBusyErr(err);
             if (!rateLimited || attempt === 1) {
               if (rateLimited) {
                 openFailed429Ref.current = true;
-                startSchwabQuiet();
+                const waitSec = retryAfterSec(err, OPEN_RETRY_WAIT_SEC);
+                startSchwabQuiet(waitSec * 1000);
                 setOpenNote(null);
-                setOpenError(raw || t("strategies.openNotSent429"));
+                setOpenError(
+                  (raw || t("strategies.openNotSent429")) +
+                    " " +
+                    t("strategies.openNotSent429Next"),
+                );
               } else {
                 setOpenError(raw);
               }
@@ -1627,7 +1652,10 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
                   setAutoLive(false);
                   window.localStorage.setItem(AUTO_DESK_KEY, "0");
                   window.localStorage.setItem(AUTO_LIVE_KEY, "0");
+                  setHoldTrader(true);
                   startSchwabQuiet(OPEN_QUIET_MS);
+                } else {
+                  setHoldTrader(false);
                 }
               }}
             />
@@ -1646,17 +1674,18 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
           {openError || quietRemainSec > 0 ? (
             <p className="mt-1 text-[11px] text-[var(--danger)]">
               {quietRemainSec > 0
-                ? (openFailed429Ref.current
-                    ? t("strategies.openNotSent429") +
-                      " " +
-                      t("strategies.openWaitQuiet").replace(
-                        "{n}",
-                        String(quietRemainSec),
-                      )
-                    : t("strategies.openWaitQuiet").replace(
-                        "{n}",
-                        String(quietRemainSec),
-                      ))
+                ? [
+                    openError ||
+                      (openFailed429Ref.current
+                        ? t("strategies.openNotSent429")
+                        : null),
+                    t("strategies.openWaitQuiet").replace(
+                      "{n}",
+                      String(quietRemainSec),
+                    ),
+                  ]
+                    .filter(Boolean)
+                    .join(" ")
                 : openError}
             </p>
           ) : null}

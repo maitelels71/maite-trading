@@ -977,6 +977,27 @@ export function listedExpPrefersFriday(symbol: string): boolean {
   return !hasWeekdayExpirations(symbol);
 }
 
+/** Schwab OCC: `AMZN  250815C00190000` (root padded to 6). */
+export function buildOccOptionSymbol(
+  underlying: string,
+  expIso: string,
+  optionType: string,
+  strike: number,
+): string {
+  const root = String(underlying || "")
+    .trim()
+    .toUpperCase()
+    .slice(0, 6)
+    .padEnd(6, " ");
+  const parts = String(expIso || "").trim().split("-");
+  if (parts.length !== 3 || parts[0].length !== 4) return "";
+  const [y, m, d] = parts;
+  const cp = optionType.toUpperCase().startsWith("C") ? "C" : "P";
+  if (!(strike > 0)) return "";
+  const strikeInt = Math.round(strike * 1000);
+  return `${root}${y.slice(2)}${m}${d}${cp}${String(strikeInt).padStart(8, "0")}`;
+}
+
 export function planAtExpiration(
   plan: OptionsEntryPlan,
   expIso: string,

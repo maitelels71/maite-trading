@@ -10,6 +10,10 @@ import {
   brokerTpLadder,
   fetchBrokerPositions,
 } from "@/lib/api";
+import {
+  readHoldTrader,
+  subscribeHoldTrader,
+} from "@/lib/schwab-hold";
 import type { BrokerOrder, BrokerPosition, TpWatch } from "@/lib/types";
 
 const WATCH_KEY = "maite.broker.tpWatches";
@@ -82,13 +86,21 @@ export function PositionsDesk() {
   const [pending, startTransition] = useTransition();
   const [watches, setWatches] = useState<TpWatch[]>(() => loadWatches());
   const [armedConfirm, setArmedConfirm] = useState(false);
+  const [holdTrader, setHoldTrader] = useState(() => readHoldTrader());
   const inFlight = useRef<Set<string>>(new Set());
+
+  useEffect(() => subscribeHoldTrader(() => setHoldTrader(readHoldTrader())), []);
 
   useEffect(() => {
     saveWatches(watches);
   }, [watches]);
 
   const refresh = useCallback(() => {
+    if (readHoldTrader()) {
+      setHoldTrader(true);
+      setNote(t("positions.holdOpen"));
+      return;
+    }
     startTransition(async () => {
       setError(null);
       try {
@@ -163,6 +175,7 @@ export function PositionsDesk() {
   );
 
   const tickWatches = useCallback(async () => {
+    if (readHoldTrader()) return;
     const active = watches.filter((w) => w.alertOn || w.autoClose);
     if (active.length === 0) return;
 
@@ -416,7 +429,8 @@ export function PositionsDesk() {
             ) : null}
             <button
               type="button"
-              disabled={pending}
+              disabled={pending || holdTrader}
+              title={holdTrader ? t("positions.holdOpen") : undefined}
               onClick={refresh}
               className="shrink-0 rounded-md bg-[var(--accent)] px-3 py-1.5 text-xs font-medium text-[var(--on-accent)] hover:bg-[var(--accent-hover)] disabled:opacity-50"
             >
@@ -440,6 +454,9 @@ export function PositionsDesk() {
         ) : (
           <p className="text-[11px] text-[var(--muted)]">{t("positions.emptyHint")}</p>
         )}
+        {holdTrader ? (
+          <p className="mt-2 text-[11px] text-[var(--warn)]">{t("positions.holdOpen")}</p>
+        ) : null}
         {error ? (
           <div className="mt-2 rounded-md border border-red-200 bg-[var(--danger-soft)] px-3 py-1.5 text-xs text-[var(--danger)]">
             {error}

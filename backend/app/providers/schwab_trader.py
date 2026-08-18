@@ -77,11 +77,14 @@ class SchwabTrader:
         """GET/POST Schwab Trader with a short 429 backoff (API Gateway ~29s)."""
         headers = {**self._headers(), **(extra_headers or {})}
         last: httpx.Response | None = None
-        for attempt in range(max(1, retries)):
+        n_tries = max(1, retries)
+        for attempt in range(n_tries):
             with httpx.Client(timeout=timeout) as client:
                 last = client.request(method, url, headers=headers, **kwargs)
             if last.status_code != 429:
                 return last
+            if attempt + 1 >= n_tries:
+                break
             wait = _retry_after_seconds(last, attempt, max_wait=max_wait)
             logger.warning(
                 "schwab-trader 429 method=%s attempt=%s wait=%.1fs",
@@ -207,40 +210,25 @@ class SchwabTrader:
         if instr not in allowed:
             raise ProviderError(f"unsupported instruction: {instruction}")
 
-        dur = duration.upper()
-        if dur not in {"DAY", "GOOD_TILL_CANCEL", "FILL_OR_KILL"}:
-            dur = "DAY"
-
-        body: dict[str, Any] = {
-            "orderType": order_type.upper(),
-            "session": "NORMAL",
-            "duration": dur,
-            "orderStrategyType": "SINGLE",
-            "orderLegCollection": [
-                {
-                    "instruction": instr,
-                    "quantity": quantity,
-                    "instrument": {
-                        "symbol": symbol,
-                        "assetType": asset_type.upper(),
-                    },
-                }
-            ],
-        }
-        if order_type.upper() == "LIMIT":
-            if limit_price is None or limit_price <= 0:
-                raise ProviderError("limit_price required for LIMIT order")
-            body["price"] = round(float(limit_price), 2)
+        body = build_place_order_payload(
+            symbol=symbol,
+            quantity=quantity,
+            asset_type=asset_type,
+            instruction=instr,
+            order_type=order_type,
+            limit_price=limit_price,
+            duration=duration,
+        )
 
         logger.info(
             "schwab_place_order account=%s symbol=%s qty=%s instr=%s type=%s px=%s dur=%s",
             account_hash[:8],
             symbol,
-            quantity,
+            body["orderLegCollection"][0]["quantity"],
             instr,
-            order_type,
-            limit_price,
-            dur,
+            body["orderType"],
+            body.get("price"),
+            body["duration"],
         )
         resp = self._trader_request(
             "POST",
@@ -248,6 +236,7 @@ class SchwabTrader:
             timeout=30.0,
             extra_headers={"Content-Type": "application/json"},
             json=body,
+            # One POST only — do not sleep on 429 (HTTP API ~29s; browser waits Retry-After).
             retries=1,
             max_wait=4.0,
         )
@@ -388,6 +377,54 @@ def build_occ_option_symbol(
         raise ProviderError("strike must be > 0")
     strike_int = int(round(float(strike) * 1000))
     return f"{root6}{yymmdd}{cp}{strike_int:08d}"
+
+
+def build_place_order_payload(
+    *,
+    symbol: str,
+    quantity: float,
+    asset_type: str,
+    instruction: str,
+    order_type: str = "MARKET",
+    limit_price: float | None = None,
+    duration: str = "DAY",
+) -> dict[str, Any]:
+    """Schwab single-leg body (official option LIMIT sample + NONE complex type)."""
+    asset = str(asset_type or "EQUITY").upper()
+    if quantity <= 0:
+        raise ProviderError("quantity must be > 0")
+    qty: int | float = int(quantity) if asset == "OPTION" else quantity
+    if asset == "OPTION" and qty <= 0:
+        raise ProviderError("quantity must be > 0")
+
+    ot = str(order_type or "MARKET").upper()
+    dur = str(duration or "DAY").upper()
+    if dur not in {"DAY", "GOOD_TILL_CANCEL", "FILL_OR_KILL"}:
+        dur = "DAY"
+
+    body: dict[str, Any] = {
+        "complexOrderStrategyType": "NONE",
+        "orderType": ot,
+        "session": "NORMAL",
+        "duration": dur,
+        "orderStrategyType": "SINGLE",
+        "orderLegCollection": [
+            {
+                "instruction": str(instruction).upper(),
+                "quantity": qty,
+                "instrument": {
+                    "symbol": symbol,
+                    "assetType": asset,
+                },
+            }
+        ],
+    }
+    if ot == "LIMIT":
+        if limit_price is None or float(limit_price) <= 0:
+            raise ProviderError("limit_price required for LIMIT order")
+        # schwab-py: prefer decimal strings (weeklies often < $1).
+        body["price"] = f"{round(float(limit_price), 2):.2f}"
+    return body
 
 
 def _first_px(src: dict[str, Any], *keys: str) -> float | None:

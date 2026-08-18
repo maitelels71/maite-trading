@@ -42,8 +42,14 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       );
     }
     if (res.status === 429) {
+      const headerRetry = (res.headers.get("Retry-After") || "").trim();
       const retryMatch = /Retry-After (\d+)/i.exec(detail);
-      const retryAfter = retryMatch ? Number(retryMatch[1]) : 60;
+      const fromHeader = /^\d+$/.test(headerRetry) ? Number(headerRetry) : 0;
+      const retryAfter = retryMatch
+        ? Number(retryMatch[1])
+        : fromHeader > 0
+          ? fromHeader
+          : 90;
       throw new Error(
         detail ||
           `Schwab 429. Retry-After ${retryAfter}s. Wait, then retry.`,

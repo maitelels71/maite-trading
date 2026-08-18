@@ -3,6 +3,47 @@
 from app.providers.schwab_trader import normalize_positions
 
 
+def test_trader_request_does_not_sleep_on_final_429(monkeypatch):
+    """Order POST must return 429 immediately so the browser can wait Retry-After."""
+    import httpx
+
+    from app.providers.exceptions import ProviderRateLimitError
+    from app.providers.schwab_trader import SchwabTrader
+
+    slept: list[float] = []
+    monkeypatch.setattr(
+        "app.providers.schwab_trader.time.sleep",
+        lambda s: slept.append(s),
+    )
+
+    class FakeClient:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return None
+
+        def request(self, *args, **kwargs):
+            return httpx.Response(
+                429,
+                headers={"Retry-After": "60"},
+                text="slow down",
+                request=httpx.Request("POST", "https://api.schwabapi.com/trader/v1/orders"),
+            )
+
+    monkeypatch.setattr(
+        "app.providers.schwab_trader.httpx.Client",
+        lambda **kwargs: FakeClient(),
+    )
+    trader = SchwabTrader(access_token="tok")
+    try:
+        trader._trader_request("POST", "https://example.com/orders", retries=1)
+        raise AssertionError("expected ProviderRateLimitError")
+    except ProviderRateLimitError as exc:
+        assert exc.retry_after == 60
+    assert slept == []
+
+
 def test_retry_after_seconds():
     from app.providers.schwab_trader import _retry_after_seconds
     import httpx
@@ -194,6 +235,48 @@ def test_build_occ_option_symbol():
     assert build_occ_option_symbol("NFLX", "2026-08-19", "CALL", 88) == (
         "NFLX  260819C00088000"
     )
+
+
+def test_option_limit_payload_matches_schwab_sample():
+    from app.providers.schwab_trader import build_place_order_payload
+
+    body = build_place_order_payload(
+        symbol="XYZ   240315C00500000",
+        quantity=10.0,
+        asset_type="OPTION",
+        instruction="BUY_TO_OPEN",
+        order_type="LIMIT",
+        limit_price=6.45,
+    )
+    assert body == {
+        "complexOrderStrategyType": "NONE",
+        "orderType": "LIMIT",
+        "session": "NORMAL",
+        "duration": "DAY",
+        "orderStrategyType": "SINGLE",
+        "price": "6.45",
+        "orderLegCollection": [
+            {
+                "instruction": "BUY_TO_OPEN",
+                "quantity": 10,
+                "instrument": {
+                    "symbol": "XYZ   240315C00500000",
+                    "assetType": "OPTION",
+                },
+            }
+        ],
+    }
+    cheap = build_place_order_payload(
+        symbol="SPY   260818P00640000",
+        quantity=1.0,
+        asset_type="OPTION",
+        instruction="BUY_TO_OPEN",
+        order_type="LIMIT",
+        limit_price=0.28,
+    )
+    assert cheap["price"] == "0.28"
+    assert cheap["orderLegCollection"][0]["quantity"] == 1
+    assert isinstance(cheap["orderLegCollection"][0]["quantity"], int)
 
 
 def test_parse_option_quote_prices_uses_ask_as_fillable():
