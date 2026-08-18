@@ -187,17 +187,17 @@ export function PositionsDesk() {
           assetType: pos.asset_type,
           instruction: pos.close_instruction,
           averagePrice: pos.average_price,
-          targetPct: existing?.targetPct ?? 35,
-          alertOn: existing?.alertOn ?? false,
+          targetPct: existing?.targetPct ?? DEFAULT_TP_PCT,
           autoClose: existing?.autoClose ?? false,
           lastPnlPct: existing?.lastPnlPct ?? null,
           lastMark: existing?.lastMark ?? null,
           lastStatus: existing?.lastStatus ?? null,
           firedAt: existing?.firedAt ?? null,
           ...patch,
+          alertOn: false,
         };
         const others = prev.filter((w) => w.id !== id);
-        if (!next.alertOn && !next.autoClose) return others;
+        if (!next.autoClose && next.targetPct === DEFAULT_TP_PCT) return others;
         return [...others, next];
       });
     },
@@ -206,7 +206,7 @@ export function PositionsDesk() {
 
   const tickWatches = useCallback(async () => {
     if (readHoldTrader() || pending || ladderBusy) return;
-    const active = watches.filter((w) => w.alertOn || w.autoClose);
+    const active = watches.filter((w) => w.autoClose);
     if (active.length === 0) return;
 
     for (const w of active) {
@@ -243,35 +243,10 @@ export function PositionsDesk() {
           ),
         );
         if (res.hit) {
-          try {
-            if (typeof Notification !== "undefined") {
-              if (Notification.permission === "granted") {
-                new Notification(
-                  `${w.symbol} · TP ${w.targetPct}%`,
-                  {
-                    body: res.closed
-                      ? t("positions.notifyClosed")
-                      : t("positions.notifyHit").replace(
-                          "{pct}",
-                          String(res.pnl_pct ?? w.targetPct),
-                        ),
-                  },
-                );
-              } else if (Notification.permission === "default") {
-                void Notification.requestPermission();
-              }
-            }
-          } catch {
-            /* ignore */
+          if (res.closed) {
+            setNote(t("positions.closedNote").replace("{symbol}", w.symbol));
+            refresh();
           }
-          setNote(
-            res.closed
-              ? t("positions.closedNote").replace("{symbol}", w.symbol)
-              : t("positions.hitNote")
-                  .replace("{symbol}", w.symbol)
-                  .replace("{pct}", String(res.pnl_pct ?? "")),
-          );
-          if (res.closed) refresh();
         }
       } catch (err) {
         setWatches((prev) =>
@@ -628,7 +603,6 @@ export function PositionsDesk() {
                   <th className="px-2 py-1.5 font-medium">{t("positions.colMark")}</th>
                   <th className="px-2 py-1.5 font-medium">{t("positions.colPnl")}</th>
                   <th className="px-2 py-1.5 font-medium">{t("positions.colTp")}</th>
-                  <th className="px-2 py-1.5 font-medium">{t("positions.colAlert")}</th>
                   <th className="px-2 py-1.5 font-medium">{t("positions.colAuto")}</th>
                   <th className="px-2 py-1.5 font-medium">{t("positions.colActions")}</th>
                 </tr>
@@ -640,6 +614,8 @@ export function PositionsDesk() {
                   const pnl = w?.lastPnlPct ?? pos.pnl_pct;
                   const mark = w?.lastMark ?? pos.mark;
                   const autoOn = Boolean(w?.autoClose);
+                  const tpPct = w?.targetPct ?? DEFAULT_TP_PCT;
+                  const tpHit = pnl != null && pnl >= tpPct;
                   return (
                     <tr
                       key={id}
@@ -672,11 +648,10 @@ export function PositionsDesk() {
                       <td className="px-2 py-1.5">
                         <select
                           className="rounded border border-[var(--border-strong)] bg-[var(--surface)] px-1.5 py-1 text-[11px]"
-                          value={w?.targetPct ?? DEFAULT_TP_PCT}
+                          value={tpPct}
                           onChange={(e) =>
                             upsertWatch(pos, {
                               targetPct: Number(e.target.value),
-                              alertOn: w?.alertOn ?? true,
                             })
                           }
                         >
@@ -690,23 +665,11 @@ export function PositionsDesk() {
                         <input
                           type="checkbox"
                           className="accent-[var(--accent)]"
-                          checked={Boolean(w?.alertOn)}
-                          onChange={(e) =>
-                            upsertWatch(pos, { alertOn: e.target.checked })
-                          }
-                          title={t("positions.alertHint")}
-                        />
-                      </td>
-                      <td className="px-2 py-1.5">
-                        <input
-                          type="checkbox"
-                          className="accent-[var(--accent)]"
                           checked={Boolean(w?.autoClose)}
                           disabled={!tradingEnabled}
                           onChange={(e) =>
                             upsertWatch(pos, {
                               autoClose: e.target.checked,
-                              alertOn: e.target.checked ? true : w?.alertOn,
                             })
                           }
                           title={t("positions.autoHint")}
@@ -723,7 +686,7 @@ export function PositionsDesk() {
                           >
                             {t("positions.tpLadder").replace(
                               "{pct}",
-                              String(w?.targetPct ?? DEFAULT_TP_PCT),
+                              String(tpPct),
                             )}
                           </button>
                           <button
@@ -736,11 +699,14 @@ export function PositionsDesk() {
                             {t("positions.closeNow")}
                           </button>
                         </div>
-                        {autoOn || w?.lastStatus ? (
+                        {tpHit ? (
+                          <div className="mt-1 max-w-[10rem] text-[9px] font-medium leading-snug text-[var(--ok)]">
+                            {t("positions.tpHit").replace("{pct}", String(tpPct))}
+                          </div>
+                        ) : null}
+                        {autoOn ? (
                           <div className="mt-1 max-w-[10rem] text-[9px] leading-snug text-[var(--muted)]">
-                            {autoOn ? t("positions.ladderOffBecauseAuto") : null}
-                            {autoOn && w?.lastStatus ? " · " : null}
-                            {w?.lastStatus || null}
+                            {t("positions.ladderOffBecauseAuto")}
                           </div>
                         ) : null}
                       </td>

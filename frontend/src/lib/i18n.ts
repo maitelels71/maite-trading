@@ -471,15 +471,12 @@ const en: Dict = {
   "positions.colMark": "Mark",
   "positions.colPnl": "P&L %",
   "positions.colTp": "TP %",
-  "positions.colAlert": "Alert",
   "positions.colAuto": "Auto mkt",
   "positions.colActions": "Actions",
-  "positions.alertHint": "Browser notify when TP % is reached (no order)",
+  "positions.tpHit": "TP {pct}% reached",
   "positions.autoHint":
     "Market SELL_TO_CLOSE when TP % hits. Needs Trigger. Disables Park LIMIT.",
-  "positions.notifyHit": "Target reached · {pct}%",
   "positions.notifyClosed": "Close order submitted to Schwab",
-  "positions.hitNote": "{symbol} hit TP ({pct}%) — alert",
   "positions.closedNote": "{symbol} close order submitted",
 
   "session.controls": "Controls",
@@ -1014,15 +1011,12 @@ const es: Dict = {
   "positions.colMark": "Mark",
   "positions.colPnl": "P&L %",
   "positions.colTp": "TP %",
-  "positions.colAlert": "Alerta",
   "positions.colAuto": "Auto mkt",
   "positions.colActions": "Acciones",
-  "positions.alertHint": "Notificación del browser al TP % (no envía orden)",
+  "positions.tpHit": "TP {pct}% alcanzado",
   "positions.autoHint":
     "SELL_TO_CLOSE a mercado al llegar al TP %. Necesita Trigger. Bloquea Dejar LIMIT.",
-  "positions.notifyHit": "Target alcanzado · {pct}%",
   "positions.notifyClosed": "Orden de cierre enviada a Schwab",
-  "positions.hitNote": "{symbol} tocó TP ({pct}%) — alerta",
   "positions.closedNote": "Orden de cierre enviada para {symbol}",
 
   "session.controls": "Controles",
