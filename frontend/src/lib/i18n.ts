@@ -369,7 +369,11 @@ const en: Dict = {
   "strategies.openWaitQuiet":
     "Schwab still cooling down. Open in {n}s.",
   "strategies.openRetryWait":
-    "Schwab busy. Sending the order in {n}s…",
+    "Schwab busy. Order was NOT sent. Wait {n}s, then click Open again.",
+  "strategies.openNotSent429":
+    "Order was NOT sent — Schwab was busy. Wait the countdown, then click Open again and press OK.",
+  "strategies.openReadyRetry":
+    "Schwab is free again. Click Open and press OK.",
   "strategies.armPausesAuto":
     "Trigger opens pauses Auto TOP 5 / Auto live so Schwab is free for the order.",
   "strategies.openNeedTrading": "Trading disabled on API (SCHWAB_TRADING_ENABLED).",
@@ -884,7 +888,11 @@ const es: Dict = {
   "strategies.openWaitQuiet":
     "Schwab aún se está enfriando. Open en {n}s.",
   "strategies.openRetryWait":
-    "Schwab ocupado. Enviando la orden en {n}s…",
+    "Schwab ocupado. La orden NO se envió. Espera {n}s y pulsa Open otra vez.",
+  "strategies.openNotSent429":
+    "La orden NO se envió — Schwab estaba ocupado. Espera la cuenta atrás, pulsa Open otra vez y OK.",
+  "strategies.openReadyRetry":
+    "Schwab ya está libre. Pulsa Open y confirma OK.",
   "strategies.armPausesAuto":
     "Trigger opens pausa Auto TOP 5 / Auto live para dejar Schwab libre para la orden.",
   "strategies.openNeedTrading": "Trading desactivado en API (SCHWAB_TRADING_ENABLED).",

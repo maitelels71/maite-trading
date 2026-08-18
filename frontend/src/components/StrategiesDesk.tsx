@@ -67,7 +67,6 @@ const EXP_CHAIN_MS = 12 * 60 * 60 * 1000;
 const OPEN_QUIET_MS = 15_000;
 /** Extra cool-down after a Schwab 429 so the red banner can count down and clear. */
 const RATE_LIMIT_QUIET_MS = 30_000;
-const OPEN_RETRY_WAIT_SEC = 25;
 const TP_FILL_WAIT_MS = 20_000;
 const TP_FILL_TRIES = 8;
 const DESK_TOP_N = 5;
@@ -665,6 +664,7 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
   const [openNote, setOpenNote] = useState<string | null>(null);
   const [openError, setOpenError] = useState<string | null>(null);
   const [openingKey, setOpeningKey] = useState<string | null>(null);
+  const openFailed429Ref = useRef(false);
   const [listedExpRev, setListedExpRev] = useState(0);
   const runGen = useRef(0);
   const deskGen = useRef(0);
@@ -857,13 +857,15 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
 
   useEffect(() => {
     if (quietRemainSec > 0) return;
-    setOpenError((prev) =>
-      prev && /rate limit/i.test(prev) ? null : prev,
-    );
+    if (openFailed429Ref.current) {
+      openFailed429Ref.current = false;
+      setOpenError(null);
+      setOpenNote(t("strategies.openReadyRetry"));
+    }
     setDeskError((prev) =>
       prev && /rate limit/i.test(prev) ? null : prev,
     );
-  }, [quietRemainSec]);
+  }, [quietRemainSec, t]);
 
   const placeAutoTpAfterFill = useCallback(
     async (opts: {
@@ -1048,8 +1050,9 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
         setOpenNote(null);
         const msg = err instanceof Error ? err.message : "";
         if (/rate limit/i.test(msg)) {
+          openFailed429Ref.current = true;
           startSchwabQuiet();
-          setOpenError(t("strategies.rateLimit"));
+          setOpenError(t("strategies.openNotSent429"));
         } else {
           setOpenError(t("strategies.openQuoteFail"));
         }
@@ -1112,21 +1115,7 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
           primaryAccount.available_funds ?? primaryAccount.cash_balance ?? 0,
       };
       try {
-        let res;
-        try {
-          res = await brokerOpenOption(payload);
-        } catch (err) {
-          const msg = err instanceof Error ? err.message : "";
-          if (!/rate limit/i.test(msg)) throw err;
-          for (let n = OPEN_RETRY_WAIT_SEC; n > 0; n -= 1) {
-            setOpenNote(
-              t("strategies.openRetryWait").replace("{n}", String(n)),
-            );
-            await new Promise((r) => window.setTimeout(r, 1000));
-          }
-          setOpenNote(null);
-          res = await brokerOpenOption(payload);
-        }
+        const res = await brokerOpenOption(payload);
         setOpenNote(
           t("strategies.openOkTpWait")
             .replace("{sym}", res.option_symbol || livePlan.symbol)
@@ -1152,8 +1141,14 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
         }
       } catch (err) {
         const copy = brokerErrorCopy(err, t("strategies.openFail"), t);
-        if (/rate limit/i.test(copy)) startSchwabQuiet();
-        setOpenError(copy);
+        if (/rate limit/i.test(copy)) {
+          openFailed429Ref.current = true;
+          startSchwabQuiet();
+          setOpenNote(null);
+          setOpenError(t("strategies.openNotSent429"));
+        } else {
+          setOpenError(copy);
+        }
       } finally {
         setOpeningKey(null);
       }
@@ -1703,7 +1698,17 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
           {openError || quietRemainSec > 0 ? (
             <p className="mt-1 text-[11px] text-[var(--danger)]">
               {quietRemainSec > 0
-                ? t("strategies.openWaitQuiet").replace("{n}", String(quietRemainSec))
+                ? (openFailed429Ref.current
+                    ? t("strategies.openNotSent429") +
+                      " " +
+                      t("strategies.openWaitQuiet").replace(
+                        "{n}",
+                        String(quietRemainSec),
+                      )
+                    : t("strategies.openWaitQuiet").replace(
+                        "{n}",
+                        String(quietRemainSec),
+                      ))
                 : openError}
             </p>
           ) : null}
