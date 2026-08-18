@@ -3,6 +3,7 @@ name: Deploy Cheap (SAM)
 # Low-cost stack: Lambda + API Gateway + DynamoDB + S3/CloudFront
 # 1 API + 2 frontends: Options (public) and Futures (Basic Auth).
 # No NAT Gateway, no RDS, no App Runner.
+# Retrigger staging for v46 (frontend Options build step failed on first run).
 
 on:
   workflow_dispatch:

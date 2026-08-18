@@ -484,7 +484,7 @@ export function PositionsDesk() {
               type="button"
               disabled={pending || ladderBusy || holdTrader}
               title={holdTrader ? t("positions.holdOpen") : undefined}
-              onClick={refresh}
+              onClick={() => refresh()}
               className="shrink-0 rounded-md bg-[var(--accent)] px-3 py-1.5 text-xs font-medium text-[var(--on-accent)] hover:bg-[var(--accent-hover)] disabled:opacity-50"
             >
               {pending || ladderBusy ? t("positions.refreshing") : t("positions.refresh")}
