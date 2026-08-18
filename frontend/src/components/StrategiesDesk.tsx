@@ -1,13 +1,6 @@
 "use client";
 
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  useTransition,
-} from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { DeskSession, DeskStack } from "@/components/DeskSession";
 import {
@@ -548,8 +541,6 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
   const [deskFocusKey, setDeskFocusKey] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [syncNote, setSyncNote] = useState<string | null>(null);
-  const [pending, startTransition] = useTransition();
-  const [, startDeskTransition] = useTransition();
   const [deskBusy, setDeskBusy] = useState(false);
   const [focusBusy, setFocusBusy] = useState(false);
   const [quietUntil, setQuietUntil] = useState(0);
@@ -1034,6 +1025,7 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
     for (const inst of opts.items) {
       if (inst.data_provider && inst.data_provider !== venue) continue;
       for (const tf of opts.tfs) {
+        if (opts.gen !== opts.genRef.current) return null;
         try {
           const res = await syncMarketData({
             ticker: inst.symbol,
@@ -1170,7 +1162,12 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
         items: deskUniverse,
         forceRefresh,
       });
-      if (!synced) return;
+      if (!synced) {
+        if (deskGen.current !== gen) {
+          setDeskNote(t("strategies.syncAborted"));
+        }
+        return;
+      }
 
       setDeskNote(
         t("strategies.syncDone")
@@ -1248,15 +1245,13 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
   );
 
   const runSyncAndScan = useCallback(() => {
-    startTransition(async () => {
-      await syncAndScan();
-    });
+    if (focusBusyRef.current) return;
+    void syncAndScan();
   }, [syncAndScan]);
 
   const runDeskScan = useCallback(() => {
-    startDeskTransition(async () => {
-      await runDeskTop5({ fromAuto: false });
-    });
+    if (deskBusyRef.current) return;
+    void runDeskTop5({ fromAuto: false });
   }, [runDeskTop5]);
 
   const autoBlocked = venue === "schwab" && isCashAutoOffNy();
@@ -1473,7 +1468,7 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
               type="button"
               disabled={deskBusy || deskStrategyKeys.length === 0 || Boolean(openingKey)}
               onClick={runDeskScan}
-              className="shrink-0 rounded-md bg-[var(--accent)] px-3 py-1.5 text-xs font-medium text-[var(--on-accent)] hover:bg-[var(--accent-hover)] disabled:opacity-50"
+              className="shrink-0 cursor-pointer rounded-md bg-[var(--accent)] px-3 py-1.5 text-xs font-medium text-[var(--on-accent)] hover:bg-[var(--accent-hover)] disabled:cursor-not-allowed disabled:opacity-50"
             >
               {deskBusy
                 ? t("strategies.deskTopScanning")
@@ -1605,11 +1600,9 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
                               setDeskFocusKey(rowKey);
                               setSelectedId(pb.id);
                               if (armOpens) return;
-                              startTransition(async () => {
-                                await syncAndScan(pb, {
-                                  skipDeskTfs: true,
-                                  items: universe,
-                                });
+                              void syncAndScan(pb, {
+                                skipDeskTfs: true,
+                                items: universe,
                               });
                             }}
                           />
@@ -1722,7 +1715,11 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
           </div>
         ) : deskNote && !deskBusy ? (
           <p className="mt-2 text-[11px] text-[var(--muted)]">
-            {t("strategies.deskTopEmpty")}
+            {t(
+              premarket
+                ? "strategies.deskTopEmptyPremarket"
+                : "strategies.deskTopEmpty",
+            )}
           </p>
         ) : null}
       </DeskSession>
@@ -1735,11 +1732,11 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
           <>
             <button
               type="button"
-              disabled={focusBusy || pending || !playbook.strategyKey || Boolean(openingKey)}
+              disabled={focusBusy || !playbook.strategyKey || Boolean(openingKey)}
               onClick={runSyncAndScan}
               className="rounded-md bg-[var(--accent)] px-3 py-1.5 text-xs font-medium text-[var(--on-accent)] hover:bg-[var(--accent-hover)] disabled:opacity-50"
             >
-              {focusBusy || pending ? t("strategies.syncScanning") : t("strategies.syncAndScan")}
+              {focusBusy ? t("strategies.syncScanning") : t("strategies.syncAndScan")}
             </button>
             <button
               type="button"

@@ -161,7 +161,9 @@ const en: Dict = {
     "Syncs 1h + 1d (25d) on core names, ranks TOP 5, then Focus-scans #1 without re-downloading 1h/1d. Watch (USAR/UUUU/ONDS/IOVA) is Focus-only. Open to Schwab only if the debit fits 10% equity.",
   "strategies.deskTopScan": "Sync & TOP 5",
   "strategies.deskTopScanning": "Desk scan…",
-  "strategies.deskTopEmpty": "No TOP 5 matches yet — sync on a trading day.",
+  "strategies.deskTopEmpty": "No TOP 5 matches. Click the green Sync & TOP 5 to refresh.",
+  "strategies.deskTopEmptyPremarket":
+    "Premarket: click the green Sync & TOP 5 (Auto stays off). Until 9:30 ET the session is still yesterday — 0 hits is possible.",
   "strategies.scopeTop5": "Desk TOP 5",
   "strategies.scopePlaybook": "This playbook",
   "strategies.scopeHintTop5":
@@ -193,6 +195,7 @@ const en: Dict = {
     "Synced {bars} bars across {symbols} symbols ({errors} sync errors). Scanning…",
   "strategies.syncSkipped":
     "Using candles already synced (1h/1d). Scanning…",
+  "strategies.syncAborted": "Sync stopped. Click Sync & TOP 5 again.",
   "strategies.syncHint":
     "Sync downloads {tfs} from Schwab for this session’s symbols — then runs the scan.",
   "strategies.syncHintFutures":
@@ -656,7 +659,9 @@ const es: Dict = {
     "Sync 1h + 1d (25d) en nombres core, rankea TOP 5 y Focus-scan de #1 sin re-bajar 1h/1d. Watch (USAR/UUUU/ONDS/IOVA) solo en Focus. Abrir a Schwab solo si la prima cabe en el 10% del equity.",
   "strategies.deskTopScan": "Sync & TOP 5",
   "strategies.deskTopScanning": "Desk scan…",
-  "strategies.deskTopEmpty": "Sin TOP 5 todavía — haz sync en un día de mercado.",
+  "strategies.deskTopEmpty": "Sin TOP 5. Pulsa el Sync & TOP 5 verde para refrescar.",
+  "strategies.deskTopEmptyPremarket":
+    "Premarket: pulsa el Sync & TOP 5 verde (Auto sigue apagado). Hasta las 9:30 ET la sesión es la de ayer — 0 hits es posible.",
   "strategies.scopeTop5": "Desk TOP 5",
   "strategies.scopePlaybook": "Este playbook",
   "strategies.scopeHintTop5":
@@ -688,6 +693,7 @@ const es: Dict = {
     "Sync: {bars} barras · {symbols} símbolos · {errors} errores. Escaneando…",
   "strategies.syncSkipped":
     "Usando velas ya sincronizadas (1h/1d). Escaneando…",
+  "strategies.syncAborted": "Sync detenido. Pulsa Sync & TOP 5 otra vez.",
   "strategies.syncHint":
     "Sync descarga {tfs} desde Schwab para los símbolos de esta sesión — luego corre el scan.",
   "strategies.syncHintFutures":
