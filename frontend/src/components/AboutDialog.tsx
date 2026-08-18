@@ -3,7 +3,7 @@
 import { useEffect, useId, useRef, type ReactNode } from "react";
 
 import { useLocale } from "@/components/LocaleProvider";
-import { APP_MODE } from "@/lib/app-mode";
+import { APP_ICON_SVG, APP_MODE } from "@/lib/app-mode";
 import { ABOUT } from "@/lib/about";
 
 type AboutDialogProps = {
@@ -113,12 +113,12 @@ export function AboutDialog({ open, onClose }: AboutDialogProps) {
 
         <div className="space-y-4 px-5 py-5">
           <div className="flex items-center gap-3">
-            <span className="flex h-12 w-12 shrink-0 overflow-hidden rounded-lg ring-1 ring-[#c9893a]/55 shadow-sm">
+            <span className="flex h-12 w-12 shrink-0 overflow-hidden rounded-lg bg-[#1c1917] shadow-sm ring-1 ring-[var(--border)]">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
-                src="/brand/charging-bull.png"
-                alt=""
-                className="h-full w-full object-cover object-[50%_35%]"
+                src={APP_ICON_SVG}
+                alt={ABOUT.productName}
+                className="h-full w-full object-contain"
               />
             </span>
             <div className="min-w-0">

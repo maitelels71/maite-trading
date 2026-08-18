@@ -40,7 +40,7 @@ def _rate_limit_http(exc: ProviderRateLimitError) -> HTTPException:
         n = int(min(max(float(raw), 30), 120))
     return HTTPException(
         status_code=429,
-        detail=f"Schwab 429. Retry-After {n}s. {exc}",
+        detail=f"Schwab 429. Retry-After {n}s.",
         headers={"Retry-After": str(n)},
     )
 

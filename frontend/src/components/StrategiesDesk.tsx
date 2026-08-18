@@ -59,11 +59,11 @@ const CAPITAL_CACHE_MS = 24 * 60 * 60 * 1000;
 const EXP_CHAIN_KEY = "maite.strategies.expChain";
 const EXP_CHAIN_MS = 12 * 60 * 60 * 1000;
 /** After candles/capital, wait before BUY_TO_OPEN. Shared app quota is ~120/min. */
-const OPEN_QUIET_MS = 90_000;
+const OPEN_QUIET_MS = 120_000;
 /** Extra cool-down after a failed Open 429 (second POST still blocked). */
-const RATE_LIMIT_QUIET_MS = 90_000;
+const RATE_LIMIT_QUIET_MS = 150_000;
 /** Browser wait then one more POST — Lambda cannot sleep 30s (HTTP API ~29s timeout). */
-const OPEN_RETRY_WAIT_SEC = 90;
+const OPEN_RETRY_WAIT_SEC = 150;
 const TP_FILL_WAIT_MS = 20_000;
 const TP_FILL_TRIES = 8;
 const DESK_TOP_N = 5;
@@ -424,10 +424,10 @@ function isGatewayTimeout(err: unknown): boolean {
 function retryAfterSec(err: unknown, fallback: number): number {
   const msg = err instanceof Error ? err.message : "";
   const m = /Retry-After (\d+)/i.exec(msg);
-  if (!m) return fallback;
-  const n = Number(m[1]);
+  const n = m ? Number(m[1]) : fallback;
   if (!Number.isFinite(n) || n < 15) return fallback;
-  return Math.min(120, Math.max(90, Math.round(n)));
+  // Schwab's 60s Retry-After is not enough after Sync & TOP 5 burned the minute.
+  return Math.min(180, Math.max(fallback, Math.round(n) + 90));
 }
 
 function brokerErrorCopy(
@@ -1078,7 +1078,7 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
                 startSchwabQuiet(waitSec * 1000);
                 setOpenNote(null);
                 setOpenError(
-                  (raw || t("strategies.openNotSent429")) +
+                  t("strategies.openNotSent429") +
                     " " +
                     t("strategies.openNotSent429Next"),
                 );
@@ -1088,12 +1088,15 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
               return;
             }
             const waitSec = retryAfterSec(err, OPEN_RETRY_WAIT_SEC);
+            startSchwabQuiet(waitSec * 1000);
+            setOpenNote(null);
             for (let n = waitSec; n > 0; n -= 1) {
-              setOpenNote(
+              setOpenError(
                 t("strategies.openSendingWait").replace("{n}", String(n)),
               );
               await sleepMs(1000);
             }
+            setOpenError(null);
             setOpenNote(t("strategies.openSendingNow"));
           }
         }

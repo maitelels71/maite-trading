@@ -351,7 +351,7 @@ const en: Dict = {
   "strategies.capitalNeed": "Load capital to size opens (10% flag · 50% max).",
   "strategies.armOpens": "Trigger opens",
   "strategies.armOpensBody":
-    "Sync & TOP 5 first (Trigger off). Then check Trigger — that pauses Auto/Sync and waits ~90s so Schwab can take BUY_TO_OPEN. If Open gets 429, the desk waits ~90s and sends the confirmed order once. After FILL: TP 35% if 1ct, else 10/20/35/50/100.",
+    "Sync & TOP 5 first (Trigger off). Then check Trigger — that pauses Auto/Sync and waits ~2 min so Schwab can take BUY_TO_OPEN. If Open gets 429, the desk waits ~2.5 min and retries the confirmed order once. After FILL: TP 35% if 1ct, else 10/20/35/50/100.",
   "strategies.openSchwab": "Open {n}× @ {px}",
   "strategies.openTooRich":
     "1ct {cost} = {pct}% of equity. Consider ≤10% ({risk}). Open ≤50% needs {need50} equity.",
@@ -369,14 +369,14 @@ const en: Dict = {
   "strategies.openWaitQuiet":
     "Schwab cooling. Open in {n}s — do not skip this wait.",
   "strategies.openRetryWait":
-    "Schwab locked. Sending the confirmed order in {n}s…",
+    "Schwab 429 — order NOT sent. Waiting {n}s, then one automatic retry. Do not click Open again.",
   "strategies.openSendingWait":
-    "Schwab locked. Sending the confirmed order in {n}s…",
-  "strategies.openSendingNow": "Sending the confirmed order now…",
+    "Schwab 429 — order NOT sent. Waiting {n}s, then one automatic retry. Do not click Open again.",
+  "strategies.openSendingNow": "Retrying the confirmed order now…",
   "strategies.openNotSent429":
     "Order was NOT sent — Schwab stayed busy after the wait.",
   "strategies.openNotSent429Next":
-    "Wait the countdown, then Open and OK once more. Check TOS → Orders in case a LIMIT is already working.",
+    "Wait until the countdown hits 0, then Open and OK once. Check TOS → Orders in case a LIMIT is already working.",
   "strategies.openTimeoutMaybeSent":
     "Open timed out. The LIMIT may already be at Schwab — check TOS → Orders before clicking Open again.",
   "strategies.openReadyRetry":
@@ -881,7 +881,7 @@ const es: Dict = {
   "strategies.capitalNeed": "Carga capital para dimensionar (flag 10% · máx 50%).",
   "strategies.armOpens": "Trigger opens",
   "strategies.armOpensBody":
-    "Primero Sync & TOP 5 (Trigger apagado). Luego activa Trigger — pausa Auto/Sync y espera ~90s para que Schwab acepte BUY_TO_OPEN. Si Open da 429, el desk espera ~90s y envía la orden ya confirmada una vez. Tras FILL: TP 35% si 1ct, si no 10/20/35/50/100.",
+    "Primero Sync & TOP 5 (Trigger apagado). Luego activa Trigger — pausa Auto/Sync y espera ~2 min para que Schwab acepte BUY_TO_OPEN. Si Open da 429, el desk espera ~2.5 min y reintenta la orden ya confirmada una vez. Tras FILL: TP 35% si 1ct, si no 10/20/35/50/100.",
   "strategies.openSchwab": "Abrir {n}× @ {px}",
   "strategies.openTooRich":
     "1ct {cost} = {pct}% del equity. Considerar ≤10% ({risk}). Open ≤50% pide {need50} de equity.",
@@ -899,14 +899,14 @@ const es: Dict = {
   "strategies.openWaitQuiet":
     "Schwab se enfría. Open en {n}s — no saltes esta espera.",
   "strategies.openRetryWait":
-    "Schwab bloqueado. Enviando la orden ya confirmada en {n}s…",
+    "Schwab 429 — la orden NO se envió. Esperando {n}s y reintento automático una vez. No pulses Open otra vez.",
   "strategies.openSendingWait":
-    "Schwab bloqueado. Enviando la orden ya confirmada en {n}s…",
-  "strategies.openSendingNow": "Enviando la orden ya confirmada ahora…",
+    "Schwab 429 — la orden NO se envió. Esperando {n}s y reintento automático una vez. No pulses Open otra vez.",
+  "strategies.openSendingNow": "Reintentando la orden ya confirmada ahora…",
   "strategies.openNotSent429":
     "La orden NO se envió — Schwab siguió ocupado tras la espera.",
   "strategies.openNotSent429Next":
-    "Espera la cuenta atrás, pulsa Open y OK otra vez. Mira TOS → Orders por si ya hay un LIMIT working.",
+    "Espera a que la cuenta llegue a 0, pulsa Open y OK una vez. Mira TOS → Orders por si ya hay un LIMIT working.",
   "strategies.openTimeoutMaybeSent":
     "Open se quedó sin tiempo. El LIMIT puede estar ya en Schwab — mira TOS → Orders antes de pulsar Open otra vez.",
   "strategies.openReadyRetry":

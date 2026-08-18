@@ -50,10 +50,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
         : fromHeader > 0
           ? fromHeader
           : 90;
-      throw new Error(
-        detail ||
-          `Schwab 429. Retry-After ${retryAfter}s. Wait, then retry.`,
-      );
+      throw new Error(`Schwab 429. Retry-After ${retryAfter}s.`);
     }
     throw new Error(detail || `Request failed (${res.status})`);
   }
