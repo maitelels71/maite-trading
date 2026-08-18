@@ -22,10 +22,15 @@ from app.providers.schwab_trader import (
     parse_option_quote_prices,
     pick_quote_blob,
     size_long_option,
-    split_tp_ladder_quantities,
+    tp_limit_legs,
 )
 
 router = APIRouter(prefix="/broker", tags=["broker"])
+
+CASH_RTH_CLOSED = (
+    "Cash RTH is 9:30–4:00 ET. Do not send orders after hours — Schwab will throttle. "
+    "Try after tomorrow's open."
+)
 
 RATE_LIMIT_DETAIL = (
     "Schwab Trader rate limit. Wait ~30 seconds, then retry. "
@@ -43,6 +48,11 @@ def _rate_limit_http(exc: ProviderRateLimitError) -> HTTPException:
         detail=f"Schwab 429. Retry-After {n}s.",
         headers={"Retry-After": str(n)},
     )
+
+
+def _require_cash_rth() -> None:
+    if not is_cash_rth():
+        raise HTTPException(status_code=400, detail=CASH_RTH_CLOSED)
 
 
 class PositionsResponse(BaseModel):
@@ -151,6 +161,7 @@ class TpLadderRequest(BaseModel):
     average_price: float = Field(gt=0)
     duration: str = "GOOD_TILL_CANCEL"
     confirm_live: bool = False
+    target_pct: float | None = Field(default=None, gt=0, le=500)
 
 
 class TpLadderLeg(BaseModel):
@@ -302,11 +313,7 @@ def open_option_position(body: OpenOrderRequest) -> OpenOrderResponse:
             status_code=400,
             detail="confirm_live must be true to place a live open order",
         )
-    if not is_cash_rth():
-        raise HTTPException(
-            status_code=400,
-            detail="Cash RTH is 9:30–4:00 ET. Open tomorrow after the open — do not retry after hours.",
-        )
+    _require_cash_rth()
     try:
         trader = SchwabTrader()
         if (
@@ -416,6 +423,7 @@ def close_position(body: CloseOrderRequest) -> CloseOrderResponse:
             status_code=400,
             detail="confirm_live must be true to place a live close order",
         )
+    _require_cash_rth()
     try:
         trader = SchwabTrader()
         result = trader.place_close_order(
@@ -447,16 +455,17 @@ def close_position(body: CloseOrderRequest) -> CloseOrderResponse:
 
 @router.post("/orders/tp-ladder", response_model=TpLadderResponse)
 def place_tp_ladder(body: TpLadderRequest) -> TpLadderResponse:
-    """Place scale-out LIMIT SELL_TO_CLOSE (or SELL) at +10/20/35/50/100% of avg."""
+    """Place LIMIT SELL_TO_CLOSE at target_pct of avg, or the scale-out ladder."""
     if not body.confirm_live:
         raise HTTPException(
             status_code=400,
             detail="confirm_live must be true to place live TP limit orders",
         )
+    _require_cash_rth()
     if body.average_price <= 0:
         raise HTTPException(status_code=400, detail="average_price must be > 0")
 
-    splits = split_tp_ladder_quantities(body.quantity)
+    splits = tp_limit_legs(body.quantity, body.target_pct)
     if not splits:
         raise HTTPException(status_code=400, detail="quantity must be >= 1")
 
@@ -589,6 +598,16 @@ def tp_check(body: TpCheckRequest) -> TpCheckResponse:
                 target_pct=body.target_pct,
                 hit=True,
                 message="Target hit but confirm_live=false — no order sent",
+            )
+
+        if not is_cash_rth():
+            return TpCheckResponse(
+                symbol=body.symbol,
+                mark=mark,
+                pnl_pct=pnl_pct,
+                target_pct=body.target_pct,
+                hit=True,
+                message="Target hit — cash session closed, no order sent",
             )
 
         result = trader.place_close_order(

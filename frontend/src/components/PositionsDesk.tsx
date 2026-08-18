@@ -14,11 +14,13 @@ import {
   readHoldTrader,
   subscribeHoldTrader,
 } from "@/lib/schwab-hold";
+import { isCashRthNy } from "@/lib/cash-session";
 import type { BrokerOrder, BrokerPosition, TpLadderResponse, TpWatch } from "@/lib/types";
 
 const WATCH_KEY = "maite.broker.tpWatches";
 const POLL_MS = 20_000;
 const LADDER_RETRY_WAIT_SEC = 150;
+const DEFAULT_TP_PCT = 35;
 
 function isRateLimitText(msg: string | null | undefined): boolean {
   return /(?:\b429\b|rate limit)/i.test(msg || "");
@@ -94,12 +96,30 @@ export function PositionsDesk() {
   const [note, setNote] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const [ladderBusy, setLadderBusy] = useState(false);
+  const [retryLeft, setRetryLeft] = useState<number | null>(null);
   const [watches, setWatches] = useState<TpWatch[]>(() => loadWatches());
   const [armedConfirm, setArmedConfirm] = useState(false);
   const [holdTrader, setHoldTrader] = useState(() => readHoldTrader());
+  const [cashRth, setCashRth] = useState(() => isCashRthNy());
   const inFlight = useRef<Set<string>>(new Set());
+  const retryAbort = useRef(false);
+  const retryGen = useRef(0);
 
   useEffect(() => subscribeHoldTrader(() => setHoldTrader(readHoldTrader())), []);
+
+  useEffect(() => {
+    const tick = () => setCashRth(isCashRthNy());
+    tick();
+    const id = window.setInterval(tick, 15_000);
+    return () => window.clearInterval(id);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      retryAbort.current = true;
+      retryGen.current += 1;
+    };
+  }, []);
 
   useEffect(() => {
     saveWatches(watches);
@@ -202,8 +222,8 @@ export function PositionsDesk() {
           instruction: w.instruction,
           average_price: w.averagePrice,
           target_pct: w.targetPct,
-          auto_close: w.autoClose && armedConfirm && tradingEnabled,
-          confirm_live: w.autoClose && armedConfirm && tradingEnabled,
+          auto_close: w.autoClose && armedConfirm && tradingEnabled && isCashRthNy(),
+          confirm_live: w.autoClose && armedConfirm && tradingEnabled && isCashRthNy(),
         });
         setWatches((prev) =>
           prev.map((row) =>
@@ -283,6 +303,11 @@ export function PositionsDesk() {
       setError(t("positions.needArm"));
       return;
     }
+    if (!isCashRthNy()) {
+      setCashRth(false);
+      setError(t("positions.needRth"));
+      return;
+    }
     if (!window.confirm(t("positions.confirmClose").replace("{symbol}", pos.symbol))) {
       return;
     }
@@ -311,6 +336,11 @@ export function PositionsDesk() {
   function closeAll() {
     if (!armedConfirm) {
       setError(t("positions.needArm"));
+      return;
+    }
+    if (!isCashRthNy()) {
+      setCashRth(false);
+      setError(t("positions.needRth"));
       return;
     }
     if (positions.length === 0) return;
@@ -377,18 +407,28 @@ export function PositionsDesk() {
       setError(t("positions.needArm"));
       return;
     }
+    if (!isCashRthNy()) {
+      setCashRth(false);
+      setError(t("positions.needRth"));
+      return;
+    }
     if (pos.average_price <= 0) {
       setError(t("positions.needAvg"));
       return;
     }
     const qty = Math.abs(pos.quantity);
+    const tpPct =
+      watches.find((row) => row.id === watchId(pos))?.targetPct ?? DEFAULT_TP_PCT;
+    const limitPx = Math.round(pos.average_price * (1 + tpPct / 100) * 100) / 100;
     const msg = t("positions.confirmLadder")
       .replace("{symbol}", pos.symbol)
       .replace("{avg}", money(pos.average_price))
-      .replace("{qty}", String(qty));
+      .replace("{qty}", String(qty))
+      .replace("{pct}", String(tpPct))
+      .replace("{limit}", money(limitPx));
     if (!window.confirm(msg)) return;
 
-    upsertWatch(pos, { autoClose: false });
+    upsertWatch(pos, { autoClose: false, targetPct: tpPct });
 
     const payload = {
       account_hash: pos.account_hash,
@@ -399,6 +439,7 @@ export function PositionsDesk() {
       average_price: pos.average_price,
       confirm_live: true as const,
       duration: "GOOD_TILL_CANCEL",
+      target_pct: tpPct,
     };
 
     const applyResult = (res: TpLadderResponse) => {
@@ -427,20 +468,27 @@ export function PositionsDesk() {
       if (!ladderRateLimited(res)) refresh({ keepError: true });
     };
 
-    startTransition(async () => {
-      setLadderBusy(true);
-      setError(null);
-      const sleep = (ms: number) =>
-        new Promise((resolve) => window.setTimeout(resolve, ms));
+    retryAbort.current = false;
+    const gen = ++retryGen.current;
+    setLadderBusy(true);
+    setRetryLeft(null);
+    setError(null);
+    const sleep = (ms: number) =>
+      new Promise((resolve) => window.setTimeout(resolve, ms));
+    const stale = () => retryAbort.current || retryGen.current !== gen;
+    void (async () => {
       try {
         for (let attempt = 0; attempt < 2; attempt += 1) {
+          if (stale()) return;
           try {
             const res = await brokerTpLadder(payload);
+            if (stale()) return;
             if (res.ok || !ladderRateLimited(res) || attempt === 1) {
               applyResult(res);
               return;
             }
           } catch (err) {
+            if (stale()) return;
             const raw = err instanceof Error ? err.message : "TP ladder failed";
             if (!isRateLimitText(raw) || attempt === 1) {
               setError(
@@ -450,15 +498,29 @@ export function PositionsDesk() {
             }
           }
           for (let n = LADDER_RETRY_WAIT_SEC; n > 0; n -= 1) {
-            setError(t("positions.ladderWaiting").replace("{n}", String(n)));
+            if (stale()) return;
+            setRetryLeft(n);
             await sleep(1000);
           }
+          if (stale()) return;
+          setRetryLeft(null);
           setError(null);
         }
       } finally {
-        setLadderBusy(false);
+        if (retryGen.current === gen) {
+          setLadderBusy(false);
+          setRetryLeft(null);
+        }
       }
-    });
+    })();
+  }
+
+  function cancelLadderRetry() {
+    retryAbort.current = true;
+    retryGen.current += 1;
+    setRetryLeft(null);
+    setLadderBusy(false);
+    setError(t("positions.ladderCancelled"));
   }
 
   return (
@@ -473,8 +535,9 @@ export function PositionsDesk() {
             {positions.length > 0 ? (
               <button
                 type="button"
-                disabled={pending || ladderBusy || !tradingEnabled}
+                disabled={pending || ladderBusy || !tradingEnabled || !cashRth}
                 onClick={closeAll}
+                title={!cashRth ? t("positions.needRth") : undefined}
                 className="rounded-md border border-[var(--danger)]/40 bg-[var(--danger-soft)] px-3 py-1.5 text-xs font-medium text-[var(--danger)] hover:bg-[var(--hover)] disabled:opacity-50"
               >
                 {t("positions.closeAll")}
@@ -482,12 +545,12 @@ export function PositionsDesk() {
             ) : null}
             <button
               type="button"
-              disabled={pending || ladderBusy || holdTrader}
+              disabled={pending || holdTrader}
               title={holdTrader ? t("positions.holdOpen") : undefined}
               onClick={() => refresh()}
               className="shrink-0 rounded-md bg-[var(--accent)] px-3 py-1.5 text-xs font-medium text-[var(--on-accent)] hover:bg-[var(--accent-hover)] disabled:opacity-50"
             >
-              {pending || ladderBusy ? t("positions.refreshing") : t("positions.refresh")}
+              {pending ? t("positions.refreshing") : t("positions.refresh")}
             </button>
           </div>
         }
@@ -510,9 +573,27 @@ export function PositionsDesk() {
         {holdTrader ? (
           <p className="mt-2 text-[11px] text-[var(--warn)]">{t("positions.holdOpen")}</p>
         ) : null}
-        {error ? (
-          <div className="mt-2 rounded-md border border-red-200 bg-[var(--danger-soft)] px-3 py-1.5 text-xs text-[var(--danger)]">
-            {error}
+        {!cashRth ? (
+          <div className="mt-2 rounded-md border border-amber-200/60 bg-[var(--warn-soft)] px-3 py-1.5 text-xs leading-snug text-[var(--warn)]">
+            {t("positions.needRth")}
+          </div>
+        ) : null}
+        {retryLeft != null || error ? (
+          <div className="mt-2 flex items-start justify-between gap-2 rounded-md border border-red-200 bg-[var(--danger-soft)] px-3 py-1.5 text-xs text-[var(--danger)]">
+            <span>
+              {retryLeft != null
+                ? t("positions.ladderWaiting").replace("{n}", String(retryLeft))
+                : error}
+            </span>
+            {retryLeft != null ? (
+              <button
+                type="button"
+                onClick={cancelLadderRetry}
+                className="shrink-0 rounded border border-[var(--danger)]/40 px-2 py-0.5 text-[10px] font-medium hover:bg-[var(--hover)]"
+              >
+                {t("positions.ladderCancel")}
+              </button>
+            ) : null}
           </div>
         ) : null}
 
@@ -591,7 +672,7 @@ export function PositionsDesk() {
                       <td className="px-2 py-1.5">
                         <select
                           className="rounded border border-[var(--border-strong)] bg-[var(--surface)] px-1.5 py-1 text-[11px]"
-                          value={w?.targetPct ?? 35}
+                          value={w?.targetPct ?? DEFAULT_TP_PCT}
                           onChange={(e) =>
                             upsertWatch(pos, {
                               targetPct: Number(e.target.value),
@@ -635,18 +716,22 @@ export function PositionsDesk() {
                         <div className="flex flex-col gap-1">
                           <button
                             type="button"
-                            disabled={pending || ladderBusy || !tradingEnabled}
+                            disabled={pending || ladderBusy || !tradingEnabled || !cashRth}
                             onClick={() => placeTpLadder(pos)}
                             className="rounded border border-[var(--ok)]/40 bg-[var(--ok-soft)] px-2 py-1 text-[10px] font-medium text-[var(--ok)] hover:bg-[var(--hover)] disabled:opacity-40"
-                            title={t("positions.ladderHint")}
+                            title={!cashRth ? t("positions.needRth") : t("positions.ladderHint")}
                           >
-                            {t("positions.tpLadder")}
+                            {t("positions.tpLadder").replace(
+                              "{pct}",
+                              String(w?.targetPct ?? DEFAULT_TP_PCT),
+                            )}
                           </button>
                           <button
                             type="button"
-                            disabled={pending || ladderBusy || !tradingEnabled}
+                            disabled={pending || ladderBusy || !tradingEnabled || !cashRth}
                             onClick={() => closeNow(pos)}
                             className="rounded border border-[var(--border)] px-2 py-1 text-[10px] font-medium hover:bg-[var(--hover)] disabled:opacity-40"
+                            title={!cashRth ? t("positions.needRth") : undefined}
                           >
                             {t("positions.closeNow")}
                           </button>

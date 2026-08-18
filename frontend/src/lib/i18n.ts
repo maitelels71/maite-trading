@@ -430,10 +430,12 @@ const en: Dict = {
   "positions.tradingDisabled":
     "Trading disabled on API (SCHWAB_TRADING_ENABLED). Alerts still work.",
   "positions.needArm": "Turn on Trigger closes first.",
+  "positions.needRth":
+    "Cash session is closed (9:30–4:00 ET). Do not send Park LIMIT / Close after hours — Schwab will throttle. Try after tomorrow's open.",
   "positions.needAvg": "Average price missing — cannot build TP limits.",
   "positions.confirmClose": "Place live close order for {symbol}?",
   "positions.confirmLadder":
-    "Park GTC LIMIT sells for {symbol} at +10/20/35/50/100% of avg {avg} (scale-out of {qty})? Auto market-close will turn off.",
+    "Park GTC LIMIT sell for {symbol}: {qty} @ {limit} (+{pct}% of avg {avg})? Auto market-close will turn off.",
   "positions.closeNow": "Close now",
   "positions.closeAll": "Close all",
   "positions.confirmCloseAll":
@@ -441,15 +443,18 @@ const en: Dict = {
   "positions.closeAllNote": "Close all: {ok}/{n} submitted · {syms}",
   "positions.closeAllRateLimit":
     "Close all stopped: {ok}/{n} sent, then Schwab rate limit. Wait ~30s and Close all again for the rest.",
-  "positions.tpLadder": "Park LIMIT",
+  "positions.tpLadder": "Park LIMIT {pct}%",
   "positions.ladderOffBecauseAuto":
     "Auto is on — it will market-close at TP %. Turn Auto off to park LIMIT sells instead.",
   "positions.ladderWaiting":
-    "Schwab busy (429) — LIMIT not sent. Waiting {n}s, then one automatic retry. Do not click again.",
+    "Schwab busy (429) — LIMIT not sent. Waiting {n}s, then one automatic retry. Do not click Park LIMIT again.",
+  "positions.ladderCancel": "Cancel wait",
+  "positions.ladderCancelled":
+    "Wait cancelled — LIMIT was not retried. You can Park LIMIT again after a minute.",
   "positions.ladderRateLimit":
-    "Schwab still busy — LIMIT not in TOS. Wait until the countdown finishes; do not Refresh or Open.",
+    "Schwab still busy — LIMIT not in TOS. Wait a minute, then Park LIMIT once.",
   "positions.ladderHint":
-    "Park GTC LIMIT sells now (1ct → +35% only). Turns Auto off. Needs Trigger.",
+    "Park one GTC LIMIT at the TP % in the dropdown. Turns Auto off. Needs Trigger.",
   "positions.ladderNote": "TP ladder for {symbol}",
   "positions.ordersTitle": "Working / recent orders (Schwab)",
   "positions.ordersEmpty":
@@ -968,10 +973,12 @@ const es: Dict = {
   "positions.tradingDisabled":
     "Trading desactivado en API (SCHWAB_TRADING_ENABLED). Las alertas sí funcionan.",
   "positions.needArm": "Activa Trigger cierres primero.",
+  "positions.needRth":
+    "La sesión cash está cerrada (9:30–4:00 ET). No envíes Dejar LIMIT / Cerrar ahora fuera de horario — Schwab se satura. Prueba mañana tras la apertura.",
   "positions.needAvg": "Falta avg price — no se pueden crear límites TP.",
   "positions.confirmClose": "¿Enviar orden de cierre live para {symbol}?",
   "positions.confirmLadder":
-    "¿Dejar LIMIT GTC de venta para {symbol} a +10/20/35/50/100% del avg {avg} (scale-out de {qty})? Auto (cierre a mercado) se apaga.",
+    "¿Dejar LIMIT GTC de venta para {symbol}: {qty} @ {limit} (+{pct}% del avg {avg})? Auto (cierre a mercado) se apaga.",
   "positions.closeNow": "Cerrar ahora",
   "positions.closeAll": "Cerrar todo",
   "positions.confirmCloseAll":
@@ -979,15 +986,18 @@ const es: Dict = {
   "positions.closeAllNote": "Cerrar todo: {ok}/{n} enviadas · {syms}",
   "positions.closeAllRateLimit":
     "Cerrar todo se detuvo: {ok}/{n} enviadas, luego rate limit de Schwab. Espera ~30s y pulsa Cerrar todo otra vez.",
-  "positions.tpLadder": "Dejar LIMIT",
+  "positions.tpLadder": "Dejar LIMIT {pct}%",
   "positions.ladderOffBecauseAuto":
     "Auto está on — cerrará a mercado al TP %. Apaga Auto para dejar LIMIT en TOS.",
   "positions.ladderWaiting":
-    "Schwab ocupado (429) — la LIMIT no se envió. Esperando {n}s y un reintento automático. No pulses otra vez.",
+    "Schwab ocupado (429) — la LIMIT no se envió. Esperando {n}s y un reintento automático. No pulses Dejar LIMIT otra vez.",
+  "positions.ladderCancel": "Cancelar espera",
+  "positions.ladderCancelled":
+    "Espera cancelada — no se reintentó la LIMIT. Puedes Dejar LIMIT otra vez en un minuto.",
   "positions.ladderRateLimit":
-    "Schwab sigue ocupado — la LIMIT no está en TOS. Espera a que termine la cuenta; no hagas Refresh ni Open.",
+    "Schwab sigue ocupado — la LIMIT no está en TOS. Espera un minuto y pulsa Dejar LIMIT una vez.",
   "positions.ladderHint":
-    "Deja LIMIT GTC ahora (1ct → solo +35%). Apaga Auto. Necesita Trigger.",
+    "Deja un LIMIT GTC al TP % del desplegable. Apaga Auto. Necesita Trigger.",
   "positions.ladderNote": "TP ladder para {symbol}",
   "positions.ordersTitle": "Órdenes working / recientes (Schwab)",
   "positions.ordersEmpty":

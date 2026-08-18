@@ -412,6 +412,7 @@ export async function brokerTpLadder(payload: {
   average_price: number;
   confirm_live: boolean;
   duration?: string;
+  target_pct?: number;
 }): Promise<TpLadderResponse> {
   return request("/broker/orders/tp-ladder", {
     method: "POST",

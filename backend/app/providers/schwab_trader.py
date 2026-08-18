@@ -298,6 +298,18 @@ class SchwabTrader:
 TP_LADDER_PCTS = (10.0, 20.0, 35.0, 50.0, 100.0)
 
 
+def tp_limit_legs(
+    quantity: float, target_pct: float | None = None
+) -> list[tuple[float, int]]:
+    """LIMIT close legs: one rung at target_pct, or the scale-out ladder."""
+    qty = int(abs(quantity))
+    if qty <= 0:
+        return []
+    if target_pct is not None:
+        return [(float(target_pct), qty)]
+    return split_tp_ladder_quantities(quantity)
+
+
 def split_tp_ladder_quantities(quantity: float) -> list[tuple[float, int]]:
     """Scale-out qtys for 10/20/35/50/100%. Returns [(pct, qty), ...].
 

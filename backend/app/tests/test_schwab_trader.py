@@ -115,6 +115,15 @@ def test_normalize_equity_long():
     assert rows[0]["close_instruction"] == "SELL"
 
 
+def test_tp_limit_legs_uses_selected_pct():
+    from app.providers.schwab_trader import tp_limit_legs
+
+    assert tp_limit_legs(1, 10.0) == [(10.0, 1)]
+    assert tp_limit_legs(3, 20.0) == [(20.0, 3)]
+    assert tp_limit_legs(1, None) == [(35.0, 1)]
+    assert tp_limit_legs(0, 10.0) == []
+
+
 def test_split_tp_ladder_quantities():
     from app.providers.schwab_trader import split_tp_ladder_quantities
 

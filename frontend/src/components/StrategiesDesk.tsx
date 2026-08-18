@@ -36,6 +36,7 @@ import {
   WATCH_SYMBOLS,
 } from "@/lib/instrument-groups";
 import { setHoldTrader } from "@/lib/schwab-hold";
+import { isCashRthNy } from "@/lib/cash-session";
 import {
   FALLBACK_INSTRUMENTS,
   TIMEFRAMES,
@@ -308,18 +309,6 @@ function isPremarketOrClosedNy(now = new Date(), venue: Venue = "schwab"): boole
   return p.hh < 9 || (p.hh === 9 && p.mm < 30);
 }
 
-/** NYSE/Nasdaq regular hours — weekday 9:30–4:00 ET. */
-function isCashRthNy(now = new Date()): boolean {
-  const p = nyParts(now);
-  const today = `${p.y}-${String(p.m).padStart(2, "0")}-${String(p.day).padStart(2, "0")}`;
-  const [y, m, day] = today.split("-").map(Number);
-  const wd = new Date(Date.UTC(y, m - 1, day, 12)).getUTCDay();
-  if (wd === 0 || wd === 6) return false;
-  const minutes = p.hh * 60 + p.mm;
-  return minutes >= 9 * 60 + 30 && minutes < 16 * 60;
-}
-
-/** Auto 2.5m stays off in premarket / weekend so the first sync is a conscious click. */
 function isCashAutoOffNy(now = new Date()): boolean {
   return isPremarketOrClosedNy(now, "schwab");
 }
