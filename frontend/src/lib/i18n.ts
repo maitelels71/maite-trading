@@ -208,7 +208,7 @@ const en: Dict = {
   "strategies.deskAutoHint":
     "Every 2.5 minutes: sync desk candles + re-rank TOP 5. Turns off Focus auto (only one auto at a time).",
   "strategies.autoOffSession":
-    "Auto is off in premarket and RTH (9:30–4:00 ET) so Schwab stays free for Open. Sync manually if you need a refresh.",
+    "Auto is off before 9:30 ET (premarket / weekend). After the cash open, Auto 2.5m is available. Trigger opens still pauses it.",
   "strategies.scanSummary":
     "Session {session} · scanned {when} ET · {matches} matches · {checked} checked",
   "strategies.deskTopSummary":
@@ -706,7 +706,7 @@ const es: Dict = {
   "strategies.deskAutoHint":
     "Cada 2.5 min: sync de velas del desk + re-rank TOP 5. Apaga el auto de Focus (solo un auto a la vez).",
   "strategies.autoOffSession":
-    "Auto está apagado en premarket y RTH (9:30–4:00 ET) para dejar Schwab libre para Open. Usa Sync manual si necesitas actualizar.",
+    "Auto está apagado antes de las 9:30 ET (premarket / fin de semana). Tras la apertura cash, Auto 2.5m está disponible. Trigger opens sigue pausándolo.",
   "strategies.scanSummary":
     "Sesión {session} · escaneado {when} ET · {matches} matches · {checked} checked",
   "strategies.deskTopSummary":

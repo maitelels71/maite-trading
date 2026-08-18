@@ -309,9 +309,9 @@ function isCashRthNy(now = new Date()): boolean {
   return minutes >= 9 * 60 + 30 && minutes < 16 * 60;
 }
 
-/** Auto 2.5m stays off in premarket and RTH so Schwab is free for Open. */
+/** Auto 2.5m stays off in premarket / weekend so the first sync is a conscious click. */
 function isCashAutoOffNy(now = new Date()): boolean {
-  return isPremarketOrClosedNy(now, "schwab") || isCashRthNy(now);
+  return isPremarketOrClosedNy(now, "schwab");
 }
 
 /** NY date + time for scan stamps (avoids “is this yesterday?” confusion). */
