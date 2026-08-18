@@ -948,10 +948,12 @@ export function listedExpirationSnapshot(): Record<string, string[]> {
   return { ...listedExpStore };
 }
 
-/** First listed OCC date on/after the desk start (today before 10:00 ET, else tomorrow). */
+/** First listed OCC date on/after the desk start (today before 10:00 ET, else tomorrow).
+ *  Single names: prefer Friday weekly even if Schwab also lists a Wed/Mon. */
 export function pickListedExpiration(
   listed: string[],
   now = new Date(),
+  preferFriday = false,
 ): string | null {
   const clock = nyClock(now);
   const before10 = clock.hh < 10;
@@ -961,11 +963,18 @@ export function pickListedExpiration(
       : addDaysIso(clock.iso, 1);
   const dates = [
     ...new Set(listed.filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d))),
-  ].sort();
-  for (const d of dates) {
-    if (d >= start) return d;
+  ]
+    .filter((d) => d >= start)
+    .sort();
+  if (preferFriday) {
+    const fri = dates.find((d) => weekdayUtc(d) === 5);
+    if (fri) return fri;
   }
-  return null;
+  return dates[0] ?? null;
+}
+
+export function listedExpPrefersFriday(symbol: string): boolean {
+  return !hasWeekdayExpirations(symbol);
 }
 
 export function planAtExpiration(
@@ -1002,7 +1011,10 @@ export function suggestOptionExpDate(
       : addDaysIso(clock.iso, 1);
 
   const listed = listedExps ?? listedExpirationsFor(symbol);
-  const fromChain = listed?.length ? pickListedExpiration(listed, now) : null;
+  const preferFriday = listedExpPrefersFriday(symbol);
+  const fromChain = listed?.length
+    ? pickListedExpiration(listed, now, preferFriday)
+    : null;
   const expIso =
     fromChain ??
     (hasWeekdayExpirations(symbol)

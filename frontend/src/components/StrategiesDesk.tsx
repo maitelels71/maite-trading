@@ -27,6 +27,7 @@ import {
 } from "@/lib/playbook-localize";
 import {
   buildOptionsEntryPlan,
+  listedExpPrefersFriday,
   listedExpirationSnapshot,
   listedExpirationsFor,
   pickListedExpiration,
@@ -47,6 +48,7 @@ import {
   sortFuturesInstruments,
   providerLabel,
   type BrokerAccount,
+  type BrokerPosition,
   type Instrument,
   type ScanHit,
   type ScanResponse,
@@ -429,6 +431,7 @@ type CapitalCache = {
   at: number;
   accounts: BrokerAccount[];
   tradingEnabled: boolean;
+  positions?: BrokerPosition[];
 };
 
 function readCapitalCache(): CapitalCache | null {
@@ -445,13 +448,35 @@ function readCapitalCache(): CapitalCache | null {
   }
 }
 
-function writeCapitalCache(accounts: BrokerAccount[], tradingEnabled: boolean) {
+function writeCapitalCache(
+  accounts: BrokerAccount[],
+  tradingEnabled: boolean,
+  positions: BrokerPosition[] = [],
+) {
   if (typeof window === "undefined") return;
   try {
+    const slim = positions.map((p) => ({
+      account_hash: p.account_hash,
+      account_number: p.account_number,
+      symbol: p.symbol,
+      underlying: p.underlying,
+      description: p.description,
+      asset_type: p.asset_type,
+      quantity: p.quantity,
+      average_price: p.average_price,
+      market_value: p.market_value,
+      mark: p.mark,
+      pnl_pct: p.pnl_pct,
+      day_pnl: p.day_pnl,
+      day_pnl_pct: p.day_pnl_pct,
+      close_instruction: p.close_instruction,
+      multiplier: p.multiplier,
+    }));
     const payload: CapitalCache = {
       at: Date.now(),
       accounts,
       tradingEnabled,
+      positions: slim,
     };
     window.localStorage.setItem(CAPITAL_CACHE_KEY, JSON.stringify(payload));
   } catch {
@@ -559,6 +584,36 @@ function RiskFlag({
   );
 }
 
+function TosFlag({
+  status,
+  t,
+}: {
+  status: "open" | "working" | null;
+  t: (key: string) => string;
+}) {
+  if (status === "open") {
+    return (
+      <span
+        className="inline-flex rounded px-1 py-0.5 text-[10px] font-semibold text-[var(--ok)] bg-[var(--ok-soft)]"
+        title={t("strategies.tosOpenHint")}
+      >
+        {t("strategies.tosOpen")}
+      </span>
+    );
+  }
+  if (status === "working") {
+    return (
+      <span
+        className="inline-flex rounded px-1 py-0.5 text-[10px] font-semibold text-[var(--warn)] bg-[var(--warn-soft)]"
+        title={t("strategies.tosWorkingHint")}
+      >
+        {t("strategies.tosWorking")}
+      </span>
+    );
+  }
+  return <span className="text-[10px] text-[var(--muted)]">—</span>;
+}
+
 type StrategiesDeskProps = {
   venue: Venue;
 };
@@ -598,6 +653,10 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
   autoDeskRef.current = autoDesk;
   const [instruments, setInstruments] = useState<Instrument[]>([]);
   const [brokerAccounts, setBrokerAccounts] = useState<BrokerAccount[]>([]);
+  const [tosPositions, setTosPositions] = useState<BrokerPosition[]>([]);
+  const [workingUnderlyings, setWorkingUnderlyings] = useState<Record<string, true>>(
+    {},
+  );
   const [tradingEnabled, setTradingEnabled] = useState(false);
   const [capitalNote, setCapitalNote] = useState<string | null>(null);
   const [capitalError, setCapitalError] = useState<string | null>(null);
@@ -700,6 +759,7 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
         capitalFetchedAt.current = cached.at;
         setBrokerAccounts(cached.accounts);
         setTradingEnabled(cached.tradingEnabled);
+        setTosPositions(cached.positions ?? []);
         const best = [...cached.accounts].sort(
           (a, b) => (b.equity ?? 0) - (a.equity ?? 0),
         )[0];
@@ -726,10 +786,20 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
       const res = await fetchBrokerPositions({ includeOrders: false });
       capitalFetchedAt.current = Date.now();
       const accounts = res.accounts ?? [];
+      const positions = res.positions ?? [];
       const tradingOn = Boolean(res.trading_enabled);
       setBrokerAccounts(accounts);
       setTradingEnabled(tradingOn);
-      writeCapitalCache(accounts, tradingOn);
+      setTosPositions(positions);
+      writeCapitalCache(accounts, tradingOn, positions);
+      setWorkingUnderlyings((prev) => {
+        const next = { ...prev };
+        for (const p of positions) {
+          const u = (p.underlying || "").toUpperCase();
+          if (u && Number(p.quantity) > 0) delete next[u];
+        }
+        return next;
+      });
       const best = [...accounts].sort(
         (a, b) => (b.equity ?? 0) - (a.equity ?? 0),
       )[0];
@@ -934,7 +1004,11 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
         }
       }
       const picked = listed?.length
-        ? pickListedExpiration(listed, new Date())
+        ? pickListedExpiration(
+            listed,
+            new Date(),
+            listedExpPrefersFriday(plan.symbol),
+          )
         : plan.expIso;
       if (!picked) {
         setOpenNote(null);
@@ -944,14 +1018,32 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
       const expPlan = planAtExpiration(plan, picked);
       setOpenNote(t("strategies.openQuoteWait"));
       let fillable = 0;
+      let quotedPlan = expPlan;
       try {
         const q = await brokerOptionQuote({
-          underlying: expPlan.symbol,
-          option_type: expPlan.optionType,
-          strike: expPlan.strike,
-          exp_iso: expPlan.expIso,
+          underlying: quotedPlan.symbol,
+          option_type: quotedPlan.optionType,
+          strike: quotedPlan.strike,
+          exp_iso: quotedPlan.expIso,
         });
         fillable = Number(q.fillable) || 0;
+        if (!(fillable > 0) && listed?.length) {
+          const next = pickListedExpiration(
+            listed.filter((d) => d > quotedPlan.expIso),
+            new Date(),
+            listedExpPrefersFriday(plan.symbol),
+          );
+          if (next && next !== quotedPlan.expIso) {
+            quotedPlan = planAtExpiration(plan, next);
+            const q2 = await brokerOptionQuote({
+              underlying: quotedPlan.symbol,
+              option_type: quotedPlan.optionType,
+              strike: quotedPlan.strike,
+              exp_iso: quotedPlan.expIso,
+            });
+            fillable = Number(q2.fillable) || 0;
+          }
+        }
       } catch (err) {
         setOpenNote(null);
         const msg = err instanceof Error ? err.message : "";
@@ -968,7 +1060,7 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
         setOpenError(t("strategies.openQuoteFail"));
         return;
       }
-      const livePlan = planAtLiveDebit(expPlan, fillable);
+      const livePlan = planAtLiveDebit(quotedPlan, fillable);
       const sizing = sizeLongOption({
         entryPremium: livePlan.entryPremium,
         equity: primaryAccount.equity ?? 0,
@@ -999,7 +1091,10 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
               .replace("{cost}", moneyUsd(sizing.costPerContract * qty))
               .replace("{risk}", moneyUsd(sizing.riskBudget)),
       );
-      if (!ok) return;
+      if (!ok) {
+        setOpenNote(t("strategies.openCancelled"));
+        return;
+      }
       setOpeningKey(rowKey);
       setOpenError(null);
       setOpenNote(null);
@@ -1037,6 +1132,10 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
             .replace("{sym}", res.option_symbol || livePlan.symbol)
             .replace("{tp}", qty <= 1 ? "35%" : "10/20/35/50/100"),
         );
+        setWorkingUnderlyings((prev) => ({
+          ...prev,
+          [livePlan.symbol.toUpperCase()]: true,
+        }));
         if (res.option_symbol && primaryAccount.hashValue) {
           void placeAutoTpAfterFill({
             accountHash: primaryAccount.hashValue,
@@ -1457,6 +1556,20 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
     );
   };
 
+  const tosFlag = (symbol: string): "open" | "working" | null => {
+    const u = symbol.trim().toUpperCase();
+    if (
+      tosPositions.some(
+        (p) =>
+          (p.underlying || "").toUpperCase() === u && Number(p.quantity) > 0,
+      )
+    ) {
+      return "open";
+    }
+    if (workingUnderlyings[u]) return "working";
+    return null;
+  };
+
   function toggleStep(id: string) {
     setCheckedSteps((prev) => ({ ...prev, [id]: !prev[id] }));
   }
@@ -1668,6 +1781,9 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
                     {t("strategies.colSymbol")}
                   </th>
                   <th className="px-2 py-1.5 font-medium">
+                    {t("strategies.colTos")}
+                  </th>
+                  <th className="px-2 py-1.5 font-medium">
                     {t("strategies.colConfluence")}
                   </th>
                   <th className="px-2 py-1.5 font-medium">
@@ -1750,6 +1866,14 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
                         </td>
                         <td className="px-2 py-1.5 font-semibold">
                           {isFirst ? hit.symbol : ""}
+                        </td>
+                        <td className="px-2 py-1.5">
+                          {isFirst ? (
+                            <TosFlag
+                              status={tosFlag(hit.symbol)}
+                              t={t}
+                            />
+                          ) : null}
                         </td>
                         <td className="px-2 py-1.5">
                           {isFirst ? (
