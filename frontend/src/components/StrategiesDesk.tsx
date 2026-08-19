@@ -64,8 +64,9 @@ const OPEN_QUIET_MS = 10_000;
 const RATE_LIMIT_QUIET_MS = 60_000;
 const OPEN_RETRY_WAIT_SEC = 60;
 const DESK_TOP_N = 5;
-const DESK_SYNC_TFS = ["1h", "1d"] as const;
+const DESK_SYNC_TFS = ["1h", "1d", "15m"] as const;
 const DESK_LOOKBACK_DAYS = 25;
+const DESK_15M_LOOKBACK_DAYS = 14;
 /** Futures live desk: HTF + LTF so ML01/ML02 evaluate structure whenever Globex is open. */
 const DESK_SYNC_TFS_FUTURES = ["1h", "15m", "5m", "1m"] as const;
 const DESK_LOOKBACK_FUTURES = 14;
@@ -1105,7 +1106,11 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
       for (const tf of opts.tfs) {
         if (opts.gen !== opts.genRef.current) return null;
         const days =
-          tf === "1m" ? Math.min(opts.lookback, DESK_1M_LOOKBACK_DAYS) : opts.lookback;
+          tf === "1m"
+            ? Math.min(opts.lookback, DESK_1M_LOOKBACK_DAYS)
+            : tf === "15m"
+              ? Math.min(opts.lookback, DESK_15M_LOOKBACK_DAYS)
+              : opts.lookback;
         const { start, end } = syncRangeIso(days);
         try {
           const res = await syncMarketData({
@@ -1263,6 +1268,7 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
       );
 
       try {
+        const allHits: ScanHit[] = [];
         const allMatches: ScanHit[] = [];
         const symbols = deskUniverse
           .filter((i) => !i.data_provider || i.data_provider === venue)
@@ -1277,13 +1283,15 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
               session_date: day,
               data_provider: venue,
               symbols,
-              matches_only: true,
+              // Futures: keep watching/no_data so an empty TOP 5 can say why.
+              matches_only: venue !== "tradeadvocate",
             },
             venue === "tradeadvocate"
               ? DESK_SCAN_SYMBOL_BATCH_FUTURES
               : DESK_SCAN_SYMBOL_BATCH,
           );
           for (const hit of res.hits) {
+            allHits.push(hit);
             if (hit.matched) allMatches.push(hit);
           }
         }
@@ -1294,10 +1302,23 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
         const ranked = rankByConfluence(allMatches, DESK_TOP_N);
         setDeskGroups(ranked);
         const strategyHits = ranked.reduce((n, g) => n + g.confluence, 0);
+        const noData = allHits.filter((h) => h.status === "no_data").length;
+        const checked = allHits.length || allMatches.length;
         if (globexClosed) {
           setDeskNote(t("strategies.deskTopEmptyGlobexClosed"));
+        } else if (ranked.length === 0 && noData > 0) {
+          setDeskNote(
+            t("strategies.deskTopEmptyNoData")
+              .replace("{nodata}", String(noData))
+              .replace("{checked}", String(checked))
+              .replace("{session}", day),
+          );
         } else if (overnight && ranked.length === 0) {
-          setDeskNote(t("strategies.deskTopEmptyOvernight"));
+          setDeskNote(
+            t("strategies.deskTopEmptyOvernight")
+              .replace("{checked}", String(checked))
+              .replace("{when}", formatNyDateTime(now, locale)),
+          );
         } else {
           setDeskNote(
             t(
@@ -1886,7 +1907,7 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
               </tbody>
             </table>
           </div>
-        ) : deskNote && !deskBusy ? (
+        ) : !deskBusy && !deskNote ? (
           <p className="mt-2 text-[11px] text-[var(--muted)]">
             {t(
               premarket

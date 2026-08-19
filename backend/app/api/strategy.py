@@ -660,7 +660,10 @@ def _scan_one(
             detail=str(exc),
         )
 
-    status, matched, detail, last_signal, open_trade = _classify_scan_result(result)
+    status, matched, detail, last_signal, open_trade = _classify_scan_result(
+        result,
+        session_day=scan_day,
+    )
     return StrategyScanHit(
         symbol=symbol,
         name=name,
@@ -771,6 +774,8 @@ def _session_candle_count(
 
 def _classify_scan_result(
     result: StrategyResult,
+    *,
+    session_day: date | None = None,
 ) -> tuple[str, bool, str, SignalOut | None, TradeOut | None]:
     """Map strategy output → scanner status. Extensible as new strategies appear."""
     open_trades = [t for t in result.trades if t.exit_time is None]
@@ -802,14 +807,15 @@ def _classify_scan_result(
             open_trade,
         )
 
-    # Closed trades from a prior NY calendar day are historical — not live entries.
-    # (E01 flattens at last RTH bar; premarket scan of yesterday must not look "live".)
-    today_ny = datetime.now(_NY).date()
+    # Trades closed before the scanned session are historical — not desk matches.
+    # Same-session exits (including premarket scan of yesterday) stay matches so
+    # TOP 5 can show them with the prior-session banner.
     closed = [t for t in result.trades if t.exit_time is not None]
     if closed:
         last_exit = max(t.exit_time for t in closed if t.exit_time is not None)
         exit_day = _as_ny_date(last_exit)
-        if exit_day is not None and exit_day < today_ny:
+        cutoff = session_day or datetime.now(_NY).date()
+        if exit_day is not None and exit_day < cutoff:
             reason = (
                 result.signals[-1].reason
                 if result.signals

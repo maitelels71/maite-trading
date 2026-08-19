@@ -165,10 +165,9 @@ def test_strategy_scan(client: TestClient) -> None:
     hit = body["hits"][0]
     assert hit["symbol"] == "SPY"
     assert hit["status"] != "no_data"
-    # Historical session: ORB closes same day → flat_after_trades (not a live match).
-    assert hit["status"] == "flat_after_trades"
-    assert hit["matched"] is False
-    assert body["match_count"] == 0
+    # Same-session close is a desk match (premarket TOP 5 can show yesterday).
+    assert hit["matched"] is True
+    assert body["match_count"] == 1
 
     empty = client.post(
         "/strategy/scan",

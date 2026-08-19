@@ -165,7 +165,7 @@ const en: Dict = {
   "strategies.deskTopScanning": "Desk scan…",
   "strategies.deskTopEmpty": "No TOP 5 matches. Click the green Sync & TOP 5 to refresh.",
   "strategies.deskTopEmptyPremarket":
-    "Premarket: click the green Sync & TOP 5 (Auto stays off). Until 9:30 ET the session is still yesterday — 0 hits is possible.",
+    "Premarket: Auto is off until 9:30 ET. Click Sync & TOP 5 — the desk uses yesterday’s cash session until the open (amber = prior day, not today’s RTH).",
   "strategies.scopeTop5": "Desk TOP 5",
   "strategies.scopePlaybook": "This playbook",
   "strategies.scopeHintTop5":
@@ -227,9 +227,11 @@ const en: Dict = {
   "strategies.deskTopSummaryOvernight":
     "TOP {n} Globex/Asia (ML01/ML02 structure) · {hits} hits · session {session} · {when} ET",
   "strategies.deskTopEmptyOvernight":
-    "No live Globex setups. ML03 is NY 9:30–16:00 only. ML01/ML02 need 1H bias + LTF ChoCh/BOS on current structure — Sync & TOP 5 again.",
+    "Globex is open · 0 live matches ({checked} checks at {when} ET). ML03 waits for NY 9:30–16:00. ML01/ML02 need 1H bias + LTF ChoCh/BOS on the current tape — empty is valid when structure is ranging. Use Focus · Sync & Scan to see watching vs no_data per symbol.",
   "strategies.deskTopEmptyGlobexClosed":
     "CME Globex is closed (Fri 17:00 ET → Sun 18:00 ET, or the 17:00–18:00 halt). No live futures matches until it reopens.",
+  "strategies.deskTopEmptyNoData":
+    "Scan finished but {nodata}/{checked} rows had no candles for session {session}. Sync & TOP 5 again (Yahoo 1h/15m/5m/1m).",
   "strategies.tfFixed": "fixed",
   "strategies.tfLockedHint":
     "This playbook locks the scan timeframe (backend uses the same).",
@@ -718,7 +720,7 @@ const es: Dict = {
   "strategies.deskTopScanning": "Desk scan…",
   "strategies.deskTopEmpty": "Sin TOP 5. Pulsa el Sync & TOP 5 verde para refrescar.",
   "strategies.deskTopEmptyPremarket":
-    "Premarket: pulsa el Sync & TOP 5 verde (Auto sigue apagado). Hasta las 9:30 ET la sesión es la de ayer — 0 hits es posible.",
+    "Premarket: Auto está apagado hasta las 9:30 ET. Pulsa Sync & TOP 5 — el desk usa la sesión cash de ayer hasta la apertura (ámbar = día previo, no el RTH de hoy).",
   "strategies.scopeTop5": "Desk TOP 5",
   "strategies.scopePlaybook": "Este playbook",
   "strategies.scopeHintTop5":
@@ -780,9 +782,11 @@ const es: Dict = {
   "strategies.deskTopSummaryOvernight":
     "TOP {n} Globex/Asia (estructura ML01/ML02) · {hits} hits · sesión {session} · {when} ET",
   "strategies.deskTopEmptyOvernight":
-    "Sin setups Globex en vivo. ML03 es solo NY 9:30–16:00. ML01/ML02 piden sesgo 1H + ChoCh/BOS en LTF sobre la estructura actual — Sync & TOP 5 otra vez.",
+    "Globex abierto · 0 matches en vivo ({checked} checks a las {when} ET). ML03 espera NY 9:30–16:00. ML01/ML02 piden sesgo 1H + ChoCh/BOS LTF en la cinta actual — vacío es válido si está en rango. Focus · Sync & Scan muestra watching vs no_data por símbolo.",
   "strategies.deskTopEmptyGlobexClosed":
     "CME Globex está cerrado (vie 17:00 ET → dom 18:00 ET, o el halt 17:00–18:00). No hay matches de futuros hasta que reabra.",
+  "strategies.deskTopEmptyNoData":
+    "El scan terminó pero {nodata}/{checked} filas no tenían velas para la sesión {session}. Sync & TOP 5 otra vez (Yahoo 1h/15m/5m/1m).",
   "strategies.tfFixed": "fijo",
   "strategies.tfLockedHint":
     "Este playbook fija el timeframe del scan (el backend usa el mismo).",
