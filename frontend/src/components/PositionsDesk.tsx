@@ -14,11 +14,18 @@ import {
   readHoldTrader,
   subscribeHoldTrader,
 } from "@/lib/schwab-hold";
+import {
+  extendSchwabQuiet,
+  readSchwabQuietUntil,
+  subscribeSchwabQuiet,
+} from "@/lib/schwab-quiet";
 import { isCashRthNy } from "@/lib/cash-session";
 import type { BrokerOrder, BrokerPosition, TpLadderResponse, TpWatch } from "@/lib/types";
 
 const WATCH_KEY = "maite.broker.tpWatches";
 const POLL_MS = 20_000;
+const CLOSE_RETRY_WAIT_SEC = 60;
+const CLOSE_GIVE_UP_MS = 180_000;
 const LADDER_RETRY_WAIT_SEC = 150;
 const DEFAULT_TP_PCT = 35;
 
@@ -31,7 +38,7 @@ function retryAfterSec(err: unknown, fallback: number): number {
   const m = /Retry-After (\d+)/i.exec(msg);
   const n = m ? Number(m[1]) : fallback;
   if (!Number.isFinite(n) || n < 15) return fallback;
-  return Math.min(90, Math.max(30, Math.round(n)));
+  return Math.min(180, Math.max(fallback, Math.round(n)));
 }
 
 function ladderRateLimited(res: TpLadderResponse): boolean {
@@ -109,12 +116,39 @@ export function PositionsDesk() {
   const [armedConfirm, setArmedConfirm] = useState(false);
   const [holdTrader, setHoldTrader] = useState(() => readHoldTrader());
   const [cashRth, setCashRth] = useState(() => isCashRthNy());
+  const [quietUntil, setQuietUntil] = useState(() =>
+    typeof window === "undefined" ? 0 : readSchwabQuietUntil(),
+  );
+  const [nowTick, setNowTick] = useState(() => Date.now());
   const inFlight = useRef<Set<string>>(new Set());
   const retryAbort = useRef(false);
   const retryGen = useRef(0);
-  const quietUntilMs = useRef(0);
+
+  const startSchwabQuiet = useCallback((ms: number) => {
+    const until = extendSchwabQuiet(ms);
+    setQuietUntil(until);
+    setNowTick(Date.now());
+  }, []);
 
   useEffect(() => subscribeHoldTrader(() => setHoldTrader(readHoldTrader())), []);
+
+  useEffect(() => {
+    const sync = () => {
+      setQuietUntil(readSchwabQuietUntil());
+      setNowTick(Date.now());
+    };
+    sync();
+    return subscribeSchwabQuiet(sync);
+  }, []);
+
+  useEffect(() => {
+    if (quietUntil <= Date.now()) return;
+    const id = window.setInterval(() => setNowTick(Date.now()), 500);
+    return () => window.clearInterval(id);
+  }, [quietUntil]);
+
+  const quietRemainSec = Math.max(0, Math.ceil((quietUntil - nowTick) / 1000));
+  const schwabCooling = quietRemainSec > 0;
 
   useEffect(() => {
     const tick = () => setCashRth(isCashRthNy());
@@ -138,6 +172,15 @@ export function PositionsDesk() {
     if (readHoldTrader()) {
       setHoldTrader(true);
       setNote(t("positions.holdOpen"));
+      return;
+    }
+    if (readSchwabQuietUntil() > Date.now()) {
+      setError(
+        t("positions.closeWaitQuiet").replace(
+          "{n}",
+          String(Math.max(1, Math.ceil((readSchwabQuietUntil() - Date.now()) / 1000))),
+        ),
+      );
       return;
     }
     startTransition(async () => {
@@ -215,7 +258,7 @@ export function PositionsDesk() {
 
   const tickWatches = useCallback(async () => {
     if (readHoldTrader() || pending || ladderBusy) return;
-    if (Date.now() < quietUntilMs.current) return;
+    if (readSchwabQuietUntil() > Date.now()) return;
     const active = watches.filter((w) => w.autoClose);
     if (active.length === 0) return;
 
@@ -261,8 +304,8 @@ export function PositionsDesk() {
       } catch (err) {
         const raw = err instanceof Error ? err.message : "TP check failed";
         if (isRateLimitText(raw)) {
-          const wait = retryAfterSec(err, 60);
-          quietUntilMs.current = Date.now() + wait * 1000;
+          const wait = retryAfterSec(err, CLOSE_RETRY_WAIT_SEC);
+          startSchwabQuiet(wait * 1000);
           setError(raw);
         }
         setWatches((prev) =>
@@ -279,7 +322,7 @@ export function PositionsDesk() {
         inFlight.current.delete(w.id);
       }
     }
-  }, [watches, armedConfirm, tradingEnabled, pending, ladderBusy, t, refresh]);
+  }, [watches, armedConfirm, tradingEnabled, pending, ladderBusy, t, refresh, startSchwabQuiet]);
 
   useEffect(() => {
     const id = window.setInterval(() => {
@@ -298,9 +341,17 @@ export function PositionsDesk() {
       setError(t("positions.needRth"));
       return;
     }
+    if (schwabCooling) {
+      setError(
+        t("positions.closeWaitQuiet").replace("{n}", String(quietRemainSec)),
+      );
+      return;
+    }
     if (!window.confirm(t("positions.confirmClose").replace("{symbol}", pos.symbol))) {
       return;
     }
+
+    upsertWatch(pos, { autoClose: false });
 
     retryAbort.current = false;
     const gen = ++retryGen.current;
@@ -336,11 +387,20 @@ export function PositionsDesk() {
             if (stale()) return;
             const raw = err instanceof Error ? err.message : "Close failed";
             if (!isRateLimitText(raw) || attempt === 1) {
-              setError(raw);
+              if (isRateLimitText(raw)) {
+                startSchwabQuiet(CLOSE_GIVE_UP_MS);
+                setError(
+                  t("positions.closeNotSent429") +
+                    " " +
+                    t("positions.closeNotSent429Next"),
+                );
+              } else {
+                setError(raw);
+              }
               return;
             }
-            const wait = retryAfterSec(err, 60);
-            quietUntilMs.current = Date.now() + wait * 1000;
+            const wait = retryAfterSec(err, CLOSE_RETRY_WAIT_SEC);
+            startSchwabQuiet(wait * 1000);
             for (let n = wait; n > 0; n -= 1) {
               if (stale()) return;
               setRetryLeft(n);
@@ -368,6 +428,12 @@ export function PositionsDesk() {
     if (!isCashRthNy()) {
       setCashRth(false);
       setError(t("positions.needRth"));
+      return;
+    }
+    if (schwabCooling) {
+      setError(
+        t("positions.closeWaitQuiet").replace("{n}", String(quietRemainSec)),
+      );
       return;
     }
     if (positions.length === 0) return;
@@ -402,8 +468,9 @@ export function PositionsDesk() {
           }
         } catch (err) {
           lastErr = err instanceof Error ? err.message : "Close failed";
-          if (/rate limit/i.test(lastErr)) {
+          if (isRateLimitText(lastErr)) {
             rateLimited = true;
+            startSchwabQuiet(CLOSE_GIVE_UP_MS);
             break;
           }
         }
@@ -418,9 +485,9 @@ export function PositionsDesk() {
       }
       if (rateLimited) {
         setError(
-          t("positions.closeAllRateLimit")
-            .replace("{ok}", String(okSyms.length))
-            .replace("{n}", String(snapshot.length)),
+          t("positions.closeNotSent429") +
+            " " +
+            t("positions.closeNotSent429Next"),
         );
       } else if (okSyms.length < snapshot.length) {
         setError(lastErr || "Close all failed");
@@ -437,6 +504,12 @@ export function PositionsDesk() {
     if (!isCashRthNy()) {
       setCashRth(false);
       setError(t("positions.needRth"));
+      return;
+    }
+    if (schwabCooling) {
+      setError(
+        t("positions.closeWaitQuiet").replace("{n}", String(quietRemainSec)),
+      );
       return;
     }
     if (pos.average_price <= 0) {
@@ -511,6 +584,15 @@ export function PositionsDesk() {
             const res = await brokerTpLadder(payload);
             if (stale()) return;
             if (res.ok || !ladderRateLimited(res) || attempt === 1) {
+              if (!res.ok && ladderRateLimited(res) && attempt === 1) {
+                startSchwabQuiet(CLOSE_GIVE_UP_MS);
+                setError(
+                  t("positions.closeNotSent429") +
+                    " " +
+                    t("positions.closeNotSent429Next"),
+                );
+                return;
+              }
               applyResult(res);
               return;
             }
@@ -518,12 +600,20 @@ export function PositionsDesk() {
             if (stale()) return;
             const raw = err instanceof Error ? err.message : "TP ladder failed";
             if (!isRateLimitText(raw) || attempt === 1) {
-              setError(
-                isRateLimitText(raw) ? t("positions.ladderRateLimit") : raw,
-              );
+              if (isRateLimitText(raw)) {
+                startSchwabQuiet(CLOSE_GIVE_UP_MS);
+                setError(
+                  t("positions.closeNotSent429") +
+                    " " +
+                    t("positions.closeNotSent429Next"),
+                );
+              } else {
+                setError(raw);
+              }
               return;
             }
           }
+          startSchwabQuiet(LADDER_RETRY_WAIT_SEC * 1000);
           for (let n = LADDER_RETRY_WAIT_SEC; n > 0; n -= 1) {
             if (stale()) return;
             setRetryLeft(n);
@@ -547,6 +637,7 @@ export function PositionsDesk() {
     retryGen.current += 1;
     setRetryLeft(null);
     setLadderBusy(false);
+    startSchwabQuiet(90_000);
     setError(t("positions.ladderCancelled"));
   }
 
@@ -562,9 +653,24 @@ export function PositionsDesk() {
             {positions.length > 0 ? (
               <button
                 type="button"
-                disabled={pending || ladderBusy || !tradingEnabled || !cashRth}
+                disabled={
+                  pending ||
+                  ladderBusy ||
+                  !tradingEnabled ||
+                  !cashRth ||
+                  schwabCooling
+                }
                 onClick={closeAll}
-                title={!cashRth ? t("positions.needRth") : undefined}
+                title={
+                  !cashRth
+                    ? t("positions.needRth")
+                    : schwabCooling
+                      ? t("positions.closeWaitQuiet").replace(
+                          "{n}",
+                          String(quietRemainSec),
+                        )
+                      : undefined
+                }
                 className="rounded-md border border-[var(--danger)]/40 bg-[var(--danger-soft)] px-3 py-1.5 text-xs font-medium text-[var(--danger)] hover:bg-[var(--hover)] disabled:opacity-50"
               >
                 {t("positions.closeAll")}
@@ -572,8 +678,17 @@ export function PositionsDesk() {
             ) : null}
             <button
               type="button"
-              disabled={pending || holdTrader}
-              title={holdTrader ? t("positions.holdOpen") : undefined}
+              disabled={pending || holdTrader || schwabCooling}
+              title={
+                holdTrader
+                  ? t("positions.holdOpen")
+                  : schwabCooling
+                    ? t("positions.closeWaitQuiet").replace(
+                        "{n}",
+                        String(quietRemainSec),
+                      )
+                    : undefined
+              }
               onClick={() => refresh()}
               className="shrink-0 rounded-md bg-[var(--accent)] px-3 py-1.5 text-xs font-medium text-[var(--on-accent)] hover:bg-[var(--accent-hover)] disabled:opacity-50"
             >
@@ -598,7 +713,9 @@ export function PositionsDesk() {
           <p className="text-[11px] text-[var(--muted)]">{t("positions.emptyHint")}</p>
         )}
         {holdTrader ? (
-          <p className="mt-2 text-[11px] text-[var(--warn)]">{t("positions.holdOpen")}</p>
+          <p className="mt-2 text-[11px] text-[var(--warn)]">
+            {t("positions.holdOpen")} {t("positions.holdOpenClose")}
+          </p>
         ) : null}
         {!cashRth ? (
           <div className="mt-2 rounded-md border border-amber-200/60 bg-[var(--warn-soft)] px-3 py-1.5 text-xs leading-snug text-[var(--warn)]">
@@ -718,7 +835,7 @@ export function PositionsDesk() {
                           type="checkbox"
                           className="accent-[var(--accent)]"
                           checked={Boolean(w?.autoClose)}
-                          disabled={!tradingEnabled}
+                          disabled={!tradingEnabled || schwabCooling}
                           onChange={(e) =>
                             upsertWatch(pos, {
                               autoClose: e.target.checked,
@@ -731,10 +848,25 @@ export function PositionsDesk() {
                         <div className="flex flex-col gap-1">
                           <button
                             type="button"
-                            disabled={pending || ladderBusy || !tradingEnabled || !cashRth}
+                            disabled={
+                              pending ||
+                              ladderBusy ||
+                              !tradingEnabled ||
+                              !cashRth ||
+                              schwabCooling
+                            }
                             onClick={() => placeTpLadder(pos)}
                             className="rounded border border-[var(--ok)]/40 bg-[var(--ok-soft)] px-2 py-1 text-[10px] font-medium text-[var(--ok)] hover:bg-[var(--hover)] disabled:opacity-40"
-                            title={!cashRth ? t("positions.needRth") : t("positions.ladderHint")}
+                            title={
+                              !cashRth
+                                ? t("positions.needRth")
+                                : schwabCooling
+                                  ? t("positions.closeWaitQuiet").replace(
+                                      "{n}",
+                                      String(quietRemainSec),
+                                    )
+                                  : t("positions.ladderHint")
+                            }
                           >
                             {t("positions.tpLadder").replace(
                               "{pct}",
@@ -743,10 +875,25 @@ export function PositionsDesk() {
                           </button>
                           <button
                             type="button"
-                            disabled={pending || ladderBusy || !tradingEnabled || !cashRth}
+                            disabled={
+                              pending ||
+                              ladderBusy ||
+                              !tradingEnabled ||
+                              !cashRth ||
+                              schwabCooling
+                            }
                             onClick={() => closeNow(pos)}
                             className="rounded border border-[var(--border)] px-2 py-1 text-[10px] font-medium hover:bg-[var(--hover)] disabled:opacity-40"
-                            title={!cashRth ? t("positions.needRth") : undefined}
+                            title={
+                              !cashRth
+                                ? t("positions.needRth")
+                                : schwabCooling
+                                  ? t("positions.closeWaitQuiet").replace(
+                                      "{n}",
+                                      String(quietRemainSec),
+                                    )
+                                  : undefined
+                            }
                           >
                             {t("positions.closeNow")}
                           </button>

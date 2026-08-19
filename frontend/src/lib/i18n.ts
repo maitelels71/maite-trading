@@ -280,7 +280,7 @@ const en: Dict = {
     "Choose one strategy to deep-scan — or check a TOP 5 row above.",
   "session.deskTop5": "Desk TOP 5",
   "session.deskTop5Hint":
-    "Ranks core names (not watch) by confluence. Hard-refresh Schwab once per session; Auto 2.5m reuses cached candles.",
+    "Ranks core names by confluence. After TOP 5, wait the Open countdown (Auto off), then Trigger and Open once. Do not Sync again before the order.",
   "session.deskTop5HintFutures":
     "Ranks MNQ/MES/FX/GC by confluence whenever Globex is open. Syncs HTF+LTF through now (not a truncated last-hours window). Auto 2.5m re-syncs the same TFs.",
   "session.liveScan": "Sync & Scan",
@@ -365,7 +365,7 @@ const en: Dict = {
   "strategies.capitalNeed": "Load capital to size opens (10% flag · 50% max).",
   "strategies.armOpens": "Trigger opens",
   "strategies.armOpensBody":
-    "1) Sync & TOP 5 with Trigger off. 2) Check Trigger (pauses Auto). 3) Open sends only BUY_TO_OPEN — no auto TP. 4) After FILL, go to Positions → Trigger closes → TP / close.",
+    "1) Auto off. Sync & TOP 5. 2) Wait the red countdown — do not Open yet. 3) Check Trigger. 4) Open once (BUY_TO_OPEN only). 5) After FILL: Positions → Trigger closes. Do not Sync/Refresh until the order is in TOS.",
   "strategies.openSchwab": "Open {n}× @ {px}",
   "strategies.openTooRich":
     "1ct {cost} = {pct}% of equity. Consider ≤10% ({risk}). Open ≤50% needs {need50} equity.",
@@ -390,7 +390,7 @@ const en: Dict = {
   "strategies.openNotSent429":
     "Order was NOT sent — Schwab stayed busy after the wait.",
   "strategies.openNotSent429Next":
-    "Wait until the countdown hits 0, then Open and OK once. Check TOS → Orders in case a LIMIT is already working.",
+    "Leave Trigger on. Do not Sync, Refresh, or Open for 3 minutes. Then Open once — or place BUY_TO_OPEN in TOS. Check TOS → Orders in case a LIMIT is already working.",
   "strategies.openTimeoutMaybeSent":
     "Open timed out. The LIMIT may already be at Schwab — check TOS → Orders before clicking Open again.",
   "strategies.openReadyRetry":
@@ -430,6 +430,14 @@ const en: Dict = {
   "positions.refreshing": "Loading…",
   "positions.holdOpen":
     "Trigger opens is on in Session — Positions refresh/TP poll is paused so Open can reach Schwab.",
+  "positions.holdOpenClose":
+    "Close now can still send. If you already saw 429, do not click Close — SELL_TO_CLOSE in TOS.",
+  "positions.closeWaitQuiet":
+    "Schwab cooling. Close / Park LIMIT / Refresh in {n}s. Or SELL_TO_CLOSE in TOS now.",
+  "positions.closeNotSent429":
+    "Close was NOT sent — Schwab stayed busy after the wait.",
+  "positions.closeNotSent429Next":
+    "Leave Auto off. Do not Close, Park, or Refresh for 3 minutes. Exit this contract in TOS (SELL_TO_CLOSE). Check TOS → Orders.",
   "positions.loaded":
     "Loaded {n} positions · {accounts} account(s) · {orders} orders",
   "positions.accountsLabel": "Account #",
@@ -466,7 +474,7 @@ const en: Dict = {
     "Schwab busy (429) — waiting {n}s, then one automatic retry. Do not click Close or Park LIMIT again.",
   "positions.ladderCancel": "Cancel wait",
   "positions.ladderCancelled":
-    "Wait cancelled — LIMIT was not retried. You can Park LIMIT again after a minute.",
+    "Wait cancelled — order was not retried. Wait the cool-down before Close / Park again, or use TOS.",
   "positions.ladderRateLimit":
     "Schwab still busy — LIMIT not in TOS. Wait a minute, then Park LIMIT once.",
   "positions.ladderHint":
@@ -837,7 +845,7 @@ const es: Dict = {
     "Elige una estrategia para deep-scan — o marca una fila del TOP 5 de arriba.",
   "session.deskTop5": "Desk TOP 5",
   "session.deskTop5Hint":
-    "Rankea nombres core (no watch) por confluencia. Hard-refresh Schwab una vez por sesión; Auto 2.5m reusa velas en cache.",
+    "Rankea nombres core por confluencia. Tras TOP 5, espera la cuenta de Open (Auto off), luego Trigger y Open una vez. No hagas Sync otra vez antes de la orden.",
   "session.deskTop5HintFutures":
     "Rankea MNQ/MES/FX/GC por confluencia cuando Globex está abierto. Sync HTF+LTF hasta ahora (no una ventana recortada de las últimas horas). Auto 2.5m re-sync los mismos TFs.",
   "session.liveScan": "Sync & Scan",
@@ -922,7 +930,7 @@ const es: Dict = {
   "strategies.capitalNeed": "Carga capital para dimensionar (flag 10% · máx 50%).",
   "strategies.armOpens": "Trigger opens",
   "strategies.armOpensBody":
-    "1) Sync & TOP 5 con Trigger apagado. 2) Activa Trigger (pausa Auto). 3) Open envía solo BUY_TO_OPEN — sin TP auto. 4) Tras FILL: Positions → Trigger cierres → TP / close.",
+    "1) Auto off. Sync & TOP 5. 2) Espera la cuenta roja — aún no Open. 3) Activa Trigger. 4) Open una vez (solo BUY_TO_OPEN). 5) Tras FILL: Positions → Trigger cierres. No Sync/Refresh hasta que la orden esté en TOS.",
   "strategies.openSchwab": "Abrir {n}× @ {px}",
   "strategies.openTooRich":
     "1ct {cost} = {pct}% del equity. Considerar ≤10% ({risk}). Open ≤50% pide {need50} de equity.",
@@ -947,7 +955,7 @@ const es: Dict = {
   "strategies.openNotSent429":
     "La orden NO se envió — Schwab siguió ocupado tras la espera.",
   "strategies.openNotSent429Next":
-    "Espera a que la cuenta llegue a 0, pulsa Open y OK una vez. Mira TOS → Orders por si ya hay un LIMIT working.",
+    "Deja Trigger encendido. No hagas Sync, Refresh ni Open durante 3 minutos. Luego Open una vez — o BUY_TO_OPEN en TOS. Mira TOS → Orders por si ya hay un LIMIT working.",
   "strategies.openTimeoutMaybeSent":
     "Open se quedó sin tiempo. El LIMIT puede estar ya en Schwab — mira TOS → Orders antes de pulsar Open otra vez.",
   "strategies.openReadyRetry":
@@ -987,6 +995,14 @@ const es: Dict = {
   "positions.refreshing": "Cargando…",
   "positions.holdOpen":
     "Trigger opens está activo en Session — Positions no refresca ni hace poll de TP para dejar Schwab libre para Open.",
+  "positions.holdOpenClose":
+    "Close now sí puede enviar. Si ya viste 429, no pulses Close — SELL_TO_CLOSE en TOS.",
+  "positions.closeWaitQuiet":
+    "Schwab se enfría. Close / Dejar LIMIT / Refresh en {n}s. O SELL_TO_CLOSE en TOS ahora.",
+  "positions.closeNotSent429":
+    "El close NO se envió — Schwab siguió ocupado tras la espera.",
+  "positions.closeNotSent429Next":
+    "Deja Auto apagado. No hagas Close, Park ni Refresh durante 3 minutos. Cierra este contrato en TOS (SELL_TO_CLOSE). Mira TOS → Orders.",
   "positions.loaded": "{n} posiciones · {accounts} cuenta(s) · {orders} órdenes",
   "positions.accountsLabel": "Cuenta #",
   "positions.colAccount": "Cuenta",
@@ -1022,7 +1038,7 @@ const es: Dict = {
     "Schwab ocupado (429) — esperando {n}s y un reintento automático. No pulses Close ni Dejar LIMIT otra vez.",
   "positions.ladderCancel": "Cancelar espera",
   "positions.ladderCancelled":
-    "Espera cancelada — no se reintentó la LIMIT. Puedes Dejar LIMIT otra vez en un minuto.",
+    "Espera cancelada — no se reintentó. Espera el enfriamiento antes de Close / Dejar LIMIT, o usa TOS.",
   "positions.ladderRateLimit":
     "Schwab sigue ocupado — la LIMIT no está en TOS. Espera un minuto y pulsa Dejar LIMIT una vez.",
   "positions.ladderHint":

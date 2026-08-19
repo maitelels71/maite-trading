@@ -1,6 +1,7 @@
 """Market data sync + candle query endpoints."""
 
 from datetime import datetime
+import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
@@ -14,7 +15,20 @@ from app.schemas.common import CandleOut
 from app.schemas.strategy_api import MarketDataSyncRequest, MarketDataSyncResponse
 from app.services.market_data_service import MarketDataService, validate_candles
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/market-data", tags=["market-data"])
+
+
+def should_fetch_provider_candles(
+    *,
+    force_refresh: bool,
+    data_provider: str,
+    cached_count: int,
+) -> bool:
+    """Schwab is rate-limited; reuse cache unless the desk asked for a hard refresh."""
+    if force_refresh or cached_count <= 0:
+        return True
+    return data_provider != DataProviderName.SCHWAB.value
 
 
 class CandleListResponse(BaseModel):
@@ -33,20 +47,39 @@ def sync_market_data(
             store = get_dynamo_store()
             store.seed_defaults()
             instrument = store.get_instrument(body.ticker, market_type=body.market_type)
-            provider = get_provider_factory().get(
-                DataProviderName(instrument["data_provider"])
-            )
-            candles = provider.get_historical_candles(
-                body.ticker, body.timeframe, body.start, body.end
-            )
-            validate_candles(candles)
-            store.save_candles(
+            cached = store.get_candles_by_range(
                 instrument["symbol"],
                 instrument["market_type"],
                 body.timeframe,
-                candles,
+                body.start,
+                body.end,
             )
-            count = len(candles)
+            provider_name = str(instrument.get("data_provider") or "")
+            if should_fetch_provider_candles(
+                force_refresh=body.force_refresh,
+                data_provider=provider_name,
+                cached_count=len(cached),
+            ):
+                provider = get_provider_factory().get(DataProviderName(provider_name))
+                candles = provider.get_historical_candles(
+                    body.ticker, body.timeframe, body.start, body.end
+                )
+                validate_candles(candles)
+                store.save_candles(
+                    instrument["symbol"],
+                    instrument["market_type"],
+                    body.timeframe,
+                    candles,
+                )
+                count = len(candles)
+            else:
+                logger.info(
+                    "Using %s cached candles for %s %s (Schwab fetch skipped)",
+                    len(cached),
+                    body.ticker,
+                    body.timeframe,
+                )
+                count = len(cached)
         except Exception as exc:  # noqa: BLE001
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         return MarketDataSyncResponse(

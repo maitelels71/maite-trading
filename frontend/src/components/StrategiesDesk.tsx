@@ -36,6 +36,11 @@ import {
   WATCH_SYMBOLS,
 } from "@/lib/instrument-groups";
 import { setHoldTrader } from "@/lib/schwab-hold";
+import {
+  extendSchwabQuiet,
+  readSchwabQuietUntil,
+  subscribeSchwabQuiet,
+} from "@/lib/schwab-quiet";
 import { isCashRthNy, isFuturesOvernightNy, isGlobexOpenNy } from "@/lib/cash-session";
 import {
   FALLBACK_INSTRUMENTS,
@@ -58,10 +63,14 @@ const CAPITAL_CACHE_KEY = "maite.strategies.capitalCache";
 const CAPITAL_CACHE_MS = 24 * 60 * 60 * 1000;
 const EXP_CHAIN_KEY = "maite.strategies.expChain";
 const EXP_CHAIN_MS = 12 * 60 * 60 * 1000;
-/** Brief pause after sync so in-flight Schwab GETs finish. Open does not wait minutes. */
+/** After capital load only — a couple of trader GETs. */
 const OPEN_QUIET_MS = 10_000;
-/** Cool-down only after a real Open 429 (honor Schwab Retry-After). */
+/** After Options TOP 5 / Focus sync — Schwab pricehistory needs a real cool-down. */
+const POST_SYNC_QUIET_MS = 90_000;
+/** Cool-down after a real Open 429 (honor Schwab Retry-After). */
 const RATE_LIMIT_QUIET_MS = 60_000;
+/** After the one automatic Open retry still 429s — stop the loop. */
+const OPEN_GIVE_UP_QUIET_MS = 180_000;
 const OPEN_RETRY_WAIT_SEC = 60;
 const DESK_TOP_N = 5;
 const DESK_SYNC_TFS = ["1h", "1d", "15m"] as const;
@@ -639,9 +648,12 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
   const [syncNote, setSyncNote] = useState<string | null>(null);
   const [deskBusy, setDeskBusy] = useState(false);
   const [focusBusy, setFocusBusy] = useState(false);
-  const [quietUntil, setQuietUntil] = useState(0);
+  const [quietUntil, setQuietUntil] = useState(() =>
+    typeof window === "undefined" ? 0 : readSchwabQuietUntil(),
+  );
   const [nowTick, setNowTick] = useState(() => Date.now());
-  const wasBrokerBusy = useRef(false);
+  const wasHeavyBrokerBusy = useRef(false);
+  const wasCapitalBusy = useRef(false);
   const deskBusyRef = useRef(false);
   const focusBusyRef = useRef(false);
   const deskEpochRef = useRef(0);
@@ -835,14 +847,37 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
     void loadCapital();
   }, [venue, loadCapital]);
 
+  const startSchwabQuiet = useCallback((ms = RATE_LIMIT_QUIET_MS) => {
+    const until = extendSchwabQuiet(ms);
+    setQuietUntil(until);
+    setNowTick(Date.now());
+  }, []);
+
   useEffect(() => {
-    const busy = deskBusy || focusBusy || capitalPending;
-    if (wasBrokerBusy.current && !busy) {
-      setQuietUntil(Date.now() + OPEN_QUIET_MS);
+    const sync = () => {
+      setQuietUntil(readSchwabQuietUntil());
       setNowTick(Date.now());
+    };
+    sync();
+    return subscribeSchwabQuiet(sync);
+  }, []);
+
+  useEffect(() => {
+    if (venue !== "schwab") return;
+    const heavy = deskBusy || focusBusy;
+    if (wasHeavyBrokerBusy.current && !heavy) {
+      startSchwabQuiet(POST_SYNC_QUIET_MS);
     }
-    wasBrokerBusy.current = busy;
-  }, [deskBusy, focusBusy, capitalPending]);
+    wasHeavyBrokerBusy.current = heavy;
+  }, [deskBusy, focusBusy, venue, startSchwabQuiet]);
+
+  useEffect(() => {
+    if (venue !== "schwab") return;
+    if (wasCapitalBusy.current && !capitalPending) {
+      startSchwabQuiet(OPEN_QUIET_MS);
+    }
+    wasCapitalBusy.current = capitalPending;
+  }, [capitalPending, venue, startSchwabQuiet]);
 
   useEffect(() => {
     if (quietUntil <= Date.now()) return;
@@ -852,11 +887,6 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
 
   const quietRemainSec = Math.max(0, Math.ceil((quietUntil - nowTick) / 1000));
   const schwabBusy = deskBusy || focusBusy || quietRemainSec > 0;
-
-  const startSchwabQuiet = useCallback((ms = RATE_LIMIT_QUIET_MS) => {
-    setQuietUntil(Date.now() + ms);
-    setNowTick(Date.now());
-  }, []);
 
   useEffect(() => {
     if (quietRemainSec > 0) return;
@@ -979,8 +1009,8 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
             if (!rateLimited || attempt === 1) {
               if (rateLimited) {
                 openFailed429Ref.current = true;
-                const waitSec = retryAfterSec(err, OPEN_RETRY_WAIT_SEC);
-                startSchwabQuiet(waitSec * 1000);
+                setHoldTrader(true);
+                startSchwabQuiet(OPEN_GIVE_UP_QUIET_MS);
                 setOpenNote(null);
                 setOpenError(
                   t("strategies.openNotSent429") +
@@ -992,6 +1022,7 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
               }
               return;
             }
+            setHoldTrader(true);
             const waitSec = retryAfterSec(err, OPEN_RETRY_WAIT_SEC);
             startSchwabQuiet(waitSec * 1000);
             setOpenNote(null);
@@ -1125,6 +1156,7 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
         } catch {
           syncErrors += 1;
         }
+        if (venue === "schwab") await sleepMs(400);
       }
     }
     if (opts.gen !== opts.genRef.current) return null;
@@ -1341,7 +1373,9 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
           setDeskFocusKey(`${firstHit.symbol}::${firstHit.strategy}`);
           setSelectedId(focusPb.id);
           if (gen !== deskGen.current) return;
-          if (!armOpens) {
+          // Options: do not Focus-sync the whole universe after TOP 5 — that
+          // second Schwab blast is what 429s the Open POST.
+          if (!armOpens && venue !== "schwab") {
             await syncAndScan(focusPb, {
               fromAuto,
               skipDeskTfs: true,
@@ -1552,7 +1586,13 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
             </div>
             <button
               type="button"
-              disabled={capitalPending || deskBusy || focusBusy || armOpens}
+              disabled={
+                capitalPending ||
+                deskBusy ||
+                focusBusy ||
+                armOpens ||
+                quietRemainSec > 0
+              }
               onClick={() => void loadCapital(true)}
               className="rounded-md border border-[var(--border)] px-2.5 py-1 text-[11px] font-medium hover:bg-[var(--hover)] disabled:opacity-50"
             >
@@ -1590,7 +1630,6 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
                   window.localStorage.setItem(AUTO_DESK_KEY, "0");
                   window.localStorage.setItem(AUTO_LIVE_KEY, "0");
                   setHoldTrader(true);
-                  startSchwabQuiet(OPEN_QUIET_MS);
                 } else {
                   setHoldTrader(false);
                 }
@@ -1608,22 +1647,14 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
           {openNote ? (
             <p className="mt-1.5 text-[11px] text-[var(--ok)]">{openNote}</p>
           ) : null}
-          {openError || quietRemainSec > 0 ? (
+          {openError ? (
+            <p className="mt-1 text-[11px] text-[var(--danger)]">{openError}</p>
+          ) : quietRemainSec > 0 ? (
             <p className="mt-1 text-[11px] text-[var(--danger)]">
-              {quietRemainSec > 0
-                ? [
-                    openError ||
-                      (openFailed429Ref.current
-                        ? t("strategies.openNotSent429")
-                        : null),
-                    t("strategies.openWaitQuiet").replace(
-                      "{n}",
-                      String(quietRemainSec),
-                    ),
-                  ]
-                    .filter(Boolean)
-                    .join(" ")
-                : openError}
+              {t("strategies.openWaitQuiet").replace(
+                "{n}",
+                String(quietRemainSec),
+              )}
             </p>
           ) : null}
         </div>
@@ -1646,7 +1677,8 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
                 deskBusy ||
                 deskStrategyKeys.length === 0 ||
                 Boolean(openingKey) ||
-                armOpens
+                armOpens ||
+                quietRemainSec > 0
               }
               onClick={runDeskScan}
               className="shrink-0 cursor-pointer rounded-md bg-[var(--accent)] px-3 py-1.5 text-xs font-medium text-[var(--on-accent)] hover:bg-[var(--accent-hover)] disabled:cursor-not-allowed disabled:opacity-50"
@@ -1930,7 +1962,8 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
                 focusBusy ||
                 !playbook.strategyKey ||
                 Boolean(openingKey) ||
-                armOpens
+                armOpens ||
+                quietRemainSec > 0
               }
               onClick={runSyncAndScan}
               className="rounded-md bg-[var(--accent)] px-3 py-1.5 text-xs font-medium text-[var(--on-accent)] hover:bg-[var(--accent-hover)] disabled:opacity-50"
