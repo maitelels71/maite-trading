@@ -14,6 +14,11 @@ from sqlalchemy.orm import Session
 from app.api.storage import get_dynamo_store, using_dynamo
 from app.database.session import get_db
 from app.domain.enums import DataProviderName, Side
+from app.domain.session_calendar import (
+    is_cash_rth,
+    is_globex_open,
+    live_candle_range_end,
+)
 from app.domain.strategy_types import StrategyResult
 from app.models import BacktestRun, Instrument, Strategy as StrategyModel
 from app.models import SignalRow, Trade as TradeModel
@@ -337,6 +342,7 @@ def _evaluate_dynamo(
     extra_timeframes: tuple[str, ...] | list[str] | None = None,
     candle_cache: dict[tuple[str, str, str, str, str], list] | None = None,
     candle_start: date | datetime | None = None,
+    candle_end: date | datetime | None = None,
     fetch_missing: bool = False,
     require_extras: bool = False,
     extra_lookback_days: dict[str, int] | None = None,
@@ -351,10 +357,13 @@ def _evaluate_dynamo(
     store = get_dynamo_store()
     instrument = store.get_instrument(ticker, market_type=market_type)
     load_start = candle_start if candle_start is not None else start
+    load_end = candle_end if candle_end is not None else end
     start_dt = (
         load_start if isinstance(load_start, dt) else dt.combine(load_start, dt.min.time())
     )
-    end_dt = end if isinstance(end, dt) else dt.combine(end, dt.max.time().replace(microsecond=0))
+    end_dt = (
+        load_end if isinstance(load_end, dt) else dt.combine(load_end, dt.max.time().replace(microsecond=0))
+    )
 
     def _range_start(tf: str) -> dt:
         cap = (extra_lookback_days or {}).get(tf)
@@ -501,6 +510,29 @@ def _list_scan_instruments(
     return items
 
 
+def _live_desk_allows_match(
+    strategy: object,
+    *,
+    data_provider: str,
+) -> tuple[bool, str]:
+    """Futures live matches only while Globex is open; ML03 only in NY RTH."""
+    if data_provider == DataProviderName.TRADEADVOCATE.value:
+        if not is_globex_open():
+            return (
+                False,
+                "Globex closed (Fri 17:00–Sun 18:00 ET, or 17:00–18:00 halt). "
+                "Not a live futures match.",
+            )
+        when = str(getattr(strategy, "scan_live_when", "always") or "always")
+        if when == "cash_rth" and not is_cash_rth():
+            return (
+                False,
+                "NY RTH setup (9:30–16:00 ET) — not live in Globex/Asia. "
+                "ML01/ML02 still evaluate full 1H + LTF structure.",
+            )
+    return True, ""
+
+
 def _scan_one(
     *,
     db: Session,
@@ -514,10 +546,31 @@ def _scan_one(
     candle_cache: dict[tuple[str, str, str, str, str], list] | None = None,
 ) -> StrategyScanHit:
     strategy = get_strategy_registry().get(strategy_name)
+    live_ok, live_detail = _live_desk_allows_match(
+        strategy,
+        data_provider=data_provider,
+    )
+    if not live_ok:
+        return StrategyScanHit(
+            symbol=symbol,
+            name=name,
+            market_type=market_type,
+            data_provider=data_provider,
+            strategy=strategy_name,
+            status="watching",
+            matched=False,
+            detail=live_detail,
+        )
     resolve_tf = getattr(strategy, "scan_timeframe", None) or timeframe
     lookback_days = int(getattr(strategy, "scan_lookback_days", 0) or 0)
     extra_tfs = tuple(getattr(strategy, "scan_extra_timeframes", ()) or ())
     eval_start = scan_day - timedelta(days=lookback_days)
+    market = (
+        "futures"
+        if data_provider == DataProviderName.TRADEADVOCATE.value
+        else "cash"
+    )
+    load_end = live_candle_range_end(scan_day, market=market)
 
     try:
         candle_count = _session_candle_count(
@@ -526,6 +579,7 @@ def _scan_one(
             market_type=market_type,
             timeframe=resolve_tf,
             scan_day=scan_day,
+            load_end=load_end,
             candle_cache=candle_cache,
         )
         if candle_count == 0:
@@ -555,6 +609,7 @@ def _scan_one(
                 extra_timeframes=extra_tfs,
                 candle_cache=candle_cache,
                 candle_start=eval_start,
+                candle_end=load_end,
                 fetch_missing=False,
                 require_extras=False,
                 extra_lookback_days=_SCAN_EXTRA_LOOKBACK,
@@ -566,11 +621,12 @@ def _scan_one(
                 symbol=symbol,
                 timeframe=resolve_tf,
                 start=eval_start,
-                end=scan_day,
+                end=load_end,
                 parameters={},
                 market_type=market_type,
                 extra_timeframes=extra_tfs,
                 context_start=scan_day,
+                context_end=scan_day,
             )
 
         # Desk only: never keep a morning signal after price reversed through it
@@ -583,6 +639,7 @@ def _scan_one(
             timeframe=resolve_tf,
             scan_day=scan_day,
             lookback_days=lookback_days,
+            load_end=load_end,
             candle_cache=candle_cache,
         )
         result = drop_reversed_session_signals(
@@ -627,6 +684,7 @@ def _candles_for_scan_day(
     timeframe: str,
     scan_day: date,
     lookback_days: int,
+    load_end: datetime | None = None,
     candle_cache: dict[tuple[str, str, str, str, str], list] | None = None,
 ) -> list:
     """Primary TF candles used for evaluate + live-hold stale filter."""
@@ -634,7 +692,7 @@ def _candles_for_scan_day(
 
     load_start = scan_day - timedelta(days=lookback_days)
     start_dt = dt.combine(load_start, dt.min.time())
-    end_dt = dt.combine(scan_day, dt.max.time().replace(microsecond=0))
+    end_dt = load_end or dt.combine(scan_day, dt.max.time().replace(microsecond=0))
     if using_dynamo():
         store = get_dynamo_store()
         instrument = store.get_instrument(symbol, market_type=market_type)
@@ -670,10 +728,13 @@ def _session_candle_count(
     market_type: str,
     timeframe: str,
     scan_day: date,
+    load_end: datetime | None = None,
     candle_cache: dict[tuple[str, str, str, str, str], list] | None = None,
 ) -> int:
     start_dt = datetime.combine(scan_day, datetime.min.time())
-    end_dt = datetime.combine(scan_day, datetime.max.time().replace(microsecond=0))
+    end_dt = load_end or datetime.combine(
+        scan_day, datetime.max.time().replace(microsecond=0)
+    )
     if using_dynamo():
         store = get_dynamo_store()
         instrument = store.get_instrument(symbol, market_type=market_type)

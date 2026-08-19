@@ -74,6 +74,7 @@ class StrategyEngine:
         timezone: str = "America/New_York",
         extra_timeframes: tuple[str, ...] | list[str] | None = None,
         context_start: date | datetime | None = None,
+        context_end: date | datetime | None = None,
     ) -> StrategyResult:
         if self._market_data is None:
             raise RuntimeError("StrategyEngine requires MarketDataService for evaluate_symbol")
@@ -107,7 +108,7 @@ class StrategyEngine:
             ticker=symbol,
             timeframe=timeframe,
             start=context_start if context_start is not None else start,
-            end=end,
+            end=context_end if context_end is not None else end,
             parameters=parameters or {},
             timezone=timezone,
             session=SessionType.RTH,

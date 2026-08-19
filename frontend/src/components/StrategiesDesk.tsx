@@ -36,7 +36,7 @@ import {
   WATCH_SYMBOLS,
 } from "@/lib/instrument-groups";
 import { setHoldTrader } from "@/lib/schwab-hold";
-import { isCashRthNy } from "@/lib/cash-session";
+import { isCashRthNy, isFuturesOvernightNy, isGlobexOpenNy } from "@/lib/cash-session";
 import {
   FALLBACK_INSTRUMENTS,
   TIMEFRAMES,
@@ -66,11 +66,15 @@ const OPEN_RETRY_WAIT_SEC = 60;
 const DESK_TOP_N = 5;
 const DESK_SYNC_TFS = ["1h", "1d"] as const;
 const DESK_LOOKBACK_DAYS = 25;
+/** Futures live desk: HTF + LTF so ML01/ML02 evaluate structure whenever Globex is open. */
+const DESK_SYNC_TFS_FUTURES = ["1h", "15m", "5m", "1m"] as const;
+const DESK_LOOKBACK_FUTURES = 14;
+const DESK_1M_LOOKBACK_DAYS = 2;
 /** One strategy per HTTP call — extras (15m/1m) still trip API Gateway ~29s. */
 const DESK_STRATEGY_CHUNK = 1;
 const SCAN_SYMBOL_BATCH = 2;
-/** Desk TOP 5 is 1h-only — slightly larger batches are safe. */
 const DESK_SCAN_SYMBOL_BATCH = 4;
+const DESK_SCAN_SYMBOL_BATCH_FUTURES = 2;
 const HARD_SYNC_KEY = "maite.strategies.hardSyncDay";
 /** Watch + rich-premium names stay on Focus Sync & Scan, not the TOP 5 universe. */
 const DESK_FOCUS_ONLY = new Set([...WATCH_SYMBOLS, "IOVA"]);
@@ -202,7 +206,7 @@ function rankByConfluence(hits: ScanHit[], topN: number): DeskConfluenceGroup[] 
     const sortedHits = [...keep].sort((a, b) => {
       const ta = a.last_signal?.timestamp ?? "";
       const tb = b.last_signal?.timestamp ?? "";
-      return ta.localeCompare(tb);
+      return tb.localeCompare(ta);
     });
     groups.push({
       symbol,
@@ -216,7 +220,9 @@ function rankByConfluence(hits: ScanHit[], topN: number): DeskConfluenceGroup[] 
 
   groups.sort((a, b) => {
     if (b.confluence !== a.confluence) return b.confluence - a.confluence;
-    // Prefer cleaner (fewer opposing hits) when tied
+    const tb = b.hits[0]?.last_signal?.timestamp ?? "";
+    const ta = a.hits[0]?.last_signal?.timestamp ?? "";
+    if (tb !== ta) return tb.localeCompare(ta);
     if (a.opposedCount !== b.opposedCount) return a.opposedCount - b.opposedCount;
     return a.symbol.localeCompare(b.symbol);
   });
@@ -267,6 +273,12 @@ function previousWeekdayIso(isoDate: string): string {
   return d;
 }
 
+/** Rolling UTC window so Globex evening bars are not cut at 23:59Z (~20:00 ET). */
+function syncRangeIso(lookbackDays: number, now = new Date()): { start: string; end: string } {
+  const start = new Date(now.getTime() - lookbackDays * 24 * 60 * 60 * 1000);
+  return { start: start.toISOString(), end: now.toISOString() };
+}
+
 /** Last/current NY session — mirrors backend resolve_operative_session_date. */
 function operativeSessionNyIso(now = new Date(), venue: Venue = "schwab"): string {
   const p = nyParts(now);
@@ -274,7 +286,7 @@ function operativeSessionNyIso(now = new Date(), venue: Venue = "schwab"): strin
   const [y, m, day] = today.split("-").map(Number);
   const wd = new Date(Date.UTC(y, m - 1, day, 12)).getUTCDay(); // Sun=0 … Sat=6
   if (venue === "tradeadvocate") {
-    const globexOpen = isGlobexOpenNy(p.hh, p.mm, wd);
+    const globexOpen = isGlobexOpenNy(now);
     if (globexOpen) return today;
     if (wd === 5) return today; // Friday after 17:00 — last Globex day
     if (wd === 0 || wd === 6) return previousWeekdayIso(today);
@@ -285,26 +297,15 @@ function operativeSessionNyIso(now = new Date(), venue: Venue = "schwab"): strin
   return today;
 }
 
-/** CME Globex weekly session: Sun 18:00 ET → Fri 17:00 ET. */
-function isGlobexOpenNy(hh: number, mm: number, wd: number): boolean {
-  const minutes = hh * 60 + mm;
-  const reopen = 18 * 60;
-  const halt = 17 * 60;
-  if (wd === 6) return false; // Saturday
-  if (wd === 0) return minutes >= reopen; // Sunday
-  if (wd === 5) return minutes < halt; // Friday
-  return minutes < halt || minutes >= reopen; // Mon–Thu
-}
-
 /** True when the venue is not in its live session (prior-session banners). */
 function isPremarketOrClosedNy(now = new Date(), venue: Venue = "schwab"): boolean {
+  if (venue === "tradeadvocate") {
+    return !isGlobexOpenNy(now);
+  }
   const p = nyParts(now);
   const today = `${p.y}-${String(p.m).padStart(2, "0")}-${String(p.day).padStart(2, "0")}`;
   const [y, m, day] = today.split("-").map(Number);
   const wd = new Date(Date.UTC(y, m - 1, day, 12)).getUTCDay();
-  if (venue === "tradeadvocate") {
-    return !isGlobexOpenNy(p.hh, p.mm, wd);
-  }
   if (wd === 0 || wd === 6) return true;
   return p.hh < 9 || (p.hh === 9 && p.mm < 30);
 }
@@ -1084,15 +1085,15 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
     items: Instrument[];
     forceRefresh: boolean;
   }) {
-    const startDay = addDaysIso(opts.endDay, -opts.lookback);
-    const start = `${startDay}T00:00:00.000Z`;
-    const end = `${opts.endDay}T23:59:59.999Z`;
     let syncedBars = 0;
     let syncErrors = 0;
     for (const inst of opts.items) {
       if (inst.data_provider && inst.data_provider !== venue) continue;
       for (const tf of opts.tfs) {
         if (opts.gen !== opts.genRef.current) return null;
+        const days =
+          tf === "1m" ? Math.min(opts.lookback, DESK_1M_LOOKBACK_DAYS) : opts.lookback;
+        const { start, end } = syncRangeIso(days);
         try {
           const res = await syncMarketData({
             ticker: inst.symbol,
@@ -1143,9 +1144,11 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
             : pb.preferredTimeframe
               ? [pb.preferredTimeframe]
               : [scanTf];
+        const deskTfs =
+          venue === "tradeadvocate" ? DESK_SYNC_TFS_FUTURES : DESK_SYNC_TFS;
         if (opts?.skipDeskTfs) {
           tfs = tfs.filter(
-            (tf) => !(DESK_SYNC_TFS as readonly string[]).includes(tf),
+            (tf) => !(deskTfs as readonly string[]).includes(tf),
           );
         }
         const lookback = pb.syncLookbackDays ?? 7;
@@ -1221,8 +1224,11 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
       const forceRefresh = takeHardRefresh(day, fromAuto);
       try {
       const synced = await syncUniverse({
-        tfs: [...DESK_SYNC_TFS],
-        lookback: DESK_LOOKBACK_DAYS,
+        tfs: [
+          ...(venue === "tradeadvocate" ? DESK_SYNC_TFS_FUTURES : DESK_SYNC_TFS),
+        ],
+        lookback:
+          venue === "tradeadvocate" ? DESK_LOOKBACK_FUTURES : DESK_LOOKBACK_DAYS,
         gen,
         genRef: deskGen,
         endDay: day,
@@ -1260,23 +1266,38 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
               symbols,
               matches_only: true,
             },
-            DESK_SCAN_SYMBOL_BATCH,
+            venue === "tradeadvocate"
+              ? DESK_SCAN_SYMBOL_BATCH_FUTURES
+              : DESK_SCAN_SYMBOL_BATCH,
           );
           for (const hit of res.hits) {
             if (hit.matched) allMatches.push(hit);
           }
         }
         if (gen !== deskGen.current) return;
+        const now = new Date();
+        const overnight = venue === "tradeadvocate" && isFuturesOvernightNy(now);
+        const globexClosed = venue === "tradeadvocate" && !isGlobexOpenNy(now);
         const ranked = rankByConfluence(allMatches, DESK_TOP_N);
         setDeskGroups(ranked);
         const strategyHits = ranked.reduce((n, g) => n + g.confluence, 0);
-        setDeskNote(
-          t("strategies.deskTopSummary")
-            .replace("{n}", String(ranked.length))
-            .replace("{hits}", String(strategyHits))
-            .replace("{session}", day)
-            .replace("{when}", formatNyDateTime(new Date(), locale)),
-        );
+        if (globexClosed) {
+          setDeskNote(t("strategies.deskTopEmptyGlobexClosed"));
+        } else if (overnight && ranked.length === 0) {
+          setDeskNote(t("strategies.deskTopEmptyOvernight"));
+        } else {
+          setDeskNote(
+            t(
+              overnight
+                ? "strategies.deskTopSummaryOvernight"
+                : "strategies.deskTopSummary",
+            )
+              .replace("{n}", String(ranked.length))
+              .replace("{hits}", String(strategyHits))
+              .replace("{session}", day)
+              .replace("{when}", formatNyDateTime(now, locale)),
+          );
+        }
 
         const firstHit = ranked[0]?.hits[0];
         const focusPb = firstHit
@@ -1578,7 +1599,11 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
         first
         step={1}
         title={t("session.deskTop5")}
-        hint={t("session.deskTop5Hint")}
+        hint={
+          venue === "tradeadvocate"
+            ? t("session.deskTop5HintFutures")
+            : t("session.deskTop5Hint")
+        }
         actions={
           <>
             <button
@@ -1610,7 +1635,9 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
                   ? t("strategies.autoOffSession")
                   : armOpens
                     ? t("strategies.armPausesAuto")
-                    : t("strategies.deskAutoHint")
+                    : venue === "tradeadvocate"
+                      ? t("strategies.deskAutoHintFutures")
+                      : t("strategies.deskAutoHint")
               }
             >
               {autoDesk ? t("strategies.autoStop") : t("strategies.autoStart")}
@@ -1622,7 +1649,11 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
           <p className="text-[11px] text-[var(--muted)]">{deskNote}</p>
         ) : (
           <p className="text-[11px] text-[var(--muted)]">
-            {t("strategies.deskTopHint")}
+            {t(
+              venue === "tradeadvocate"
+                ? "strategies.deskTopHintFutures"
+                : "strategies.deskTopHint",
+            )}
           </p>
         )}
         {deskError ? (

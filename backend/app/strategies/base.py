@@ -44,6 +44,11 @@ class BaseStrategy(ABC):
         """Additional TFs loaded into context.extra_candles for multi-TF strategies."""
         return ()
 
+    @property
+    def scan_live_when(self) -> str:
+        """When the live desk may treat hits as matches: always | cash_rth | globex."""
+        return "always"
+
     @abstractmethod
     def evaluate(
         self,

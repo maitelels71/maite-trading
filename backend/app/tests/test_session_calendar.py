@@ -1,9 +1,10 @@
-from datetime import datetime
+from datetime import UTC, date, datetime
 from zoneinfo import ZoneInfo
 
 from app.domain.session_calendar import (
     is_cash_rth,
     is_globex_open,
+    live_candle_range_end,
     resolve_operative_session_date,
 )
 
@@ -74,3 +75,25 @@ def test_futures_friday_after_globex_close_keeps_friday() -> None:
         resolve_operative_session_date(now, market="futures").isoformat()
         == "2026-08-14"
     )
+
+
+def test_futures_candle_end_extends_after_utc_midnight() -> None:
+    """8:30pm ET in summer is already the next UTC day — include those bars."""
+    scan = date(2026, 8, 18)
+    now = datetime(2026, 8, 19, 0, 30, tzinfo=UTC)
+    end = live_candle_range_end(scan, market="futures", now=now)
+    assert end == datetime(2026, 8, 19, 0, 30)
+
+
+def test_cash_candle_end_stays_scan_day_utc() -> None:
+    scan = date(2026, 8, 18)
+    now = datetime(2026, 8, 19, 0, 30, tzinfo=UTC)
+    end = live_candle_range_end(scan, market="cash", now=now)
+    assert end == datetime(2026, 8, 18, 23, 59, 59)
+
+
+def test_futures_candle_end_during_rth_stays_scan_day_utc() -> None:
+    scan = date(2026, 8, 18)
+    now = datetime(2026, 8, 18, 19, 0, tzinfo=UTC)  # 3pm ET
+    end = live_candle_range_end(scan, market="futures", now=now)
+    assert end == datetime(2026, 8, 18, 23, 59, 59)

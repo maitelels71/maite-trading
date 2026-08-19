@@ -216,6 +216,10 @@ class Ml03FirstNy5mStrategy(BaseStrategy):
         return ("1m",)
 
     @property
+    def scan_live_when(self) -> str:
+        return "cash_rth"
+
+    @property
     def default_parameters(self) -> dict[str, Any]:
         return {
             "timezone": "America/New_York",

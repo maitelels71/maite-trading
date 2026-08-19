@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime, time, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from typing import Literal
 from zoneinfo import ZoneInfo
 
@@ -48,6 +48,33 @@ def is_cash_rth(now: datetime | None = None) -> bool:
         return False
     clock = ts.timetz().replace(tzinfo=None)
     return RTH_OPEN <= clock < RTH_CLOSE
+
+
+def _as_utc(now: datetime | None) -> datetime:
+    if now is None:
+        return datetime.now(UTC)
+    if now.tzinfo is None:
+        return now.replace(tzinfo=UTC)
+    return now.astimezone(UTC)
+
+
+def live_candle_range_end(
+    scan_day: date,
+    *,
+    market: MarketCalendar = "cash",
+    now: datetime | None = None,
+) -> datetime:
+    """Naive-UTC end used to load candles for a live scan of ``scan_day``.
+
+    Cash (and futures before ~20:00 ET in summer): ``scan_day`` 23:59:59 UTC.
+    Futures after that UTC midnight: ``now``, so Globex evening / Asia bars
+    are included. Naive UTC matches Dynamo ``_iso`` (tz-less = UTC).
+    """
+    ts = _as_utc(now).replace(tzinfo=None)
+    eod = datetime.combine(scan_day, time(23, 59, 59))
+    if market == "futures" and ts > eod:
+        return ts
+    return eod
 
 
 def resolve_operative_session_date(

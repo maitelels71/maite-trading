@@ -107,7 +107,7 @@ def _ltf_choch_bos(
     if len(highs) < 2 or len(lows) < 2:
         return False, "few_swings"
 
-    window = m15[-24:]
+    window = m15[-96:]
     w_highs = _swing_highs(window, left=1, right=1)
     w_lows = _swing_lows(window, left=1, right=1)
     if not w_highs or not w_lows:
@@ -219,7 +219,7 @@ class Ml01StructureChochBosStrategy(BaseStrategy):
             bias, bias_note = _major_bias(h1_asof, left=left, right=right)
             m15_asof = [
                 c for c in m15 if local_ts(c.timestamp, tz).date() <= session_day
-            ][-48:]
+            ][-288:]
             aligned, ltf_note = _ltf_choch_bos(
                 m15_asof,
                 bias,

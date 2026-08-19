@@ -47,6 +47,7 @@ def test_ml03_registered() -> None:
     assert s.name == STRATEGY_ML03_FIRST_NY5
     assert s.scan_timeframe == "5m"
     assert "1m" in s.scan_extra_timeframes
+    assert s.scan_live_when == "cash_rth"
 
 
 def test_find_first_ny_5m() -> None:

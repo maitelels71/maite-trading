@@ -159,6 +159,8 @@ const en: Dict = {
   "strategies.deskTopTitle": "Desk TOP 5",
   "strategies.deskTopHint":
     "Syncs 1h + 1d (25d) on core names, ranks TOP 5, then Focus-scans #1 without re-downloading 1h/1d. Watch (USAR/UUUU/ONDS/IOVA) is Focus-only. Open to Schwab only if the debit fits 10% equity.",
+  "strategies.deskTopHintFutures":
+    "Whenever Globex is open: sync 1h + 15m + 5m + 1m through now, then rank TOP 5. ML01/ML02 need 1H bias + LTF ChoCh/BOS on the current structure. ML03 is NY 9:30–16:00 only.",
   "strategies.deskTopScan": "Sync & TOP 5",
   "strategies.deskTopScanning": "Desk scan…",
   "strategies.deskTopEmpty": "No TOP 5 matches. Click the green Sync & TOP 5 to refresh.",
@@ -214,12 +216,20 @@ const en: Dict = {
     "Every 2.5 minutes: sync candles + rescan this playbook. Turns off Desk TOP 5 auto (only one auto at a time). Before 9:30 ET the session is still yesterday’s cash day.",
   "strategies.deskAutoHint":
     "Every 2.5 minutes: sync desk candles + re-rank TOP 5. Turns off Focus auto (only one auto at a time).",
+  "strategies.deskAutoHintFutures":
+    "Every 2.5 minutes while Globex is open: refresh 1h/15m/5m/1m through now and re-rank TOP 5. ML03 only in NY 9:30–16:00; ML01/ML02 use full 1H + LTF structure.",
   "strategies.autoOffSession":
     "Auto is off before 9:30 ET (premarket / weekend). After the cash open, Auto 2.5m is available. Trigger opens still pauses it.",
   "strategies.scanSummary":
     "Session {session} · scanned {when} ET · {matches} matches · {checked} checked",
   "strategies.deskTopSummary":
     "TOP {n} by confluence · {hits} strategy hits · session {session} · {when} ET",
+  "strategies.deskTopSummaryOvernight":
+    "TOP {n} Globex/Asia (ML01/ML02 structure) · {hits} hits · session {session} · {when} ET",
+  "strategies.deskTopEmptyOvernight":
+    "No live Globex setups. ML03 is NY 9:30–16:00 only. ML01/ML02 need 1H bias + LTF ChoCh/BOS on current structure — Sync & TOP 5 again.",
+  "strategies.deskTopEmptyGlobexClosed":
+    "CME Globex is closed (Fri 17:00 ET → Sun 18:00 ET, or the 17:00–18:00 halt). No live futures matches until it reopens.",
   "strategies.tfFixed": "fixed",
   "strategies.tfLockedHint":
     "This playbook locks the scan timeframe (backend uses the same).",
@@ -269,6 +279,8 @@ const en: Dict = {
   "session.deskTop5": "Desk TOP 5",
   "session.deskTop5Hint":
     "Ranks core names (not watch) by confluence. Hard-refresh Schwab once per session; Auto 2.5m reuses cached candles.",
+  "session.deskTop5HintFutures":
+    "Ranks MNQ/MES/FX/GC by confluence whenever Globex is open. Syncs HTF+LTF through now (not a truncated last-hours window). Auto 2.5m re-syncs the same TFs.",
   "session.liveScan": "Sync & Scan",
   "session.liveScanHint": "Sync candles for this playbook, then scan its universe.",
   "session.scanDesk": "Scan",
@@ -700,6 +712,8 @@ const es: Dict = {
   "strategies.deskTopTitle": "Desk TOP 5",
   "strategies.deskTopHint":
     "Sync 1h + 1d (25d) en nombres core, rankea TOP 5 y Focus-scan de #1 sin re-bajar 1h/1d. Watch (USAR/UUUU/ONDS/IOVA) solo en Focus. Abrir a Schwab solo si la prima cabe en el 10% del equity.",
+  "strategies.deskTopHintFutures":
+    "Con Globex abierto: sync 1h + 15m + 5m + 1m hasta ahora, luego rankea TOP 5. ML01/ML02 piden sesgo 1H + ChoCh/BOS LTF sobre la estructura actual. ML03 solo NY 9:30–16:00.",
   "strategies.deskTopScan": "Sync & TOP 5",
   "strategies.deskTopScanning": "Desk scan…",
   "strategies.deskTopEmpty": "Sin TOP 5. Pulsa el Sync & TOP 5 verde para refrescar.",
@@ -755,12 +769,20 @@ const es: Dict = {
     "Cada 2.5 min: sync de velas + rescan de este playbook. Apaga el auto de Desk TOP 5 (solo un auto a la vez). Antes de 9:30 ET la sesión sigue siendo el día cash de ayer.",
   "strategies.deskAutoHint":
     "Cada 2.5 min: sync de velas del desk + re-rank TOP 5. Apaga el auto de Focus (solo un auto a la vez).",
+  "strategies.deskAutoHintFutures":
+    "Cada 2.5 min con Globex abierto: refresca 1h/15m/5m/1m hasta ahora y re-rankea TOP 5. ML03 solo NY 9:30–16:00; ML01/ML02 usan la estructura 1H + LTF completa.",
   "strategies.autoOffSession":
     "Auto está apagado antes de las 9:30 ET (premarket / fin de semana). Tras la apertura cash, Auto 2.5m está disponible. Trigger opens sigue pausándolo.",
   "strategies.scanSummary":
     "Sesión {session} · escaneado {when} ET · {matches} matches · {checked} checked",
   "strategies.deskTopSummary":
     "TOP {n} por confluencia · {hits} hits de estrategia · sesión {session} · {when} ET",
+  "strategies.deskTopSummaryOvernight":
+    "TOP {n} Globex/Asia (estructura ML01/ML02) · {hits} hits · sesión {session} · {when} ET",
+  "strategies.deskTopEmptyOvernight":
+    "Sin setups Globex en vivo. ML03 es solo NY 9:30–16:00. ML01/ML02 piden sesgo 1H + ChoCh/BOS en LTF sobre la estructura actual — Sync & TOP 5 otra vez.",
+  "strategies.deskTopEmptyGlobexClosed":
+    "CME Globex está cerrado (vie 17:00 ET → dom 18:00 ET, o el halt 17:00–18:00). No hay matches de futuros hasta que reabra.",
   "strategies.tfFixed": "fijo",
   "strategies.tfLockedHint":
     "Este playbook fija el timeframe del scan (el backend usa el mismo).",
@@ -810,6 +832,8 @@ const es: Dict = {
   "session.deskTop5": "Desk TOP 5",
   "session.deskTop5Hint":
     "Rankea nombres core (no watch) por confluencia. Hard-refresh Schwab una vez por sesión; Auto 2.5m reusa velas en cache.",
+  "session.deskTop5HintFutures":
+    "Rankea MNQ/MES/FX/GC por confluencia cuando Globex está abierto. Sync HTF+LTF hasta ahora (no una ventana recortada de las últimas horas). Auto 2.5m re-sync los mismos TFs.",
   "session.liveScan": "Sync & Scan",
   "session.liveScanHint": "Baja velas de este playbook y escanea su universo.",
   "session.scanDesk": "Scan",
