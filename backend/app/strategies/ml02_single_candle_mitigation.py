@@ -651,13 +651,16 @@ class Ml02SingleCandleMitigationStrategy(BaseStrategy):
 
         search_start = 1
         if lookback is None and start_d == end_d:
-            # Live scan is one session — don't walk 14d of 1m (API Gateway 503).
-            lookback = 180
+            # Live desk: last ~30 min of LTF, not a 3h replay (API Gateway ~29s).
+            lookback = 30
         if lookback is not None:
             search_start = max(1, len(series) - lookback)
 
         last_entry_i = -10_000
         used_zone_keys: set[tuple[str, int, int]] = set()
+        zone_cache: dict[
+            int, tuple[Bias, list[OrderBlock], str]
+        ] = {}
 
         for i in range(search_start, len(series)):
             if len(trades) >= max_trades:
@@ -666,14 +669,18 @@ class Ml02SingleCandleMitigationStrategy(BaseStrategy):
                 continue
             prior, curr = series[i - 1], series[i]
             htf_i = _map_ltf_index_to_htf(curr.timestamp, htf)
-            bias, zones, bias_note = _htf_bias_and_zones(
-                htf,
-                left=left,
-                right=right,
-                end_index=htf_i,
-                tz=tz,
-                min_impulse_bars=min_impulse,
-            )
+            cached = zone_cache.get(htf_i)
+            if cached is None:
+                cached = _htf_bias_and_zones(
+                    htf,
+                    left=left,
+                    right=right,
+                    end_index=htf_i,
+                    tz=tz,
+                    min_impulse_bars=min_impulse,
+                )
+                zone_cache[htf_i] = cached
+            bias, zones, bias_note = cached
             if bias == "range" or not zones:
                 continue
             if htf_i - zones[0].bos_index < min_after_bos:

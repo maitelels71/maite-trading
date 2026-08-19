@@ -269,7 +269,7 @@ def test_ml02_backtest_walks_full_range_not_only_tail() -> None:
     ctx = StrategyContext(
         ticker="NQ",
         timeframe="15m",
-        start=date(2026, 8, 3),
+        start=date(2026, 8, 2),
         end=date(2026, 8, 3),
         timezone="America/New_York",
         parameters={"require_inducement": False, "scm_lookback": None},

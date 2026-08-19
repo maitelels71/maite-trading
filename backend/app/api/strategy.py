@@ -327,7 +327,7 @@ def backtest_strategy(
 
 
 # Live desk scan: extras (especially 1m) must stay small or API Gateway 503s.
-_SCAN_EXTRA_LOOKBACK: dict[str, int] = {"1m": 2, "5m": 3, "15m": 5}
+_SCAN_EXTRA_LOOKBACK: dict[str, int] = {"1m": 1, "5m": 3, "15m": 5}
 
 
 def _evaluate_dynamo(

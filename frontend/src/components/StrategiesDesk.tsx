@@ -74,7 +74,7 @@ const DESK_1M_LOOKBACK_DAYS = 2;
 const DESK_STRATEGY_CHUNK = 1;
 const SCAN_SYMBOL_BATCH = 2;
 const DESK_SCAN_SYMBOL_BATCH = 4;
-const DESK_SCAN_SYMBOL_BATCH_FUTURES = 2;
+const DESK_SCAN_SYMBOL_BATCH_FUTURES = 1;
 const HARD_SYNC_KEY = "maite.strategies.hardSyncDay";
 /** Watch + rich-premium names stay on Focus Sync & Scan, not the TOP 5 universe. */
 const DESK_FOCUS_ONLY = new Set([...WATCH_SYMBOLS, "IOVA"]);
@@ -127,7 +127,20 @@ async function scanStrategiesBatched(
   const size = Math.max(1, batchSize);
   for (let i = 0; i < payload.symbols.length; i += size) {
     const symbols = payload.symbols.slice(i, i + size);
-    const res = await scanStrategies({ ...payload, symbols });
+    let res: ScanResponse | null = null;
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      try {
+        res = await scanStrategies({ ...payload, symbols });
+        break;
+      } catch (err) {
+        if (attempt === 0 && isGatewayTimeout(err)) {
+          await sleepMs(600);
+          continue;
+        }
+        throw err;
+      }
+    }
+    if (!res) continue;
     merged.scanned_at = res.scanned_at;
     merged.session_date = res.session_date;
     merged.timeframe = res.timeframe;
