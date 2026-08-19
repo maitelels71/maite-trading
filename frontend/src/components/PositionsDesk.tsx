@@ -26,6 +26,14 @@ function isRateLimitText(msg: string | null | undefined): boolean {
   return /(?:\b429\b|rate limit)/i.test(msg || "");
 }
 
+function retryAfterSec(err: unknown, fallback: number): number {
+  const msg = err instanceof Error ? err.message : "";
+  const m = /Retry-After (\d+)/i.exec(msg);
+  const n = m ? Number(m[1]) : fallback;
+  if (!Number.isFinite(n) || n < 15) return fallback;
+  return Math.min(90, Math.max(30, Math.round(n)));
+}
+
 function ladderRateLimited(res: TpLadderResponse): boolean {
   return res.legs.some((leg) => !leg.ok && isRateLimitText(leg.message));
 }
@@ -104,6 +112,7 @@ export function PositionsDesk() {
   const inFlight = useRef<Set<string>>(new Set());
   const retryAbort = useRef(false);
   const retryGen = useRef(0);
+  const quietUntilMs = useRef(0);
 
   useEffect(() => subscribeHoldTrader(() => setHoldTrader(readHoldTrader())), []);
 
@@ -206,6 +215,7 @@ export function PositionsDesk() {
 
   const tickWatches = useCallback(async () => {
     if (readHoldTrader() || pending || ladderBusy) return;
+    if (Date.now() < quietUntilMs.current) return;
     const active = watches.filter((w) => w.autoClose);
     if (active.length === 0) return;
 
@@ -249,13 +259,18 @@ export function PositionsDesk() {
           }
         }
       } catch (err) {
+        const raw = err instanceof Error ? err.message : "TP check failed";
+        if (isRateLimitText(raw)) {
+          const wait = retryAfterSec(err, 60);
+          quietUntilMs.current = Date.now() + wait * 1000;
+          setError(raw);
+        }
         setWatches((prev) =>
           prev.map((row) =>
             row.id === w.id
               ? {
                   ...row,
-                  lastStatus:
-                    err instanceof Error ? err.message : "TP check failed",
+                  lastStatus: raw,
                 }
               : row,
           ),
@@ -286,26 +301,63 @@ export function PositionsDesk() {
     if (!window.confirm(t("positions.confirmClose").replace("{symbol}", pos.symbol))) {
       return;
     }
-    startTransition(async () => {
-      setError(null);
+
+    retryAbort.current = false;
+    const gen = ++retryGen.current;
+    setLadderBusy(true);
+    setRetryLeft(null);
+    setError(null);
+    const sleep = (ms: number) =>
+      new Promise((resolve) => window.setTimeout(resolve, ms));
+    const stale = () => retryAbort.current || retryGen.current !== gen;
+    const payload = {
+      account_hash: pos.account_hash,
+      symbol: pos.symbol,
+      quantity: Math.abs(pos.quantity),
+      asset_type: pos.asset_type,
+      instruction: pos.close_instruction,
+      confirm_live: true as const,
+    };
+
+    void (async () => {
       try {
-        const res = await brokerClosePosition({
-          account_hash: pos.account_hash,
-          symbol: pos.symbol,
-          quantity: Math.abs(pos.quantity),
-          asset_type: pos.asset_type,
-          instruction: pos.close_instruction,
-          confirm_live: true,
-        });
-        setNote(
-          t("positions.closedNote").replace("{symbol}", pos.symbol) +
-            (res.order_id ? ` · #${res.order_id}` : ""),
-        );
-        refresh();
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Close failed");
+        for (let attempt = 0; attempt < 2; attempt += 1) {
+          if (stale()) return;
+          try {
+            const res = await brokerClosePosition(payload);
+            if (stale()) return;
+            setNote(
+              t("positions.closedNote").replace("{symbol}", pos.symbol) +
+                (res.order_id ? ` · #${res.order_id}` : ""),
+            );
+            refresh();
+            return;
+          } catch (err) {
+            if (stale()) return;
+            const raw = err instanceof Error ? err.message : "Close failed";
+            if (!isRateLimitText(raw) || attempt === 1) {
+              setError(raw);
+              return;
+            }
+            const wait = retryAfterSec(err, 60);
+            quietUntilMs.current = Date.now() + wait * 1000;
+            for (let n = wait; n > 0; n -= 1) {
+              if (stale()) return;
+              setRetryLeft(n);
+              await sleep(1000);
+            }
+            if (stale()) return;
+            setRetryLeft(null);
+            setError(null);
+          }
+        }
+      } finally {
+        if (retryGen.current === gen) {
+          setLadderBusy(false);
+          setRetryLeft(null);
+        }
       }
-    });
+    })();
   }
 
   function closeAll() {
@@ -557,7 +609,7 @@ export function PositionsDesk() {
           <div className="mt-2 flex items-start justify-between gap-2 rounded-md border border-red-200 bg-[var(--danger-soft)] px-3 py-1.5 text-xs text-[var(--danger)]">
             <span>
               {retryLeft != null
-                ? t("positions.ladderWaiting").replace("{n}", String(retryLeft))
+                ? t("positions.schwabWaiting").replace("{n}", String(retryLeft))
                 : error}
             </span>
             {retryLeft != null ? (

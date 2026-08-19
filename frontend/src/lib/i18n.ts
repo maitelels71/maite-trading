@@ -462,6 +462,8 @@ const en: Dict = {
     "Auto is on — it will market-close at TP %. Turn Auto off to park LIMIT sells instead.",
   "positions.ladderWaiting":
     "Schwab busy (429) — LIMIT not sent. Waiting {n}s, then one automatic retry. Do not click Park LIMIT again.",
+  "positions.schwabWaiting":
+    "Schwab busy (429) — waiting {n}s, then one automatic retry. Do not click Close or Park LIMIT again.",
   "positions.ladderCancel": "Cancel wait",
   "positions.ladderCancelled":
     "Wait cancelled — LIMIT was not retried. You can Park LIMIT again after a minute.",
@@ -1016,6 +1018,8 @@ const es: Dict = {
     "Auto está on — cerrará a mercado al TP %. Apaga Auto para dejar LIMIT en TOS.",
   "positions.ladderWaiting":
     "Schwab ocupado (429) — la LIMIT no se envió. Esperando {n}s y un reintento automático. No pulses Dejar LIMIT otra vez.",
+  "positions.schwabWaiting":
+    "Schwab ocupado (429) — esperando {n}s y un reintento automático. No pulses Close ni Dejar LIMIT otra vez.",
   "positions.ladderCancel": "Cancelar espera",
   "positions.ladderCancelled":
     "Espera cancelada — no se reintentó la LIMIT. Puedes Dejar LIMIT otra vez en un minuto.",
