@@ -73,6 +73,11 @@ const RATE_LIMIT_QUIET_MS = 60_000;
 const OPEN_GIVE_UP_QUIET_MS = 180_000;
 const OPEN_RETRY_WAIT_SEC = 60;
 const DESK_TOP_N = 5;
+/**
+ * In-app BUY_TO_OPEN paused (2026-08-19): Session is TOP 5 only; closes live in Positions.
+ * Set true to restore Trigger opens + Open buttons (do not delete that UI).
+ */
+const DESK_OPENS_ENABLED = false;
 const DESK_SYNC_TFS = ["1h", "1d", "15m"] as const;
 const DESK_LOOKBACK_DAYS = 25;
 const DESK_15M_LOOKBACK_DAYS = 14;
@@ -844,6 +849,7 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
 
   useEffect(() => {
     if (venue !== "schwab") return;
+    if (!DESK_OPENS_ENABLED) return;
     void loadCapital();
   }, [venue, loadCapital]);
 
@@ -866,7 +872,7 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
     if (venue !== "schwab") return;
     const heavy = deskBusy || focusBusy;
     if (wasHeavyBrokerBusy.current && !heavy) {
-      startSchwabQuiet(POST_SYNC_QUIET_MS);
+      if (DESK_OPENS_ENABLED) startSchwabQuiet(POST_SYNC_QUIET_MS);
     }
     wasHeavyBrokerBusy.current = heavy;
   }, [deskBusy, focusBusy, venue, startSchwabQuiet]);
@@ -1614,6 +1620,7 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
               {t("strategies.openNeedTrading")}
             </p>
           ) : null}
+          {DESK_OPENS_ENABLED ? (
           <label className="mt-2 flex cursor-pointer items-start gap-2 rounded-md border border-[var(--border)] bg-[var(--surface-muted)] px-2.5 py-1.5 text-[11px] leading-snug">
             <input
               type="checkbox"
@@ -1644,6 +1651,11 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
               </span>
             </span>
           </label>
+          ) : (
+            <p className="mt-2 text-[11px] leading-snug text-[var(--muted)]">
+              {t("strategies.opensPausedNote")}
+            </p>
+          )}
           {openNote ? (
             <p className="mt-1.5 text-[11px] text-[var(--ok)]">{openNote}</p>
           ) : null}
@@ -1900,6 +1912,7 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
                                         ? ` · óptimo ${plan.rangeLabel} · TP 10/20/35/50/100: $${plan.tp10}/$${plan.tp20}/$${plan.tp35}/$${plan.tp50}/$${plan.tp100}`
                                         : ""}
                                     </div>
+                                    {DESK_OPENS_ENABLED ? (
                                     <OpenPlanButton
                                       plan={plan}
                                       rowKey={rowOpenKey}
@@ -1918,6 +1931,7 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
                                       opening={openingKey === rowOpenKey}
                                       onOpen={openFromPlan}
                                     />
+                                    ) : null}
                                   </div>
                                 );
                               })()
@@ -2118,7 +2132,7 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
                     : t("strategies.openWaitSync")
                 }
                 openingKey={openingKey}
-                onOpen={openFromPlan}
+                onOpen={DESK_OPENS_ENABLED ? openFromPlan : undefined}
               />
             ))}
           </div>

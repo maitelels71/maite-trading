@@ -12,6 +12,7 @@ import {
 } from "@/lib/api";
 import {
   readHoldTrader,
+  setHoldTrader as writeHoldTrader,
   subscribeHoldTrader,
 } from "@/lib/schwab-hold";
 import {
@@ -23,7 +24,9 @@ import { isCashRthNy } from "@/lib/cash-session";
 import type { BrokerOrder, BrokerPosition, TpLadderResponse, TpWatch } from "@/lib/types";
 
 const WATCH_KEY = "maite.broker.tpWatches";
-const POLL_MS = 20_000;
+const POS_CACHE_KEY = "maite.broker.positionsCache";
+const CAPITAL_CACHE_KEY = "maite.strategies.capitalCache";
+const POLL_MS = 120_000;
 const CLOSE_RETRY_WAIT_SEC = 60;
 const CLOSE_GIVE_UP_MS = 180_000;
 const LADDER_RETRY_WAIT_SEC = 150;
@@ -45,7 +48,68 @@ function ladderRateLimited(res: TpLadderResponse): boolean {
   return res.legs.some((leg) => !leg.ok && isRateLimitText(leg.message));
 }
 
-function loadWatches(): TpWatch[] {
+function loadPosSnapshot(): {
+  positions: BrokerPosition[];
+  orders: BrokerOrder[];
+  accountLabels: string[];
+  tradingEnabled: boolean;
+} | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(POS_CACHE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw) as {
+        positions?: BrokerPosition[];
+        orders?: BrokerOrder[];
+        accountLabels?: string[];
+        tradingEnabled?: boolean;
+      };
+      if (Array.isArray(parsed.positions) && parsed.positions.length > 0) {
+        return {
+          positions: parsed.positions,
+          orders: Array.isArray(parsed.orders) ? parsed.orders : [],
+          accountLabels: Array.isArray(parsed.accountLabels)
+            ? parsed.accountLabels
+            : [],
+          tradingEnabled: Boolean(parsed.tradingEnabled),
+        };
+      }
+    }
+    const capRaw = window.localStorage.getItem(CAPITAL_CACHE_KEY);
+    if (!capRaw) return null;
+    const cap = JSON.parse(capRaw) as {
+      positions?: BrokerPosition[];
+      accounts?: { accountNumber?: string; hashValue?: string }[];
+      tradingEnabled?: boolean;
+    };
+    const positions = Array.isArray(cap.positions) ? cap.positions : [];
+    if (positions.length === 0) return null;
+    const accountLabels = (cap.accounts ?? [])
+      .map((a) => a.accountNumber)
+      .filter((n): n is string => Boolean(n && String(n).trim()));
+    return {
+      positions,
+      orders: [],
+      accountLabels,
+      tradingEnabled: Boolean(cap.tradingEnabled),
+    };
+  } catch {
+    return null;
+  }
+}
+
+function savePosSnapshot(payload: {
+  positions: BrokerPosition[];
+  orders: BrokerOrder[];
+  accountLabels: string[];
+  tradingEnabled: boolean;
+}): void {
+  try {
+    window.localStorage.setItem(POS_CACHE_KEY, JSON.stringify(payload));
+  } catch {
+    /* ignore */
+  }
+}
   try {
     const raw = localStorage.getItem(WATCH_KEY);
     if (!raw) return [];
@@ -102,10 +166,19 @@ function formatOrderWhen(iso: string | null | undefined): string {
 
 export function PositionsDesk() {
   const { t } = useLocale();
-  const [positions, setPositions] = useState<BrokerPosition[]>([]);
-  const [orders, setOrders] = useState<BrokerOrder[]>([]);
-  const [accountLabels, setAccountLabels] = useState<string[]>([]);
-  const [tradingEnabled, setTradingEnabled] = useState(false);
+  const [positions, setPositions] = useState<BrokerPosition[]>(
+    () => loadPosSnapshot()?.positions ?? [],
+  );
+  const [orders, setOrders] = useState<BrokerOrder[]>(
+    () => loadPosSnapshot()?.orders ?? [],
+  );
+  const [accountLabels, setAccountLabels] = useState<string[]>(
+    () => loadPosSnapshot()?.accountLabels ?? [],
+  );
+  const [tradingEnabled, setTradingEnabled] = useState(() => {
+    const s = loadPosSnapshot();
+    return Boolean(s?.tradingEnabled || (s?.positions.length ?? 0) > 0);
+  });
   const [error, setError] = useState<string | null>(null);
   const [ordersError, setOrdersError] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
@@ -131,6 +204,11 @@ export function PositionsDesk() {
   }, []);
 
   useEffect(() => subscribeHoldTrader(() => setHoldTrader(readHoldTrader())), []);
+
+  useEffect(() => {
+    writeHoldTrader(false);
+    setHoldTrader(false);
+  }, []);
 
   useEffect(() => {
     const sync = () => {
@@ -168,6 +246,13 @@ export function PositionsDesk() {
     saveWatches(watches);
   }, [watches]);
 
+  useEffect(() => {
+    setWatches((prev) => {
+      if (!prev.some((w) => w.autoClose)) return prev;
+      return prev.map((w) => ({ ...w, autoClose: false }));
+    });
+  }, []);
+
   const refresh = useCallback((opts?: { keepError?: boolean }) => {
     if (readHoldTrader()) {
       setHoldTrader(true);
@@ -186,7 +271,7 @@ export function PositionsDesk() {
     startTransition(async () => {
       if (!opts?.keepError) setError(null);
       try {
-        const res = await fetchBrokerPositions();
+        const res = await fetchBrokerPositions({ includeOrders: false });
         setPositions(res.positions);
         setOrders(res.orders ?? []);
         setOrdersError(res.orders_error ?? null);
@@ -195,6 +280,12 @@ export function PositionsDesk() {
           .filter((n): n is string => Boolean(n && String(n).trim()));
         setAccountLabels(labels);
         setTradingEnabled(res.trading_enabled);
+        savePosSnapshot({
+          positions: res.positions,
+          orders: res.orders ?? [],
+          accountLabels: labels,
+          tradingEnabled: res.trading_enabled,
+        });
         const best = [...(res.accounts ?? [])].sort(
           (a, b) => (b.equity ?? 0) - (a.equity ?? 0),
         )[0];
@@ -213,18 +304,24 @@ export function PositionsDesk() {
             ) + equityBit,
         );
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to load positions");
-        setPositions([]);
-        setOrders([]);
-        setOrdersError(null);
-        setAccountLabels([]);
+        const raw = err instanceof Error ? err.message : "Failed to load positions";
+        setError(raw);
+        if (isRateLimitText(raw)) {
+          startSchwabQuiet(retryAfterSec(err, CLOSE_RETRY_WAIT_SEC) * 1000);
+        }
       }
     });
-  }, [t]);
+  }, [t, startSchwabQuiet]);
 
   useEffect(() => {
-    refresh();
-  }, [refresh]);
+    const n = positions.length;
+    if (n === 0) return;
+    setNote((prev) =>
+      prev ?? t("positions.snapshotHint").replace("{n}", String(n)),
+    );
+    // First paint only — Refresh overwrites note.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const upsertWatch = useCallback(
     (pos: BrokerPosition, patch: Partial<TpWatch>) => {
@@ -257,7 +354,7 @@ export function PositionsDesk() {
   );
 
   const tickWatches = useCallback(async () => {
-    if (readHoldTrader() || pending || ladderBusy) return;
+    if (!armedConfirm || readHoldTrader() || pending || ladderBusy) return;
     if (readSchwabQuietUntil() > Date.now()) return;
     const active = watches.filter((w) => w.autoClose);
     if (active.length === 0) return;
@@ -306,6 +403,7 @@ export function PositionsDesk() {
         if (isRateLimitText(raw)) {
           const wait = retryAfterSec(err, CLOSE_RETRY_WAIT_SEC);
           startSchwabQuiet(wait * 1000);
+          setWatches((prev) => prev.map((row) => ({ ...row, autoClose: false })));
           setError(raw);
         }
         setWatches((prev) =>
@@ -341,12 +439,6 @@ export function PositionsDesk() {
       setError(t("positions.needRth"));
       return;
     }
-    if (schwabCooling) {
-      setError(
-        t("positions.closeWaitQuiet").replace("{n}", String(quietRemainSec)),
-      );
-      return;
-    }
     if (!window.confirm(t("positions.confirmClose").replace("{symbol}", pos.symbol))) {
       return;
     }
@@ -379,9 +471,10 @@ export function PositionsDesk() {
             if (stale()) return;
             setNote(
               t("positions.closedNote").replace("{symbol}", pos.symbol) +
-                (res.order_id ? ` · #${res.order_id}` : ""),
+                (res.order_id ? ` · #${res.order_id}` : "") +
+                " " +
+                t("positions.closedCheckTos"),
             );
-            refresh();
             return;
           } catch (err) {
             if (stale()) return;
@@ -389,6 +482,9 @@ export function PositionsDesk() {
             if (!isRateLimitText(raw) || attempt === 1) {
               if (isRateLimitText(raw)) {
                 startSchwabQuiet(CLOSE_GIVE_UP_MS);
+                setWatches((prev) =>
+                  prev.map((row) => ({ ...row, autoClose: false })),
+                );
                 setError(
                   t("positions.closeNotSent429") +
                     " " +
@@ -879,21 +975,11 @@ export function PositionsDesk() {
                               pending ||
                               ladderBusy ||
                               !tradingEnabled ||
-                              !cashRth ||
-                              schwabCooling
+                              !cashRth
                             }
                             onClick={() => closeNow(pos)}
                             className="rounded border border-[var(--border)] px-2 py-1 text-[10px] font-medium hover:bg-[var(--hover)] disabled:opacity-40"
-                            title={
-                              !cashRth
-                                ? t("positions.needRth")
-                                : schwabCooling
-                                  ? t("positions.closeWaitQuiet").replace(
-                                      "{n}",
-                                      String(quietRemainSec),
-                                    )
-                                  : undefined
-                            }
+                            title={!cashRth ? t("positions.needRth") : undefined}
                           >
                             {t("positions.closeNow")}
                           </button>

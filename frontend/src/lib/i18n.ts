@@ -280,7 +280,7 @@ const en: Dict = {
     "Choose one strategy to deep-scan — or check a TOP 5 row above.",
   "session.deskTop5": "Desk TOP 5",
   "session.deskTop5Hint":
-    "Ranks core names by confluence. After TOP 5, wait the Open countdown (Auto off), then Trigger and Open once. Do not Sync again before the order.",
+    "Ranks core names by confluence. Entries go in TOS. After FILL, Positions → Close. Auto off if you need to exit.",
   "session.deskTop5HintFutures":
     "Ranks MNQ/MES/FX/GC by confluence whenever Globex is open. Syncs HTF+LTF through now (not a truncated last-hours window). Auto 2.5m re-syncs the same TFs.",
   "session.liveScan": "Sync & Scan",
@@ -363,6 +363,8 @@ const en: Dict = {
   "strategies.capitalLoading": "Loading capital…",
   "strategies.capitalEquity": "Equity {eq} · 10% {risk} · cash {cash}",
   "strategies.capitalNeed": "Load capital to size opens (10% flag · 50% max).",
+  "strategies.opensPausedNote":
+    "In-app Open is paused. Use TOP 5 here, place entries in TOS, then Positions → Trigger closes → Close now.",
   "strategies.armOpens": "Trigger opens",
   "strategies.armOpensBody":
     "1) Auto off. Sync & TOP 5. 2) Wait the red countdown — do not Open yet. 3) Check Trigger. 4) Open once (BUY_TO_OPEN only). 5) After FILL: Positions → Trigger closes. Do not Sync/Refresh until the order is in TOS.",
@@ -425,7 +427,11 @@ const en: Dict = {
 
   "positions.title": "Schwab positions",
   "positions.hint":
-    "Pick one exit: Auto (market when TP % hits) or Park LIMIT (resting sells in TOS). Not both. Close now always exits now.",
+    "Auto mkt polls Schwab — leave it off to Close. Do not Refresh when you only need to exit. Close now sends SELL_TO_CLOSE from this snapshot.",
+  "positions.snapshotHint":
+    "Snapshot {n} position(s) — not a live Refresh. Trigger closes + Close now. Check TOS → Orders. Refresh only if this list is wrong.",
+  "positions.closedCheckTos":
+    "Check TOS → Orders. This desk does not Refresh after Close (that 429s Schwab).",
   "positions.refresh": "Refresh",
   "positions.refreshing": "Loading…",
   "positions.holdOpen":
@@ -442,7 +448,8 @@ const en: Dict = {
     "Loaded {n} positions · {accounts} account(s) · {orders} orders",
   "positions.accountsLabel": "Account #",
   "positions.colAccount": "Account",
-  "positions.emptyHint": "Refresh to pull open positions from Schwab.",
+  "positions.emptyHint":
+    "If this list is empty, Refresh once when Schwab is quiet. Then Close without Refreshing again.",
   "positions.noPositions": "No open positions yet.",
   "positions.noPositionsHint":
     "Park LIMIT and Close now appear on each open row. A LIMIT buy is not a position until it FILLS — look at Working orders below, or TOS → Orders, then Refresh.",
@@ -845,7 +852,7 @@ const es: Dict = {
     "Elige una estrategia para deep-scan — o marca una fila del TOP 5 de arriba.",
   "session.deskTop5": "Desk TOP 5",
   "session.deskTop5Hint":
-    "Rankea nombres core por confluencia. Tras TOP 5, espera la cuenta de Open (Auto off), luego Trigger y Open una vez. No hagas Sync otra vez antes de la orden.",
+    "Rankea nombres core por confluencia. Las entradas van en TOS. Tras FILL, Positions → Close. Auto off si vas a salir.",
   "session.deskTop5HintFutures":
     "Rankea MNQ/MES/FX/GC por confluencia cuando Globex está abierto. Sync HTF+LTF hasta ahora (no una ventana recortada de las últimas horas). Auto 2.5m re-sync los mismos TFs.",
   "session.liveScan": "Sync & Scan",
@@ -928,6 +935,8 @@ const es: Dict = {
   "strategies.capitalLoading": "Cargando capital…",
   "strategies.capitalEquity": "Equity {eq} · 10% {risk} · cash {cash}",
   "strategies.capitalNeed": "Carga capital para dimensionar (flag 10% · máx 50%).",
+  "strategies.opensPausedNote":
+    "Open en el app está pausado. TOP 5 aquí, entradas en TOS, luego Positions → Trigger cierres → Close now.",
   "strategies.armOpens": "Trigger opens",
   "strategies.armOpensBody":
     "1) Auto off. Sync & TOP 5. 2) Espera la cuenta roja — aún no Open. 3) Activa Trigger. 4) Open una vez (solo BUY_TO_OPEN). 5) Tras FILL: Positions → Trigger cierres. No Sync/Refresh hasta que la orden esté en TOS.",
@@ -990,7 +999,11 @@ const es: Dict = {
 
   "positions.title": "Posiciones Schwab",
   "positions.hint":
-    "Elige un cierre: Auto (mercado al TP %) o Dejar LIMIT (venta en TOS). No los dos. Cerrar ahora sale ya.",
+    "Auto mkt consulta Schwab — déjalo off para Close. No hagas Refresh si solo quieres salir. Close now envía SELL_TO_CLOSE de este snapshot.",
+  "positions.snapshotHint":
+    "Snapshot {n} posición(es) — no es un Refresh live. Trigger cierres + Close now. Mira TOS → Orders. Refresh solo si esta lista está mal.",
+  "positions.closedCheckTos":
+    "Mira TOS → Orders. Este desk no hace Refresh tras Close (eso 429a Schwab).",
   "positions.refresh": "Actualizar",
   "positions.refreshing": "Cargando…",
   "positions.holdOpen":
@@ -1006,7 +1019,8 @@ const es: Dict = {
   "positions.loaded": "{n} posiciones · {accounts} cuenta(s) · {orders} órdenes",
   "positions.accountsLabel": "Cuenta #",
   "positions.colAccount": "Cuenta",
-  "positions.emptyHint": "Actualiza para traer posiciones abiertas de Schwab.",
+  "positions.emptyHint":
+    "Si la lista está vacía, Refresh una vez cuando Schwab esté quieto. Luego Close sin volver a Refresh.",
   "positions.noPositions": "Aún no hay posiciones abiertas.",
   "positions.noPositionsHint":
     "Dejar LIMIT y Cerrar ahora salen en cada fila. Un LIMIT de compra no es posición hasta el FILL — mira Órdenes working abajo, o TOS → Orders, y dale Refresh.",
