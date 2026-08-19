@@ -21,14 +21,12 @@ router = APIRouter(prefix="/market-data", tags=["market-data"])
 
 def should_fetch_provider_candles(
     *,
-    force_refresh: bool,
-    data_provider: str,
-    cached_count: int,
+    force_refresh: bool,  # noqa: ARG001
+    data_provider: str,  # noqa: ARG001
+    cached_count: int,  # noqa: ARG001
 ) -> bool:
-    """Schwab is rate-limited; reuse cache unless the desk asked for a hard refresh."""
-    if force_refresh or cached_count <= 0:
-        return True
-    return data_provider != DataProviderName.SCHWAB.value
+    """Options/futures candles are Yahoo-backed; always refresh when the desk syncs."""
+    return True
 
 
 class CandleListResponse(BaseModel):

@@ -1,4 +1,4 @@
-"""Yahoo Finance chart adapter — futures analysis candles (no API key)."""
+"""Yahoo Finance chart adapter — futures and equity/ETF analysis candles (no API key)."""
 
 from __future__ import annotations
 
@@ -72,6 +72,16 @@ _MAX_LOOKBACK = {
 }
 
 
+def yahoo_equity_symbol(symbol: str) -> str:
+    """Yahoo equity/ETF ticker (BRK.B → BRK-B). Do not map stocks to =F futures."""
+    raw = str(symbol or "").strip().upper()
+    return raw.replace(".", "-")
+
+
+def yahoo_chart_symbol(symbol: str, *, futures: bool) -> str:
+    return yahoo_futures_symbol(symbol) if futures else yahoo_equity_symbol(symbol)
+
+
 def yahoo_futures_symbol(symbol: str) -> str:
     """Map desk roots / contract codes to Yahoo continuous futures (e.g. MNQ=F)."""
     raw = symbol.strip().upper()
@@ -130,8 +140,22 @@ class YahooProvider:
         end: datetime,
         *,
         desk_ticker: str | None = None,
+        as_futures: bool = True,
     ) -> list[Candle]:
-        yahoo_symbol = yahoo_futures_symbol(symbol)
+        if not as_futures and timeframe == "1h":
+            # Keep RTH Hora (9:30–10:00) like the old Schwab 30m aggregate.
+            raw_30m = self.get_historical_candles(
+                symbol,
+                "30m",
+                start,
+                end,
+                desk_ticker=desk_ticker,
+                as_futures=False,
+            )
+            from app.indicators.aggregate import aggregate_rth_hora
+
+            return aggregate_rth_hora(raw_30m, out_timeframe="1h")
+        yahoo_symbol = yahoo_chart_symbol(symbol, futures=as_futures)
         interval = _INTERVAL.get(timeframe, "5m")
         start, end = _aware(start), _aware(end)
         cap = _MAX_LOOKBACK.get(interval)

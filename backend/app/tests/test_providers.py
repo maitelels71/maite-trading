@@ -14,7 +14,13 @@ from app.providers.mock import MockMarketDataProvider
 from app.providers.normalize import normalize_candle, normalize_candles
 from app.providers.schwab import SchwabProvider
 from app.providers.tradeadvocate import TradeAdvocateProvider
-from app.providers.yahoo import YahooProvider, extract_yahoo_candles, yahoo_futures_symbol
+from app.providers.yahoo import (
+    YahooProvider,
+    extract_yahoo_candles,
+    yahoo_chart_symbol,
+    yahoo_equity_symbol,
+    yahoo_futures_symbol,
+)
 
 
 def test_normalize_ms_epoch_keeps_utc_tz() -> None:
@@ -71,30 +77,43 @@ def test_mock_provider_filters_range() -> None:
     assert candles[0].close == Decimal("2")
 
 
-def test_schwab_parses_pricehistory_with_mock_transport() -> None:
+def test_options_candles_use_yahoo_equity_not_schwab_pricehistory() -> None:
+    seen: dict[str, str] = {}
+
     def handler(request: httpx.Request) -> httpx.Response:
-        assert "pricehistory" in str(request.url)
+        seen["url"] = str(request.url)
         return httpx.Response(
             200,
             json={
-                "candles": [
-                    {
-                        "datetime": 1735826400000,
-                        "open": 100,
-                        "high": 101,
-                        "low": 99,
-                        "close": 100.5,
-                        "volume": 50,
-                    }
-                ]
+                "chart": {
+                    "result": [
+                        {
+                            "timestamp": [1735826400],
+                            "indicators": {
+                                "quote": [
+                                    {
+                                        "open": [100.0],
+                                        "high": [101.0],
+                                        "low": [99.0],
+                                        "close": [100.5],
+                                        "volume": [50],
+                                    }
+                                ]
+                            },
+                        }
+                    ],
+                    "error": None,
+                }
             },
         )
 
-    transport = httpx.MockTransport(handler)
-    client = httpx.Client(transport=transport, base_url="https://example.test")
+    client = httpx.Client(
+        transport=httpx.MockTransport(handler),
+        base_url="https://query1.finance.yahoo.com",
+    )
     provider = SchwabProvider(
         Settings(),
-        client=client,
+        yahoo=YahooProvider(Settings(), client=client),
         access_token="test-token",
     )
     candles = provider.get_historical_candles(
@@ -103,34 +122,11 @@ def test_schwab_parses_pricehistory_with_mock_transport() -> None:
         datetime(2026, 1, 2, tzinfo=UTC),
         datetime(2026, 1, 3, tzinfo=UTC),
     )
+    assert "chart/SPY" in seen["url"]
+    assert "pricehistory" not in seen["url"]
+    assert "SPY=F" not in seen["url"]
     assert len(candles) == 1
     assert candles[0].open == Decimal("100")
-
-
-def test_schwab_futures_requests_extended_hours() -> None:
-    seen: dict[str, str] = {}
-
-    def handler(request: httpx.Request) -> httpx.Response:
-        seen["url"] = str(request.url)
-        return httpx.Response(200, json={"candles": []})
-
-    client = httpx.Client(
-        transport=httpx.MockTransport(handler),
-        base_url="https://example.test",
-    )
-    provider = SchwabProvider(
-        Settings(),
-        client=client,
-        access_token="test-token",
-    )
-    provider.get_historical_candles(
-        "/MNQ",
-        "5m",
-        datetime(2026, 1, 2, tzinfo=UTC),
-        datetime(2026, 1, 3, tzinfo=UTC),
-    )
-    assert "symbol=%2FMNQ" in seen["url"] or "symbol=/MNQ" in seen["url"]
-    assert "needExtendedHoursData=true" in seen["url"]
 
 
 def test_schwab_requires_credentials() -> None:
@@ -156,6 +152,14 @@ def test_yahoo_futures_symbol_maps_roots_and_contracts() -> None:
     assert yahoo_futures_symbol("AUDUSD") == "6A=F"
     assert yahoo_futures_symbol("GC") == "GC=F"
     assert yahoo_futures_symbol("GOLD") == "GC=F"
+
+
+def test_yahoo_equity_symbol_does_not_append_futures_suffix() -> None:
+    assert yahoo_equity_symbol("GOOGL") == "GOOGL"
+    assert yahoo_equity_symbol("SPY") == "SPY"
+    assert yahoo_equity_symbol("BRK.B") == "BRK-B"
+    assert yahoo_chart_symbol("GOOGL", futures=False) == "GOOGL"
+    assert yahoo_chart_symbol("MNQ", futures=True) == "MNQ=F"
 
 
 def test_yahoo_parses_chart_and_keeps_desk_ticker() -> None:

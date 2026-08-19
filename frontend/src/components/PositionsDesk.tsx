@@ -186,6 +186,7 @@ export function PositionsDesk() {
   const [note, setNote] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const [ladderBusy, setLadderBusy] = useState(false);
+  const [closingKey, setClosingKey] = useState<string | null>(null);
   const [retryLeft, setRetryLeft] = useState<number | null>(null);
   const [watches, setWatches] = useState<TpWatch[]>(() => loadWatches());
   const [armedConfirm, setArmedConfirm] = useState(false);
@@ -446,15 +447,12 @@ export function PositionsDesk() {
     }
 
     upsertWatch(pos, { autoClose: false });
-
-    retryAbort.current = false;
-    const gen = ++retryGen.current;
-    setLadderBusy(true);
+    retryAbort.current = true;
+    retryGen.current += 1;
     setRetryLeft(null);
+    setLadderBusy(false);
+    setClosingKey(watchId(pos));
     setError(null);
-    const sleep = (ms: number) =>
-      new Promise((resolve) => window.setTimeout(resolve, ms));
-    const stale = () => retryAbort.current || retryGen.current !== gen;
     const payload = {
       account_hash: pos.account_hash,
       symbol: pos.symbol,
@@ -466,54 +464,27 @@ export function PositionsDesk() {
 
     void (async () => {
       try {
-        for (let attempt = 0; attempt < 2; attempt += 1) {
-          if (stale()) return;
-          try {
-            const res = await brokerClosePosition(payload);
-            if (stale()) return;
-            setNote(
-              t("positions.closedNote").replace("{symbol}", pos.symbol) +
-                (res.order_id ? ` · #${res.order_id}` : "") +
-                " " +
-                t("positions.closedCheckTos"),
-            );
-            return;
-          } catch (err) {
-            if (stale()) return;
-            const raw = err instanceof Error ? err.message : "Close failed";
-            if (!isRateLimitText(raw) || attempt === 1) {
-              if (isRateLimitText(raw)) {
-                startSchwabQuiet(CLOSE_GIVE_UP_MS);
-                setWatches((prev) =>
-                  prev.map((row) => ({ ...row, autoClose: false })),
-                );
-                setError(
-                  t("positions.closeNotSent429") +
-                    " " +
-                    t("positions.closeNotSent429Next"),
-                );
-              } else {
-                setError(raw);
-              }
-              return;
-            }
-            const wait = retryAfterSec(err, CLOSE_RETRY_WAIT_SEC);
-            startSchwabQuiet(wait * 1000);
-            for (let n = wait; n > 0; n -= 1) {
-              if (stale()) return;
-              setRetryLeft(n);
-              await sleep(1000);
-            }
-            if (stale()) return;
-            setRetryLeft(null);
-            setError(null);
-          }
+        const res = await brokerClosePosition(payload);
+        setNote(
+          t("positions.closedNote").replace("{symbol}", pos.symbol) +
+            (res.order_id ? ` · #${res.order_id}` : "") +
+            " " +
+            t("positions.closedCheckTos"),
+        );
+      } catch (err) {
+        const raw = err instanceof Error ? err.message : "Close failed";
+        if (isRateLimitText(raw)) {
+          setWatches((prev) => prev.map((row) => ({ ...row, autoClose: false })));
+          setError(
+            t("positions.closeNotSent429") +
+              " " +
+              t("positions.closeNotSent429Next"),
+          );
+        } else {
+          setError(raw);
         }
       } finally {
-        if (retryGen.current === gen) {
-          setLadderBusy(false);
-          setRetryLeft(null);
-        }
+        setClosingKey(null);
       }
     })();
   }
@@ -735,7 +706,6 @@ export function PositionsDesk() {
     retryGen.current += 1;
     setRetryLeft(null);
     setLadderBusy(false);
-    startSchwabQuiet(90_000);
     setError(t("positions.ladderCancelled"));
   }
 
@@ -975,7 +945,7 @@ export function PositionsDesk() {
                             type="button"
                             disabled={
                               pending ||
-                              ladderBusy ||
+                              closingKey === id ||
                               !tradingEnabled ||
                               !cashRth
                             }

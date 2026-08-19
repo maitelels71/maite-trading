@@ -280,7 +280,7 @@ const en: Dict = {
     "Choose one strategy to deep-scan — or check a TOP 5 row above.",
   "session.deskTop5": "Desk TOP 5",
   "session.deskTop5Hint":
-    "Ranks core names by confluence. Entries go in TOS. After FILL, Positions → Close. Auto off if you need to exit.",
+    "Ranks core names by confluence (Yahoo candles). Then Trigger opens and Open once on Schwab. Auto off. Do not Refresh Positions until the order is in TOS.",
   "session.deskTop5HintFutures":
     "Ranks MNQ/MES/FX/GC by confluence whenever Globex is open. Syncs HTF+LTF through now (not a truncated last-hours window). Auto 2.5m re-syncs the same TFs.",
   "session.liveScan": "Sync & Scan",
@@ -367,7 +367,7 @@ const en: Dict = {
     "In-app Open is paused. Use TOP 5 here, place entries in TOS, then Positions → Trigger closes → Close now.",
   "strategies.armOpens": "Trigger opens",
   "strategies.armOpensBody":
-    "1) Auto off. Sync & TOP 5. 2) Wait the red countdown — do not Open yet. 3) Check Trigger. 4) Open once (BUY_TO_OPEN only). 5) After FILL: Positions → Trigger closes. Do not Sync/Refresh until the order is in TOS.",
+    "1) Auto off. Sync & TOP 5 (Yahoo candles). 2) Check Trigger. 3) Open once (Schwab BUY_TO_OPEN). 4) After FILL: Positions → Trigger closes. Do not Refresh until TOS shows the order.",
   "strategies.openSchwab": "Open {n}× @ {px}",
   "strategies.openTooRich":
     "1ct {cost} = {pct}% of equity. Consider ≤10% ({risk}). Open ≤50% needs {need50} equity.",
@@ -481,7 +481,7 @@ const en: Dict = {
     "Schwab busy (429) — waiting {n}s, then one automatic retry. Do not click Close or Park LIMIT again.",
   "positions.ladderCancel": "Cancel wait",
   "positions.ladderCancelled":
-    "Wait cancelled — order was not retried. Wait the cool-down before Close / Park again, or use TOS.",
+    "Wait cancelled. Close now is free to send — or SELL_TO_CLOSE in TOS.",
   "positions.ladderRateLimit":
     "Schwab still busy — LIMIT not in TOS. Wait a minute, then Park LIMIT once.",
   "positions.ladderHint":
@@ -852,7 +852,7 @@ const es: Dict = {
     "Elige una estrategia para deep-scan — o marca una fila del TOP 5 de arriba.",
   "session.deskTop5": "Desk TOP 5",
   "session.deskTop5Hint":
-    "Rankea nombres core por confluencia. Las entradas van en TOS. Tras FILL, Positions → Close. Auto off si vas a salir.",
+    "Rankea nombres core por confluencia (velas Yahoo). Luego Trigger opens y Open una vez en Schwab. Auto off. No Refresh en Positions hasta que la orden esté en TOS.",
   "session.deskTop5HintFutures":
     "Rankea MNQ/MES/FX/GC por confluencia cuando Globex está abierto. Sync HTF+LTF hasta ahora (no una ventana recortada de las últimas horas). Auto 2.5m re-sync los mismos TFs.",
   "session.liveScan": "Sync & Scan",
@@ -939,7 +939,7 @@ const es: Dict = {
     "Open en el app está pausado. TOP 5 aquí, entradas en TOS, luego Positions → Trigger cierres → Close now.",
   "strategies.armOpens": "Trigger opens",
   "strategies.armOpensBody":
-    "1) Auto off. Sync & TOP 5. 2) Espera la cuenta roja — aún no Open. 3) Activa Trigger. 4) Open una vez (solo BUY_TO_OPEN). 5) Tras FILL: Positions → Trigger cierres. No Sync/Refresh hasta que la orden esté en TOS.",
+    "1) Auto off. Sync & TOP 5 (velas Yahoo). 2) Activa Trigger. 3) Open una vez (BUY_TO_OPEN Schwab). 4) Tras FILL: Positions → Trigger cierres. No Refresh hasta que TOS muestre la orden.",
   "strategies.openSchwab": "Abrir {n}× @ {px}",
   "strategies.openTooRich":
     "1ct {cost} = {pct}% del equity. Considerar ≤10% ({risk}). Open ≤50% pide {need50} de equity.",
@@ -1052,7 +1052,7 @@ const es: Dict = {
     "Schwab ocupado (429) — esperando {n}s y un reintento automático. No pulses Close ni Dejar LIMIT otra vez.",
   "positions.ladderCancel": "Cancelar espera",
   "positions.ladderCancelled":
-    "Espera cancelada — no se reintentó. Espera el enfriamiento antes de Close / Dejar LIMIT, o usa TOS.",
+    "Espera cancelada. Close now puede enviar — o SELL_TO_CLOSE en TOS.",
   "positions.ladderRateLimit":
     "Schwab sigue ocupado — la LIMIT no está en TOS. Espera un minuto y pulsa Dejar LIMIT una vez.",
   "positions.ladderHint":

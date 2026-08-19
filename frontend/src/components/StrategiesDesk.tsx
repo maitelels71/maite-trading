@@ -74,10 +74,10 @@ const OPEN_GIVE_UP_QUIET_MS = 180_000;
 const OPEN_RETRY_WAIT_SEC = 60;
 const DESK_TOP_N = 5;
 /**
- * In-app BUY_TO_OPEN paused (2026-08-19): Session is TOP 5 only; closes live in Positions.
- * Set true to restore Trigger opens + Open buttons (do not delete that UI).
+ * Trigger opens + Open buttons. Candles for Options TOP 5 come from Yahoo;
+ * Schwab is only used for capital / BUY_TO_OPEN / Close.
  */
-const DESK_OPENS_ENABLED = false;
+const DESK_OPENS_ENABLED = true;
 const DESK_SYNC_TFS = ["1h", "1d", "15m"] as const;
 const DESK_LOOKBACK_DAYS = 25;
 const DESK_15M_LOOKBACK_DAYS = 14;
@@ -872,7 +872,7 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
     if (venue !== "schwab") return;
     const heavy = deskBusy || focusBusy;
     if (wasHeavyBrokerBusy.current && !heavy) {
-      if (DESK_OPENS_ENABLED) startSchwabQuiet(POST_SYNC_QUIET_MS);
+      startSchwabQuiet(OPEN_QUIET_MS);
     }
     wasHeavyBrokerBusy.current = heavy;
   }, [deskBusy, focusBusy, venue, startSchwabQuiet]);

@@ -12,9 +12,8 @@ from app.core.logging import get_logger
 from app.domain.candles import Candle
 from app.domain.enums import DataProviderName
 from app.providers.exceptions import ProviderNotConfiguredError
-from app.providers.http_utils import raise_for_provider_response
-from app.providers.normalize import normalize_candles
-from app.providers.schwab_oauth import force_refresh_token, get_valid_access_token
+from app.providers.schwab_oauth import get_valid_access_token
+from app.providers.yahoo import YahooProvider
 
 logger = get_logger(__name__)
 
@@ -31,12 +30,14 @@ class SchwabProvider:
         *,
         client: httpx.Client | None = None,
         access_token: str | None = None,
+        yahoo: YahooProvider | None = None,
     ) -> None:
         self._config = config or settings
         self._client = client
         self._access_token = access_token
         self._injected_token = access_token is not None
         self._authenticated = access_token is not None
+        self._yahoo = yahoo
 
     @property
     def name(self) -> DataProviderName:
@@ -86,47 +87,16 @@ class SchwabProvider:
         start: datetime,
         end: datetime,
     ) -> list[Candle]:
-        self.ensure_authenticated()
-        # Schwab has no native 60m bar — fetch 30m and aggregate to 1h.
-        fetch_tf = "30m" if timeframe == "1h" else timeframe
-        freq_type, frequency = _schwab_frequency_params(fetch_tf)
-        # Schwab matrix: periodType=day only allows frequencyType=minute;
-        # daily/weekly need month|year|ytd.
-        period_type = _schwab_period_type(freq_type)
-        # Index futures need Globex hours; cash equities stay RTH-only.
-        extended = "true" if symbol.startswith("/") else "false"
-        params: dict[str, Any] = {
-            "symbol": symbol,
-            "periodType": period_type,
-            "frequencyType": freq_type,
-            "frequency": frequency,
-            "startDate": int(start.timestamp() * 1000),
-            "endDate": int(end.timestamp() * 1000),
-            "needExtendedHoursData": extended,
-        }
-        client = self._get_client()
-        response = client.get("/pricehistory", params=params)
-        if response.status_code == 401 and not self._injected_token:
-            logger.warning("schwab_pricehistory_401 retrying with fresh token")
-            self._reset_client()
-            try:
-                force_refresh_token(self._config)
-            except Exception:  # noqa: BLE001
-                logger.exception("schwab_401_refresh_failed")
-            self._access_token = None
-            self.authenticate()
-            response = self._get_client().get("/pricehistory", params=params)
-        raise_for_provider_response(response, provider="schwab")
-        payload = response.json()
-        rows = _extract_schwab_candles(payload)
-        candles = normalize_candles(rows, ticker=symbol, timeframe=fetch_tf)
-        if timeframe == "1h":
-            from app.indicators.aggregate import aggregate_rth_hora
-
-            # Session-aligned Hora (keeps 9:30–10:00). Clock-hour buckets hide
-            # the open in a 9:00 bar that RTH filters drop → false CR/E signals.
-            return aggregate_rth_hora(candles, out_timeframe="1h")
-        return candles
+        """Options TOP 5 candles from Yahoo so Schwab quota is free for orders."""
+        yahoo = self._yahoo or YahooProvider(self._config)
+        return yahoo.get_historical_candles(
+            symbol,
+            timeframe,
+            start,
+            end,
+            desk_ticker=symbol,
+            as_futures=False,
+        )
 
 
 def _schwab_frequency_params(timeframe: str) -> tuple[str, int]:
