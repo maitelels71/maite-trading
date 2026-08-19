@@ -14,6 +14,8 @@ from app.strategies.ml02_single_candle_mitigation import (
     Ml02SingleCandleMitigationStrategy,
     OrderBlock,
     _find_impulse_fvg,
+    _htf_bias_and_zones,
+    _inducement_swept,
     find_scm_in_ob,
     is_bearish_scm,
     is_bullish_scm,
@@ -197,6 +199,8 @@ def test_ml02_evaluate_bull_scm_in_demand_ob() -> None:
         assert "ob" in result.trades[0].setup
         assert "liquidity" in result.trades[0].setup
         assert "scm" in result.trades[0].setup
+        assert "bos@" not in result.signals[0].reason
+        assert "BOS " in result.signals[0].reason
 
 
 def test_ml02_evaluate_runs_empty_ltf() -> None:
@@ -275,3 +279,58 @@ def test_ml02_backtest_walks_full_range_not_only_tail() -> None:
     if result.trades:
         assert result.metrics.total_trades >= 1
         assert result.trades[0].profit_loss is not None
+
+
+def test_bos_stays_on_first_break_not_later_bars() -> None:
+    """Bars that stay through an already-broken swing are continuation, not a new BOS."""
+    base = datetime(2026, 8, 3, 9, 0, tzinfo=ET)
+    # Swing high at i=5 (100), first close through it at i=8, then range above.
+    rows = [
+        ("96", "97", "95.5", "96.5"),
+        ("96.5", "97.5", "96", "97"),
+        ("97", "98", "96.5", "97.2"),
+        ("97.2", "98.2", "96.8", "97.5"),
+        ("97.5", "99", "97", "98.5"),
+        ("98.5", "100", "98", "99.2"),  # swing high 100
+        ("99", "99.4", "98.2", "98.6"),
+        ("98.6", "99.2", "97.8", "98.4"),
+        ("98.4", "101.2", "98.2", "101.0"),  # BOS close > 100
+        ("101.0", "101.6", "100.4", "101.2"),
+        ("101.2", "101.8", "100.6", "101.1"),
+        ("101.1", "101.7", "100.5", "101.0"),
+        ("101.0", "101.5", "100.4", "100.8"),
+        ("100.8", "101.4", "100.3", "100.6"),
+    ]
+    htf = [
+        _c(base + timedelta(minutes=15 * i), *vals) for i, vals in enumerate(rows)
+    ]
+
+    bias_at_bos, zones_at_bos, _ = _htf_bias_and_zones(
+        htf, left=2, right=2, end_index=8
+    )
+    bias_later, zones_later, note_later = _htf_bias_and_zones(
+        htf, left=2, right=2, end_index=13
+    )
+    assert bias_later == "bull"
+    assert zones_later
+    if zones_at_bos:
+        assert zones_at_bos[0].bos_index == zones_later[0].bos_index
+    assert zones_later[0].bos_index <= 8
+    assert "bos@" not in note_later
+    assert "BOS " in note_later
+    assert "ET" in note_later
+
+
+def test_inducement_fails_when_path_too_short() -> None:
+    ob = OrderBlock(
+        side="bear",
+        top=Decimal("110"),
+        bottom=Decimal("108"),
+        index=3,
+        bos_index=5,
+    )
+    base = datetime(2026, 8, 3, 10, 0, tzinfo=ET)
+    htf = [_c(base + timedelta(minutes=15 * i), "100", "101", "99", "100") for i in range(8)]
+    ok, note = _inducement_swept(htf, ob, before_index=6)
+    assert ok is False
+    assert note == "no_inducement_path"

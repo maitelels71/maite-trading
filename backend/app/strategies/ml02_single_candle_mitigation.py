@@ -47,6 +47,10 @@ def _local(ts: datetime, tz: ZoneInfo) -> datetime:
     return ts.astimezone(tz)
 
 
+def _clock_et(ts: datetime, tz: ZoneInfo) -> str:
+    return _local(ts, tz).strftime("%H:%M")
+
+
 def _swing_highs(candles: list[Candle], left: int = 2, right: int = 2) -> list[int]:
     out: list[int] = []
     n = len(candles)
@@ -240,12 +244,17 @@ def _htf_bias_and_zones(
     left: int,
     right: int,
     end_index: int | None = None,
+    tz: ZoneInfo | None = None,
+    min_impulse_bars: int = 3,
 ) -> tuple[Bias, list[OrderBlock], str]:
     """
-    Bias from last BOS + mitigation zones: classic OB and/or impulse FVG.
+    Bias from the last *true* BOS (first close that breaks a newer swing),
+    plus mitigation zones: classic OB and/or impulse FVG.
 
+    Continuation bars that stay through an already-broken swing are not a new BOS.
     When ``end_index`` is set, only bars ``0..end_index`` are used (causal as-of).
     """
+    zone_tz = tz or ZoneInfo("America/New_York")
     if end_index is not None:
         htf = htf[: max(0, end_index) + 1]
     if len(htf) < left + right + 8:
@@ -261,25 +270,38 @@ def _htf_bias_and_zones(
     last_swing_i: int | None = None
 
     for i in range(left + right, len(htf)):
+        newest_bull_sh: int | None = None
         for sh in highs:
             if sh >= i:
                 break
             if htf[i].close > htf[sh].high:
-                if last_bos_i is None or i >= last_bos_i:
-                    last_bos_i = i
-                    last_bias = "bull"
-                    last_swing_i = sh
+                newest_bull_sh = sh
+        newest_bear_sl: int | None = None
         for sl in lows:
             if sl >= i:
                 break
             if htf[i].close < htf[sl].low:
-                if last_bos_i is None or i >= last_bos_i:
-                    last_bos_i = i
-                    last_bias = "bear"
-                    last_swing_i = sl
+                newest_bear_sl = sl
+
+        bull_rank = newest_bull_sh if newest_bull_sh is not None else -1
+        bear_rank = newest_bear_sl if newest_bear_sl is not None else -1
+        if newest_bull_sh is not None and bull_rank >= bear_rank:
+            sh = newest_bull_sh
+            if last_bias != "bull" or last_swing_i is None or sh > last_swing_i:
+                last_bos_i = i
+                last_bias = "bull"
+                last_swing_i = sh
+        elif newest_bear_sl is not None:
+            sl = newest_bear_sl
+            if last_bias != "bear" or last_swing_i is None or sl > last_swing_i:
+                last_bos_i = i
+                last_bias = "bear"
+                last_swing_i = sl
 
     if last_bos_i is None or last_swing_i is None or last_bias == "range":
         return "range", [], "no_bos"
+    if last_bos_i - last_swing_i < min_impulse_bars:
+        return "range", [], "impulse_too_short"
 
     search_from = last_swing_i
     search_to = last_bos_i
@@ -324,9 +346,14 @@ def _htf_bias_and_zones(
     )
     if fvg is not None:
         zones.append(fvg)
-    note = f"bos@{last_bos_i}_ob@{ob_i}"
+    bos_c = htf[last_bos_i]
+    ob_c = htf[ob_i]
+    note = (
+        f"BOS {_clock_et(bos_c.timestamp, zone_tz)} ET "
+        f"@ {bos_c.close} · OB {_clock_et(ob_c.timestamp, zone_tz)} ET"
+    )
     if fvg is not None:
-        note += f"_fvg@{fvg.index}"
+        note += f" · FVG {fvg.bottom}-{fvg.top}"
     return last_bias, zones, note
 
 
@@ -336,10 +363,17 @@ def _htf_bias_and_ob(
     left: int,
     right: int,
     end_index: int | None = None,
+    tz: ZoneInfo | None = None,
+    min_impulse_bars: int = 3,
 ) -> tuple[Bias, OrderBlock | None, str]:
     """Backward-compatible: primary OB (first zone). Prefer ``_htf_bias_and_zones``."""
     bias, zones, note = _htf_bias_and_zones(
-        htf, left=left, right=right, end_index=end_index
+        htf,
+        left=left,
+        right=right,
+        end_index=end_index,
+        tz=tz,
+        min_impulse_bars=min_impulse_bars,
     )
     return bias, (zones[0] if zones else None), note
 
@@ -349,36 +383,39 @@ def _inducement_swept(
     ob: OrderBlock,
     *,
     before_index: int,
+    tz: ZoneInfo | None = None,
 ) -> tuple[bool, str]:
     """
-    After BOS and before SCM, look for an internal liquidity sweep
-    (engineering / inducement) away from mid-OB traps.
+    After BOS and before SCM, require an internal liquidity sweep
+    (engineering / inducement) — not a mid-OB trap on the impulse itself.
     """
+    zone_tz = tz or ZoneInfo("America/New_York")
     start = ob.bos_index + 1
     end = min(before_index, len(htf) - 1)
     if end - start < 2:
-        # Too little room — treat as optional soft pass if price already revisited OB
-        return True, "inducement_skipped_short_path"
+        return False, "no_inducement_path"
 
     window = htf[start : end + 1]
-    if len(window) < 3:
-        return True, "inducement_skipped_short_path"
+    if len(window) < 4:
+        return False, "no_inducement_path"
 
     if ob.side == "bear":
-        # sell path: sweep of a local high (buy-side liquidity) before returning to supply OB
-        for i in range(1, len(window)):
-            prior, curr = window[i - 1], window[i]
-            if curr.high > prior.high and curr.close < curr.high:
-                # prefer sweeps that happen below the OB (not inside OB yet)
-                if curr.high < ob.bottom or overlaps_ob(curr, ob):
-                    return True, f"sell_inducement@{start + i}"
+        swings = _swing_highs(window, left=1, right=1)
+        for hi in swings:
+            swept = window[hi].high
+            for j in range(hi + 2, len(window)):
+                curr = window[j]
+                if curr.high > swept and curr.close < swept:
+                    return True, f"inducement {_clock_et(curr.timestamp, zone_tz)} ET"
         return False, "no_sell_inducement"
 
-    for i in range(1, len(window)):
-        prior, curr = window[i - 1], window[i]
-        if curr.low < prior.low and curr.close > curr.low:
-            if curr.low > ob.top or overlaps_ob(curr, ob):
-                return True, f"buy_inducement@{start + i}"
+    swings = _swing_lows(window, left=1, right=1)
+    for lo in swings:
+        swept = window[lo].low
+        for j in range(lo + 2, len(window)):
+            curr = window[j]
+            if curr.low < swept and curr.close > swept:
+                return True, f"inducement {_clock_et(curr.timestamp, zone_tz)} ET"
     return False, "no_buy_inducement"
 
 
@@ -510,9 +547,10 @@ class Ml02SingleCandleMitigationStrategy(BaseStrategy):
     """
     ML02 heuristics:
 
-    1. HTF BOS → bias + mitigation zones: Order Block and/or impulse FVG (imbalance).
-    2. Inducement / eng. liquidity swept on the path back.
-    3. LTF SCM into the HTF zone while taking prior highs/lows = entry.
+    1. HTF BOS = first close that breaks a newer swing (not every later bar).
+    2. Mark OB / FVG of that impulse; wait for a pullback.
+    3. Inducement / eng. liquidity swept on the path back (required).
+    4. LTF SCM into the HTF zone while taking prior highs/lows = entry.
 
     Backtest walks the full date range on LTF (not only the last N bars).
     """
@@ -549,6 +587,8 @@ class Ml02SingleCandleMitigationStrategy(BaseStrategy):
             # None = walk full LTF window (backtest). Set an int for live-only tail scan.
             "scm_lookback": None,
             "require_inducement": True,
+            "min_impulse_bars": 3,
+            "min_bars_after_bos": 4,
             # Clear liquidity: wick must dominate the candle + meaningful sweep.
             "min_wick_frac": "0.55",
             "min_sweep_frac": "0.20",
@@ -582,6 +622,8 @@ class Ml02SingleCandleMitigationStrategy(BaseStrategy):
         min_sweep = Decimal(str(params.get("min_sweep_frac") or "0.20"))
         liq_lb = max(1, int(params.get("liq_lookback") or 3))
         allow_fvg = bool(params.get("allow_fvg_mitigation", True))
+        min_impulse = max(2, int(params.get("min_impulse_bars") or 3))
+        min_after_bos = max(2, int(params.get("min_bars_after_bos") or 4))
 
         htf = sorted(candles, key=lambda c: c.timestamp)
         start_d = (
@@ -625,9 +667,16 @@ class Ml02SingleCandleMitigationStrategy(BaseStrategy):
             prior, curr = series[i - 1], series[i]
             htf_i = _map_ltf_index_to_htf(curr.timestamp, htf)
             bias, zones, bias_note = _htf_bias_and_zones(
-                htf, left=left, right=right, end_index=htf_i
+                htf,
+                left=left,
+                right=right,
+                end_index=htf_i,
+                tz=tz,
+                min_impulse_bars=min_impulse,
             )
             if bias == "range" or not zones:
+                continue
+            if htf_i - zones[0].bos_index < min_after_bos:
                 continue
             if not allow_fvg:
                 zones = [z for z in zones if z.kind == "ob"]
@@ -664,7 +713,9 @@ class Ml02SingleCandleMitigationStrategy(BaseStrategy):
             if not is_scm:
                 continue
 
-            indu_ok, indu_note = _inducement_swept(htf, zone, before_index=htf_i)
+            indu_ok, indu_note = _inducement_swept(
+                htf, zone, before_index=htf_i, tz=tz
+            )
             if require_ind and not indu_ok:
                 continue
 
