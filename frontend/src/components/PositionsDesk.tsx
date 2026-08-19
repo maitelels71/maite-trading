@@ -440,6 +440,54 @@ export function PositionsDesk() {
     return () => window.clearInterval(id);
   }, [tickWatches]);
 
+  async function waitQuietThen(
+    sec: number,
+    stale: () => boolean,
+  ): Promise<boolean> {
+    if (sec <= 0) return !stale();
+    startSchwabQuiet(sec * 1000);
+    for (let n = sec; n > 0; n -= 1) {
+      if (stale()) return false;
+      setRetryLeft(n);
+      await new Promise((r) => window.setTimeout(r, 1000));
+    }
+    setRetryLeft(null);
+    setError(null);
+    return !stale();
+  }
+
+  async function postCloseOnce(
+    payload: {
+      account_hash: string;
+      symbol: string;
+      quantity: number;
+      asset_type: string;
+      instruction: string;
+      confirm_live: true;
+    },
+    stale: () => boolean,
+  ) {
+    const cooling = Math.max(
+      0,
+      Math.ceil((readSchwabQuietUntil() - Date.now()) / 1000),
+    );
+    if (cooling > 0 && !(await waitQuietThen(cooling, stale))) {
+      return null;
+    }
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      if (stale()) return null;
+      try {
+        return await brokerClosePosition(payload);
+      } catch (err) {
+        const raw = err instanceof Error ? err.message : "Close failed";
+        if (!isRateLimitText(raw) || attempt === 1) throw err;
+        const waitSec = retryAfterSec(err, CLOSE_RETRY_WAIT_SEC);
+        if (!(await waitQuietThen(waitSec, stale))) return null;
+      }
+    }
+    return null;
+  }
+
   function closeNow(pos: BrokerPosition) {
     if (!armedConfirm) {
       setError(t("positions.needArm"));
@@ -455,8 +503,8 @@ export function PositionsDesk() {
     }
 
     upsertWatch(pos, { autoClose: false });
-    retryAbort.current = true;
-    retryGen.current += 1;
+    retryAbort.current = false;
+    const gen = ++retryGen.current;
     setRetryLeft(null);
     setLadderBusy(false);
     setClosingKey(watchId(pos));
@@ -469,10 +517,12 @@ export function PositionsDesk() {
       instruction: pos.close_instruction,
       confirm_live: true as const,
     };
+    const stale = () => retryAbort.current || retryGen.current !== gen;
 
     void (async () => {
       try {
-        const res = await brokerClosePosition(payload);
+        const res = await postCloseOnce(payload, stale);
+        if (!res || stale()) return;
         setNote(
           t("positions.closedNote").replace("{symbol}", pos.symbol) +
             (res.order_id ? ` · #${res.order_id}` : "") +
@@ -480,9 +530,11 @@ export function PositionsDesk() {
             t("positions.closedCheckTos"),
         );
       } catch (err) {
+        if (stale()) return;
         const raw = err instanceof Error ? err.message : "Close failed";
         if (isRateLimitText(raw)) {
           setWatches((prev) => prev.map((row) => ({ ...row, autoClose: false })));
+          startSchwabQuiet(CLOSE_GIVE_UP_MS);
           setError(
             t("positions.closeNotSent429") +
               " " +
@@ -492,7 +544,10 @@ export function PositionsDesk() {
           setError(raw);
         }
       } finally {
-        setClosingKey(null);
+        if (retryGen.current === gen) {
+          setClosingKey(null);
+          setRetryLeft(null);
+        }
       }
     })();
   }
@@ -507,12 +562,6 @@ export function PositionsDesk() {
       setError(t("positions.needRth"));
       return;
     }
-    if (schwabCooling) {
-      setError(
-        t("positions.closeWaitQuiet").replace("{n}", String(quietRemainSec)),
-      );
-      return;
-    }
     if (positions.length === 0) return;
     const snapshot = [...positions];
     if (
@@ -522,23 +571,31 @@ export function PositionsDesk() {
     ) {
       return;
     }
+    retryAbort.current = false;
+    const gen = ++retryGen.current;
+    const stale = () => retryAbort.current || retryGen.current !== gen;
     startTransition(async () => {
       setError(null);
       const okSyms: string[] = [];
       let rateLimited = false;
       let lastErr = "";
       for (let i = 0; i < snapshot.length; i += 1) {
+        if (stale()) return;
         const pos = snapshot[i];
         const label = pos.underlying || pos.symbol;
         try {
-          await brokerClosePosition({
-            account_hash: pos.account_hash,
-            symbol: pos.symbol,
-            quantity: Math.abs(pos.quantity),
-            asset_type: pos.asset_type,
-            instruction: pos.close_instruction,
-            confirm_live: true,
-          });
+          const res = await postCloseOnce(
+            {
+              account_hash: pos.account_hash,
+              symbol: pos.symbol,
+              quantity: Math.abs(pos.quantity),
+              asset_type: pos.asset_type,
+              instruction: pos.close_instruction,
+              confirm_live: true,
+            },
+            stale,
+          );
+          if (!res || stale()) return;
           okSyms.push(label);
           if (i < snapshot.length - 1) {
             await new Promise((r) => window.setTimeout(r, 800));
@@ -733,6 +790,8 @@ export function PositionsDesk() {
                 type="button"
                 disabled={
                   pending ||
+                  closingKey != null ||
+                  retryLeft != null ||
                   !tradingEnabled ||
                   !cashRth
                 }
@@ -864,7 +923,9 @@ export function PositionsDesk() {
                             type="button"
                             disabled={
                               pending ||
-                              closingKey === id ||
+                              closingKey != null ||
+                              retryLeft != null ||
+                              schwabCooling ||
                               !tradingEnabled ||
                               !cashRth
                             }

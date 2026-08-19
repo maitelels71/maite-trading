@@ -450,7 +450,7 @@ const en: Dict = {
   "positions.closeNotSent429":
     "Close was NOT sent — Schwab returned 429 on the SELL_TO_CLOSE POST.",
   "positions.closeNotSent429Next":
-    "Yahoo candles do not help Close. Do not click Close again. Exit this contract in TOS (SELL_TO_CLOSE) and check TOS → Orders.",
+    "The desk waited Retry-After and retried once. Do not click Close again. Exit this contract in TOS (SELL_TO_CLOSE) and check TOS → Orders.",
   "positions.loaded":
     "Loaded {n} positions · {accounts} account(s) · {orders} orders",
   "positions.accountsLabel": "Account #",
@@ -1029,7 +1029,7 @@ const es: Dict = {
   "positions.closeNotSent429":
     "El close NO se envió — Schwab devolvió 429 en el POST SELL_TO_CLOSE.",
   "positions.closeNotSent429Next":
-    "Las velas Yahoo no ayudan al Close. No pulses Close otra vez. Cierra este contrato en TOS (SELL_TO_CLOSE) y mira TOS → Orders.",
+    "El desk esperó Retry-After y reintentó una vez. No pulses Close otra vez. Cierra este contrato en TOS (SELL_TO_CLOSE) y mira TOS → Orders.",
   "positions.loaded": "{n} posiciones · {accounts} cuenta(s) · {orders} órdenes",
   "positions.accountsLabel": "Cuenta #",
   "positions.colAccount": "Cuenta",
