@@ -75,9 +75,11 @@ const OPEN_RETRY_WAIT_SEC = 60;
 const DESK_TOP_N = 5;
 /**
  * Trigger opens + Open buttons. Candles for Options TOP 5 come from Yahoo;
- * Schwab is only used for capital / BUY_TO_OPEN / Close.
+ * Schwab Trader is POST Open/Close only (no account/quote/order GETs).
  */
 const DESK_OPENS_ENABLED = true;
+/** GET accounts/positions/quotes/orders — off so Open/Close keep quota. */
+const SCHWAB_TRADER_READS = false;
 const DESK_SYNC_TFS = ["1h", "1d", "15m"] as const;
 const DESK_LOOKBACK_DAYS = 25;
 const DESK_15M_LOOKBACK_DAYS = 14;
@@ -773,31 +775,31 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
 
   const loadCapital = useCallback(async (force = false) => {
     if (venue !== "schwab") return;
-    if (!force) {
-      const cached = readCapitalCache();
-      if (cached) {
-        capitalFetchedAt.current = cached.at;
-        setBrokerAccounts(cached.accounts);
-        setTradingEnabled(cached.tradingEnabled);
-        setTosPositions(cached.positions ?? []);
-        const best = [...cached.accounts].sort(
-          (a, b) => (b.equity ?? 0) - (a.equity ?? 0),
-        )[0];
-        if (best) {
-          setCapitalNote(
-            t("strategies.capitalEquity")
-              .replace("{eq}", moneyUsd(best.equity))
-              .replace("{risk}", moneyUsd(best.risk_budget))
-              .replace(
-                "{cash}",
-                moneyUsd(best.available_funds ?? best.cash_balance),
-              ),
-          );
-        }
-        setCapitalError(null);
-        return;
+    const cached = readCapitalCache();
+    if (cached) {
+      capitalFetchedAt.current = cached.at;
+      setBrokerAccounts(cached.accounts);
+      setTradingEnabled(cached.tradingEnabled);
+      setTosPositions(cached.positions ?? []);
+      const best = [...cached.accounts].sort(
+        (a, b) => (b.equity ?? 0) - (a.equity ?? 0),
+      )[0];
+      if (best) {
+        setCapitalNote(
+          t("strategies.capitalEquity")
+            .replace("{eq}", moneyUsd(best.equity))
+            .replace("{risk}", moneyUsd(best.risk_budget))
+            .replace(
+              "{cash}",
+              moneyUsd(best.available_funds ?? best.cash_balance),
+            ),
+        );
       }
-      setCapitalNote(t("strategies.capitalNeed"));
+      setCapitalError(null);
+      return;
+    }
+    if (!SCHWAB_TRADER_READS || !force) {
+      setCapitalNote(t("strategies.capitalCacheOnly"));
       return;
     }
     setCapitalPending(true);
@@ -1587,25 +1589,9 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
                 {t("strategies.capitalTitle")}
               </p>
               <p className="mt-0.5 text-[11px] text-[var(--muted)]">
-                {t("strategies.capitalHint")}
+                {t("strategies.capitalCacheOnly")}
               </p>
             </div>
-            <button
-              type="button"
-              disabled={
-                capitalPending ||
-                deskBusy ||
-                focusBusy ||
-                armOpens ||
-                quietRemainSec > 0
-              }
-              onClick={() => void loadCapital(true)}
-              className="rounded-md border border-[var(--border)] px-2.5 py-1 text-[11px] font-medium hover:bg-[var(--hover)] disabled:opacity-50"
-            >
-              {capitalPending
-                ? t("strategies.capitalLoading")
-                : t("strategies.capitalLoad")}
-            </button>
           </div>
           {capitalNote ? (
             <p className="mt-1.5 text-[12px] font-medium text-[var(--foreground)]">

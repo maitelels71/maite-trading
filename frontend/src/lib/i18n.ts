@@ -148,7 +148,7 @@ const en: Dict = {
   "strategies.title": "Trading Session",
   "strategies.titleEtf": "Trading Session — ETFs / Options",
   "strategies.titleFutures": "Trading Session — Futures",
-  "strategies.dataViaSchwab": "Data: Charles Schwab",
+  "strategies.dataViaSchwab": "Candles: Yahoo · Orders: Schwab Open/Close only",
   "strategies.dataViaTa": "Data: Yahoo Finance",
   "strategies.emptyList": "No playbooks in this session yet — add them in playbooks.ts.",
   "strategies.subtitle":
@@ -363,6 +363,8 @@ const en: Dict = {
   "strategies.capitalLoading": "Loading capital…",
   "strategies.capitalEquity": "Equity {eq} · 10% {risk} · cash {cash}",
   "strategies.capitalNeed": "Load capital to size opens (10% flag · 50% max).",
+  "strategies.capitalCacheOnly":
+    "Equity from last snapshot only — Load capital is off (that GET starved Open/Close).",
   "strategies.opensPausedNote":
     "In-app Open is paused. Use TOP 5 here, place entries in TOS, then Positions → Trigger closes → Close now.",
   "strategies.armOpens": "Trigger opens",
@@ -427,7 +429,12 @@ const en: Dict = {
 
   "positions.title": "Schwab positions",
   "positions.hint":
-    "Auto mkt polls Schwab — leave it off to Close. Do not Refresh when you only need to exit. Close now sends SELL_TO_CLOSE from this snapshot.",
+    "Snapshot only. Schwab is Close now (and Close all). Check TOS → Orders. No Refresh, Park, or Auto.",
+  "positions.readsOff":
+    "Positions list is the last snapshot — Refresh is off so Schwab quota stays for Close.",
+  "positions.parkOff": "Park LIMIT is off. Use Close now or TOS.",
+  "positions.ordersReadsOff":
+    "Order list is off. Check TOS → Orders after Close.",
   "positions.snapshotHint":
     "Snapshot {n} position(s) — not a live Refresh. Trigger closes + Close now. Check TOS → Orders. Refresh only if this list is wrong.",
   "positions.closedCheckTos":
@@ -441,21 +448,21 @@ const en: Dict = {
   "positions.closeWaitQuiet":
     "Schwab cooling. Close / Park LIMIT / Refresh in {n}s. Or SELL_TO_CLOSE in TOS now.",
   "positions.closeNotSent429":
-    "Close was NOT sent — Schwab stayed busy after the wait.",
+    "Close was NOT sent — Schwab returned 429 on the SELL_TO_CLOSE POST.",
   "positions.closeNotSent429Next":
-    "Leave Auto off. Do not Close, Park, or Refresh for 3 minutes. Exit this contract in TOS (SELL_TO_CLOSE). Check TOS → Orders.",
+    "Yahoo candles do not help Close. Do not click Close again. Exit this contract in TOS (SELL_TO_CLOSE) and check TOS → Orders.",
   "positions.loaded":
     "Loaded {n} positions · {accounts} account(s) · {orders} orders",
   "positions.accountsLabel": "Account #",
   "positions.colAccount": "Account",
   "positions.emptyHint":
-    "If this list is empty, Refresh once when Schwab is quiet. Then Close without Refreshing again.",
+    "If this list is empty, the snapshot is missing — Close needs a cached row (or TOS).",
   "positions.noPositions": "No open positions yet.",
   "positions.noPositionsHint":
-    "Park LIMIT and Close now appear on each open row. A LIMIT buy is not a position until it FILLS — look at Working orders below, or TOS → Orders, then Refresh.",
+    "Close now sale en cada fila del snapshot. Un LIMIT de compra no es posición hasta el FILL — mira TOS → Orders.",
   "positions.armTitle": "Trigger closes",
   "positions.armBody":
-    "Arm to send real closes: Auto (market at TP %), Park LIMIT, or Close now. Pick Auto or Park LIMIT — not both.",
+    "Arm to send Close now / Close all (Schwab POST only). Park LIMIT and Auto are off.",
   "positions.tradingDisabled":
     "Trading disabled on API (SCHWAB_TRADING_ENABLED). Alerts still work.",
   "positions.needArm": "Turn on Trigger closes first.",
@@ -720,7 +727,7 @@ const es: Dict = {
   "strategies.title": "Trading Session",
   "strategies.titleEtf": "Trading Session — ETFs / Options",
   "strategies.titleFutures": "Trading Session — Futuros",
-  "strategies.dataViaSchwab": "Datos: Charles Schwab",
+  "strategies.dataViaSchwab": "Velas: Yahoo · Órdenes: solo Open/Close Schwab",
   "strategies.dataViaTa": "Datos: Yahoo Finance",
   "strategies.emptyList": "Aún no hay playbooks en esta sesión — agrégalos en playbooks.ts.",
   "strategies.subtitle":
@@ -935,6 +942,8 @@ const es: Dict = {
   "strategies.capitalLoading": "Cargando capital…",
   "strategies.capitalEquity": "Equity {eq} · 10% {risk} · cash {cash}",
   "strategies.capitalNeed": "Carga capital para dimensionar (flag 10% · máx 50%).",
+  "strategies.capitalCacheOnly":
+    "Equity del último snapshot — Load capital está off (ese GET saturaba Open/Close).",
   "strategies.opensPausedNote":
     "Open en el app está pausado. TOP 5 aquí, entradas en TOS, luego Positions → Trigger cierres → Close now.",
   "strategies.armOpens": "Trigger opens",
@@ -999,7 +1008,12 @@ const es: Dict = {
 
   "positions.title": "Posiciones Schwab",
   "positions.hint":
-    "Auto mkt consulta Schwab — déjalo off para Close. No hagas Refresh si solo quieres salir. Close now envía SELL_TO_CLOSE de este snapshot.",
+    "Solo snapshot. Schwab es Close now (y Close all). Mira TOS → Orders. Sin Refresh, Park ni Auto.",
+  "positions.readsOff":
+    "La lista es el último snapshot — Refresh está off para dejar cupo a Close.",
+  "positions.parkOff": "Dejar LIMIT está off. Usa Close now o TOS.",
+  "positions.ordersReadsOff":
+    "La lista de órdenes está off. Mira TOS → Orders tras Close.",
   "positions.snapshotHint":
     "Snapshot {n} posición(es) — no es un Refresh live. Trigger cierres + Close now. Mira TOS → Orders. Refresh solo si esta lista está mal.",
   "positions.closedCheckTos":
@@ -1013,20 +1027,20 @@ const es: Dict = {
   "positions.closeWaitQuiet":
     "Schwab se enfría. Close / Dejar LIMIT / Refresh en {n}s. O SELL_TO_CLOSE en TOS ahora.",
   "positions.closeNotSent429":
-    "El close NO se envió — Schwab siguió ocupado tras la espera.",
+    "El close NO se envió — Schwab devolvió 429 en el POST SELL_TO_CLOSE.",
   "positions.closeNotSent429Next":
-    "Deja Auto apagado. No hagas Close, Park ni Refresh durante 3 minutos. Cierra este contrato en TOS (SELL_TO_CLOSE). Mira TOS → Orders.",
+    "Las velas Yahoo no ayudan al Close. No pulses Close otra vez. Cierra este contrato en TOS (SELL_TO_CLOSE) y mira TOS → Orders.",
   "positions.loaded": "{n} posiciones · {accounts} cuenta(s) · {orders} órdenes",
   "positions.accountsLabel": "Cuenta #",
   "positions.colAccount": "Cuenta",
   "positions.emptyHint":
-    "Si la lista está vacía, Refresh una vez cuando Schwab esté quieto. Luego Close sin volver a Refresh.",
+    "Si la lista está vacía, falta el snapshot — Close necesita una fila en caché (o TOS).",
   "positions.noPositions": "Aún no hay posiciones abiertas.",
   "positions.noPositionsHint":
-    "Dejar LIMIT y Cerrar ahora salen en cada fila. Un LIMIT de compra no es posición hasta el FILL — mira Órdenes working abajo, o TOS → Orders, y dale Refresh.",
+    "Close now sale en cada fila del snapshot. Un LIMIT de compra no es posición hasta el FILL — mira TOS → Orders.",
   "positions.armTitle": "Trigger cierres",
   "positions.armBody":
-    "Ármalo para enviar cierres reales: Auto (mercado al TP %), Dejar LIMIT, o Cerrar ahora. Auto o LIMIT — no los dos.",
+    "Ármalo para Close now / Close all (solo POST Schwab). Park LIMIT y Auto están off.",
   "positions.tradingDisabled":
     "Trading desactivado en API (SCHWAB_TRADING_ENABLED). Las alertas sí funcionan.",
   "positions.needArm": "Activa Trigger cierres primero.",

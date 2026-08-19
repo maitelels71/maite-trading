@@ -31,6 +31,8 @@ const CLOSE_RETRY_WAIT_SEC = 60;
 const CLOSE_GIVE_UP_MS = 180_000;
 const LADDER_RETRY_WAIT_SEC = 150;
 const DEFAULT_TP_PCT = 35;
+/** GET accounts/quotes/orders off — only POST Close. */
+const SCHWAB_TRADER_READS = false;
 
 function isRateLimitText(msg: string | null | undefined): boolean {
   return /(?:\b429\b|rate limit)/i.test(msg || "");
@@ -257,6 +259,11 @@ export function PositionsDesk() {
   }, []);
 
   const refresh = useCallback((opts?: { keepError?: boolean }) => {
+    if (!SCHWAB_TRADER_READS) {
+      setError(null);
+      setNote(t("positions.readsOff"));
+      return;
+    }
     if (readHoldTrader()) {
       setHoldTrader(true);
       setNote(t("positions.holdOpen"));
@@ -357,6 +364,7 @@ export function PositionsDesk() {
   );
 
   const tickWatches = useCallback(async () => {
+    if (!SCHWAB_TRADER_READS) return;
     if (!armedConfirm || readHoldTrader() || pending || ladderBusy) return;
     if (readSchwabQuietUntil() > Date.now()) return;
     const active = watches.filter((w) => w.autoClose);
@@ -566,6 +574,8 @@ export function PositionsDesk() {
   }
 
   function placeTpLadder(pos: BrokerPosition) {
+    setError(t("positions.parkOff"));
+    return;
     if (!armedConfirm) {
       setError(t("positions.needArm"));
       return;
@@ -723,45 +733,16 @@ export function PositionsDesk() {
                 type="button"
                 disabled={
                   pending ||
-                  ladderBusy ||
                   !tradingEnabled ||
-                  !cashRth ||
-                  schwabCooling
+                  !cashRth
                 }
                 onClick={closeAll}
-                title={
-                  !cashRth
-                    ? t("positions.needRth")
-                    : schwabCooling
-                      ? t("positions.closeWaitQuiet").replace(
-                          "{n}",
-                          String(quietRemainSec),
-                        )
-                      : undefined
-                }
+                title={!cashRth ? t("positions.needRth") : undefined}
                 className="rounded-md border border-[var(--danger)]/40 bg-[var(--danger-soft)] px-3 py-1.5 text-xs font-medium text-[var(--danger)] hover:bg-[var(--hover)] disabled:opacity-50"
               >
                 {t("positions.closeAll")}
               </button>
             ) : null}
-            <button
-              type="button"
-              disabled={pending || holdTrader || schwabCooling}
-              title={
-                holdTrader
-                  ? t("positions.holdOpen")
-                  : schwabCooling
-                    ? t("positions.closeWaitQuiet").replace(
-                        "{n}",
-                        String(quietRemainSec),
-                      )
-                    : undefined
-              }
-              onClick={() => refresh()}
-              className="shrink-0 rounded-md bg-[var(--accent)] px-3 py-1.5 text-xs font-medium text-[var(--on-accent)] hover:bg-[var(--accent-hover)] disabled:opacity-50"
-            >
-              {pending ? t("positions.refreshing") : t("positions.refresh")}
-            </button>
           </div>
         }
       >
@@ -821,9 +802,7 @@ export function PositionsDesk() {
               {t("positions.armTitle")}
             </span>
             <span className="mt-0.5 block text-[var(--muted)]">
-              {tradingEnabled
-                ? t("positions.armBody")
-                : t("positions.tradingDisabled")}
+              {t("positions.armBody")}
             </span>
           </span>
         </label>
@@ -839,8 +818,6 @@ export function PositionsDesk() {
                   <th className="px-2 py-1.5 font-medium">{t("positions.colAvg")}</th>
                   <th className="px-2 py-1.5 font-medium">{t("positions.colMark")}</th>
                   <th className="px-2 py-1.5 font-medium">{t("positions.colPnl")}</th>
-                  <th className="px-2 py-1.5 font-medium">{t("positions.colTp")}</th>
-                  <th className="px-2 py-1.5 font-medium">{t("positions.colAuto")}</th>
                   <th className="px-2 py-1.5 font-medium">{t("positions.colActions")}</th>
                 </tr>
               </thead>
@@ -850,7 +827,6 @@ export function PositionsDesk() {
                   const w = watches.find((row) => row.id === id);
                   const pnl = w?.lastPnlPct ?? pos.pnl_pct;
                   const mark = w?.lastMark ?? pos.mark;
-                  const autoOn = Boolean(w?.autoClose);
                   const tpPct = w?.targetPct ?? DEFAULT_TP_PCT;
                   const tpHit = pnl != null && pnl >= tpPct;
                   return (
@@ -883,64 +859,7 @@ export function PositionsDesk() {
                         {pct(pnl)}
                       </td>
                       <td className="px-2 py-1.5">
-                        <select
-                          className="rounded border border-[var(--border-strong)] bg-[var(--surface)] px-1.5 py-1 text-[11px]"
-                          value={tpPct}
-                          onChange={(e) =>
-                            upsertWatch(pos, {
-                              targetPct: Number(e.target.value),
-                            })
-                          }
-                        >
-                          <option value={10}>10%</option>
-                          <option value={20}>20%</option>
-                          <option value={35}>35%</option>
-                          <option value={50}>50%</option>
-                        </select>
-                      </td>
-                      <td className="px-2 py-1.5">
-                        <input
-                          type="checkbox"
-                          className="accent-[var(--accent)]"
-                          checked={Boolean(w?.autoClose)}
-                          disabled={!tradingEnabled || schwabCooling}
-                          onChange={(e) =>
-                            upsertWatch(pos, {
-                              autoClose: e.target.checked,
-                            })
-                          }
-                          title={t("positions.autoHint")}
-                        />
-                      </td>
-                      <td className="px-2 py-1.5">
                         <div className="flex flex-col gap-1">
-                          <button
-                            type="button"
-                            disabled={
-                              pending ||
-                              ladderBusy ||
-                              !tradingEnabled ||
-                              !cashRth ||
-                              schwabCooling
-                            }
-                            onClick={() => placeTpLadder(pos)}
-                            className="rounded border border-[var(--ok)]/40 bg-[var(--ok-soft)] px-2 py-1 text-[10px] font-medium text-[var(--ok)] hover:bg-[var(--hover)] disabled:opacity-40"
-                            title={
-                              !cashRth
-                                ? t("positions.needRth")
-                                : schwabCooling
-                                  ? t("positions.closeWaitQuiet").replace(
-                                      "{n}",
-                                      String(quietRemainSec),
-                                    )
-                                  : t("positions.ladderHint")
-                            }
-                          >
-                            {t("positions.tpLadder").replace(
-                              "{pct}",
-                              String(tpPct),
-                            )}
-                          </button>
                           <button
                             type="button"
                             disabled={
@@ -961,11 +880,6 @@ export function PositionsDesk() {
                             {t("positions.tpHit").replace("{pct}", String(tpPct))}
                           </div>
                         ) : null}
-                        {autoOn ? (
-                          <div className="mt-1 max-w-[10rem] text-[9px] leading-snug text-[var(--muted)]">
-                            {t("positions.ladderOffBecauseAuto")}
-                          </div>
-                        ) : null}
                       </td>
                     </tr>
                   );
@@ -982,64 +896,14 @@ export function PositionsDesk() {
           </div>
         ) : null}
 
-        {ordersError ? (
-          <div className="mt-3 rounded-md border border-amber-300/60 bg-[var(--warn-soft)] px-3 py-2 text-[11px] leading-snug text-[var(--warn)]">
-            {t("positions.ordersRateLimit").replace("{detail}", ordersError)}
-          </div>
-        ) : null}
+        {ordersError ? null : null}
         <div className="mt-3">
           <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.06em] text-[var(--muted)]">
             {t("positions.ordersTitle")}
           </p>
-          {orders.length > 0 ? (
-            <div className="overflow-auto rounded-lg border border-[var(--border)]">
-              <table className="min-w-full text-left text-xs">
-                <thead className="bg-[var(--surface-muted)] text-[var(--muted)]">
-                  <tr>
-                    <th className="px-2 py-1.5 font-medium">{t("positions.colWhen")}</th>
-                    <th className="px-2 py-1.5 font-medium">{t("positions.colAccount")}</th>
-                    <th className="px-2 py-1.5 font-medium">{t("positions.colSymbol")}</th>
-                    <th className="px-2 py-1.5 font-medium">{t("positions.colStatus")}</th>
-                    <th className="px-2 py-1.5 font-medium">{t("positions.colSide")}</th>
-                    <th className="px-2 py-1.5 font-medium">{t("positions.colQty")}</th>
-                    <th className="px-2 py-1.5 font-medium">{t("positions.colLimit")}</th>
-                    <th className="px-2 py-1.5 font-medium">ID</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {orders.map((o) => (
-                    <tr
-                      key={`${o.account_hash}-${o.order_id}-${o.symbol}`}
-                      className="border-t border-[var(--border)]"
-                    >
-                      <td className="whitespace-nowrap px-2 py-1.5 text-[10px] text-[var(--muted)]">
-                        {formatOrderWhen(o.entered_time)} ET
-                      </td>
-                      <td className="px-2 py-1.5 font-mono text-[11px] tabular-nums">
-                        {o.account_number || "—"}
-                      </td>
-                      <td className="px-2 py-1.5 font-medium">{o.symbol || "—"}</td>
-                      <td className="px-2 py-1.5 text-[var(--muted)]">{o.status}</td>
-                      <td className="px-2 py-1.5 text-[var(--muted)]">
-                        {o.instruction || o.order_type}
-                      </td>
-                      <td className="px-2 py-1.5 tabular-nums">{o.quantity ?? "—"}</td>
-                      <td className="px-2 py-1.5 tabular-nums">
-                        {o.price != null ? money(Number(o.price)) : "—"}
-                      </td>
-                      <td className="px-2 py-1.5 text-[10px] text-[var(--muted)]">
-                        {o.order_id || "—"}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ) : !pending ? (
-            <p className="rounded-md border border-[var(--border)] bg-[var(--surface-muted)] px-3 py-2 text-[11px] leading-snug text-[var(--muted)]">
-              {t("positions.ordersEmpty")}
-            </p>
-          ) : null}
+          <p className="rounded-md border border-[var(--border)] bg-[var(--surface-muted)] px-3 py-2 text-[11px] leading-snug text-[var(--muted)]">
+            {t("positions.ordersReadsOff")}
+          </p>
         </div>
       </DeskSession>
     </DeskStack>
