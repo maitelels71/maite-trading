@@ -110,6 +110,8 @@ function savePosSnapshot(payload: {
     /* ignore */
   }
 }
+
+function loadWatches(): TpWatch[] {
   try {
     const raw = localStorage.getItem(WATCH_KEY);
     if (!raw) return [];
