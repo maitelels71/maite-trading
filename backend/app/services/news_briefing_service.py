@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import os
 import re
+import time
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -55,6 +56,11 @@ AWARE_KEYWORDS = (
 
 FINNHUB_BASE = "https://finnhub.io/api/v1"
 ECONPULSE_BASE = "https://api.econpulse.io/v1"
+# Official weekly export linked from Forex Factory (Fair Economy CDN).
+FAIRECONOMY_FF_WEEK = "https://nfs.faireconomy.media/ff_calendar_thisweek.json"
+# Respect FF export rate limit (~2 / 5 min) — cache in-process.
+_FF_CACHE: tuple[float, list[EconomicEventOut]] | None = None
+_FF_CACHE_TTL_SEC = 15 * 60.0
 
 # Country / region codes from Finnhub → FX currency (Forex Factory style)
 COUNTRY_TO_CCY: dict[str, str] = {
@@ -121,19 +127,40 @@ class NewsBriefingService:
         )
 
         if not key:
-            calendar_events = self._econpulse_events(week_start, week_end) or _sample_week_calendar(
-                week_start, week_end
-            )
+            calendar_events: list[EconomicEventOut] = []
+            provider = "none"
+            try:
+                calendar_events = self._faireconomy_events(week_start, week_end)
+                if calendar_events:
+                    provider = "faireconomy"
+            except Exception:  # noqa: BLE001
+                logger.warning("Faireconomy FF calendar failed", exc_info=True)
+            if not calendar_events:
+                try:
+                    calendar_events = self._econpulse_events(week_start, week_end)
+                    if calendar_events:
+                        provider = "econpulse"
+                except Exception:  # noqa: BLE001
+                    logger.warning("EconPulse calendar failed", exc_info=True)
+            if not calendar_events:
+                calendar_events = _sample_week_calendar(week_start, week_end)
+                provider = "sample" if calendar_events else "none"
             return NewsBriefingResponse(
                 as_of=datetime.now(UTC),
                 session_date=day,
                 week_start=week_start,
                 week_end=week_end,
-                provider="econpulse" if calendar_events else "none",
+                provider=provider,
                 configured=False,
                 message=(
-                    "No FINNHUB_API_KEY — calendar via EconPulse (US macro). "
-                    "Add Finnhub for headlines + broader FX calendar when your plan allows."
+                    "Calendar via Forex Factory weekly export (Fair Economy). "
+                    "Add FINNHUB_API_KEY for market headlines when available."
+                    if provider == "faireconomy"
+                    else (
+                        "No FINNHUB_API_KEY — calendar via EconPulse (US macro)."
+                        if provider == "econpulse"
+                        else "No live calendar source — showing sample rows."
+                    )
                 ),
                 calendar_events=calendar_events,
                 red_events=[e for e in calendar_events if e.impact == "red"],
@@ -152,7 +179,8 @@ class NewsBriefingService:
             if exc.response.status_code in {401, 403}:
                 notes.append(
                     "Finnhub economic calendar blocked on this plan (403/401) — "
-                    "using EconPulse US macro calendar instead; headlines still from Finnhub."
+                    "using Forex Factory weekly export (Fair Economy) instead; "
+                    "headlines still from Finnhub."
                 )
             else:
                 notes.append(f"Economic calendar error: {_safe_http_error(exc)}")
@@ -160,6 +188,19 @@ class NewsBriefingService:
         except Exception as exc:  # noqa: BLE001
             notes.append(f"Economic calendar error: {_safe_error(exc)}")
             logger.warning("Finnhub economic calendar failed", exc_info=True)
+
+        if not calendar_events:
+            try:
+                calendar_events = self._faireconomy_events(week_start, week_end)
+                if calendar_events:
+                    calendar_provider = "faireconomy"
+                    if not any("Forex Factory" in n or "403" in n for n in notes):
+                        notes.append(
+                            "Calendar source: Forex Factory weekly export (Fair Economy)."
+                        )
+            except Exception as exc:  # noqa: BLE001
+                notes.append(f"Forex Factory calendar error: {_safe_error(exc)}")
+                logger.warning("Faireconomy FF calendar failed", exc_info=True)
 
         if not calendar_events:
             try:
@@ -303,6 +344,88 @@ class NewsBriefingService:
         events.sort(key=lambda e: e.scheduled_at or datetime.min.replace(tzinfo=UTC))
         return events
 
+    def _faireconomy_events(
+        self,
+        start: date,
+        end: date,
+    ) -> list[EconomicEventOut]:
+        """Forex Factory weekly JSON export (Fair Economy CDN) — High = red carpet."""
+        global _FF_CACHE
+        now = time.monotonic()
+        cached_rows: list[EconomicEventOut] | None = None
+        if _FF_CACHE is not None and now - _FF_CACHE[0] < _FF_CACHE_TTL_SEC:
+            cached_rows = _FF_CACHE[1]
+
+        if cached_rows is None:
+            with httpx.Client(timeout=25.0) as client:
+                res = client.get(
+                    FAIRECONOMY_FF_WEEK,
+                    headers={
+                        "User-Agent": "maite-trading/1.0 (desk calendar)",
+                        "Accept": "application/json",
+                    },
+                )
+                res.raise_for_status()
+                payload = res.json()
+            if not isinstance(payload, list):
+                return []
+            parsed: list[EconomicEventOut] = []
+            for row in payload:
+                if not isinstance(row, dict):
+                    continue
+                title = str(row.get("title") or "").strip()
+                if not title:
+                    continue
+                ccy_raw = str(row.get("country") or "").strip().upper()
+                currency = ccy_raw if len(ccy_raw) == 3 else country_to_currency(ccy_raw)
+                impact = _map_ff_impact(row.get("impact"))
+                if currency not in MAJOR_CCY and impact not in ("red", "orange"):
+                    continue
+                scheduled = _parse_finnhub_time(row.get("date"))
+                if scheduled is None:
+                    continue
+                reason = ""
+                if impact == "red":
+                    reason = (
+                        "Forex Factory high impact — size down / avoid chasing into the print"
+                    )
+                elif impact == "orange":
+                    reason = "Forex Factory medium impact — watch spreads around the release"
+                else:
+                    reason = "Forex Factory calendar"
+                parsed.append(
+                    EconomicEventOut(
+                        id=_stable_id(
+                            "ff",
+                            currency,
+                            title,
+                            scheduled.isoformat(),
+                        ),
+                        country=currency,
+                        currency=currency,
+                        event=title,
+                        impact=impact,
+                        scheduled_at=scheduled,
+                        estimate=_str_or_none(row.get("forecast")),
+                        previous=_str_or_none(row.get("previous")),
+                        actual=_str_or_none(row.get("actual")),
+                        reason=reason,
+                    )
+                )
+            parsed.sort(
+                key=lambda e: e.scheduled_at or datetime.min.replace(tzinfo=UTC)
+            )
+            _FF_CACHE = (now, parsed)
+            cached_rows = parsed
+
+        events = [
+            e
+            for e in cached_rows
+            if e.scheduled_at is not None
+            and start <= e.scheduled_at.astimezone(UTC).date() <= end
+        ]
+        return events
+
     def _econpulse_events(self, start: date, end: date) -> list[EconomicEventOut]:
         """US macro calendar fallback (works with key=demo on the free tier)."""
         key = (
@@ -421,6 +544,18 @@ def _map_finnhub_impact(raw: Any) -> ImpactLevel:
     if text in {"2", "medium", "orange"}:
         return "orange"
     if text in {"1", "low", "yellow"}:
+        return "yellow"
+    return "info"
+
+
+def _map_ff_impact(raw: Any) -> ImpactLevel:
+    """Forex Factory / Fair Economy impact labels."""
+    text = str(raw or "").strip().lower()
+    if text in {"high", "red"}:
+        return "red"
+    if text in {"medium", "med", "orange"}:
+        return "orange"
+    if text in {"low", "yellow"}:
         return "yellow"
     return "info"
 

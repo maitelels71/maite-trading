@@ -11,13 +11,44 @@ from app.core.config import Settings
 from app.services.news_briefing_service import NewsBriefingService
 
 
-def test_news_briefing_checklist_without_key() -> None:
+def test_news_briefing_checklist_without_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    import app.services.news_briefing_service as news_mod
+
+    monkeypatch.setattr(news_mod, "_FF_CACHE", None)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if "faireconomy" in request.url.host:
+            return httpx.Response(
+                200,
+                json=[
+                    {
+                        "title": "CPI m/m",
+                        "country": "CAD",
+                        "date": "2026-08-17T08:30:00-04:00",
+                        "impact": "High",
+                        "forecast": "",
+                        "previous": "",
+                    }
+                ],
+            )
+        return httpx.Response(404)
+
+    real_client = httpx.Client
+
+    def client_factory(*args, **kwargs):
+        kwargs = dict(kwargs)
+        kwargs["transport"] = httpx.MockTransport(handler)
+        return real_client(*args, **kwargs)
+
+    monkeypatch.setattr(httpx, "Client", client_factory)
     cfg = Settings(_env_file=None, FINNHUB_API_KEY="")  # type: ignore[call-arg]
-    briefing = NewsBriefingService(cfg).briefing(session_date=date(2026, 8, 4))
+    briefing = NewsBriefingService(cfg).briefing(session_date=date(2026, 8, 20))
     assert briefing.configured is False
     assert len(briefing.aware_items) >= 1
     assert len(briefing.calendar_events) >= 1
     assert briefing.week_start is not None
+    assert briefing.provider == "faireconomy"
+    assert any(e.impact == "red" for e in briefing.calendar_events)
 
 
 def test_news_briefing_with_finnhub_mock() -> None:
@@ -82,7 +113,7 @@ def test_news_briefing_with_finnhub_mock() -> None:
     assert any(i.impact in {"red", "orange"} for i in briefing.aware_items)
 
 
-def test_news_briefing_calendar_403_falls_back_to_econpulse(
+def test_news_briefing_calendar_403_falls_back_to_faireconomy(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     def handler(request: httpx.Request) -> httpx.Response:
@@ -106,28 +137,32 @@ def test_news_briefing_calendar_403_falls_back_to_econpulse(
             )
         if "finnhub" in host and path.endswith("/company-news"):
             return httpx.Response(200, json=[])
-        if "econpulse" in host and path.endswith("/calendar"):
+        if "faireconomy" in host and path.endswith("/ff_calendar_thisweek.json"):
             return httpx.Response(
                 200,
-                json={
-                    "status": "ok",
-                    "events": [
-                        {
-                            "event_id": "cpi-2026-08-12",
-                            "name": "CPI",
-                            "release_date": "2026-08-12",
-                            "release_time_utc": "12:30:00",
-                            "importance": "high",
-                            "consensus": None,
-                            "prior": 332.5,
-                            "actual": None,
-                        }
-                    ],
-                },
+                json=[
+                    {
+                        "title": "CPI m/m",
+                        "country": "CAD",
+                        "date": "2026-08-17T08:30:00-04:00",
+                        "impact": "High",
+                        "forecast": "0.1%",
+                        "previous": "0.1%",
+                    },
+                    {
+                        "title": "FOMC Meeting Minutes",
+                        "country": "USD",
+                        "date": "2026-08-19T14:00:00-04:00",
+                        "impact": "High",
+                        "forecast": "",
+                        "previous": "",
+                    },
+                ],
             )
+        if "econpulse" in host and path.endswith("/calendar"):
+            return httpx.Response(200, json={"status": "ok", "events": []})
         return httpx.Response(404)
 
-    # Route Finnhub through mock; EconPulse uses its own client — patch httpx.Client
     real_client = httpx.Client
 
     def client_factory(*args, **kwargs):
@@ -136,9 +171,15 @@ def test_news_briefing_calendar_403_falls_back_to_econpulse(
         return real_client(*args, **kwargs)
 
     monkeypatch.setattr(httpx, "Client", client_factory)
+    # Clear FF cache between tests
+    import app.services.news_briefing_service as news_mod
+
+    monkeypatch.setattr(news_mod, "_FF_CACHE", None)
     cfg = Settings(_env_file=None, FINNHUB_API_KEY="test-key")  # type: ignore[call-arg]
-    briefing = NewsBriefingService(cfg).briefing(session_date=date(2026, 8, 10))
+    briefing = NewsBriefingService(cfg).briefing(session_date=date(2026, 8, 20))
     assert briefing.configured is True
-    assert any(e.event == "CPI" for e in briefing.calendar_events)
-    assert "econpulse" in briefing.provider
+    assert "faireconomy" in briefing.provider
+    red_names = {e.event for e in briefing.red_events}
+    assert "CPI m/m" in red_names
+    assert "FOMC Meeting Minutes" in red_names
     assert len(briefing.market_items) == 1
