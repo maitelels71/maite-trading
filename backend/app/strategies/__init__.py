@@ -6,7 +6,8 @@ from app.strategies.bb_trend_flip_h import BbTrendFlipHStrategy
 from app.strategies.daily_mid_bounce import DailyMidBounceStrategy
 from app.strategies.magnet_ma20_gap import MagnetMa20GapStrategy
 from app.strategies.ml01_structure_choch_bos import Ml01StructureChochBosStrategy
-from app.strategies.ml02_single_candle_mitigation import (
+from app.strategies.ml02_h4_15m_1m import (
+    Ml02H4M15M1Strategy,
     Ml02SingleCandleMitigationStrategy,
 )
 from app.strategies.ml03_first_ny5m import Ml03FirstNy5mStrategy
@@ -24,6 +25,7 @@ __all__ = [
     "DailyMidBounceStrategy",
     "MagnetMa20GapStrategy",
     "Ml01StructureChochBosStrategy",
+    "Ml02H4M15M1Strategy",
     "Ml02SingleCandleMitigationStrategy",
     "Ml03FirstNy5mStrategy",
     "OpeningRangeBreakoutStrategy",

@@ -1025,101 +1025,120 @@ export const PLAYBOOK_EN: Record<string, PlaybookEnOverlay> = {
   },
 
   ml02: {
-    name: "Single Candle Mitigation",
+    name: "H4 → 15M → 1M",
     markets:
-      "Futures LONG/SHORT · MNQ · MES · 6E · 6A · 6B · GC · HTF OB/FVG 15m + SCM 1m/3m",
+      "Futures LONG/SHORT · MNQ · MES · 6E · 6A · 6B · GC · H4 bias + 15M/1M + PD",
     summary:
-      "Mitigate an HTF zone: Order Block or impulse imbalance (FVG), while taking prior highs/lows. Mark bias + HTF OB/FVG · sweep inducement · price returns into the zone · long-wick SCM that grabs recent liquidity and rejects = entry. SCM alone mid-range / without HTF zone = no trade.",
-    sessionWindow: "Intraday · OB/FVG / bias 15m · SCM entry 1m–3m",
+      "H4 bias (3-candle breakout + close with direction). 15M confirms same side + Premium/Discount. 1M confirms + PD for entry. LONG only in Discount · SHORT only in Premium · confidence ≥ 90.",
+    sessionWindow: "Intraday · H4 bias · 15M confirm · 1M entry",
     riskNotes: [
-      "Thesis = HTF OB or FVG mitigation + prior liquidity take — not a lone mid-range pullback",
-      "HTF bias (BOS / momentum) aligned with the zone side",
-      "Mark HTF OB and/or FVG from the BOS impulse",
-      "Inducement or engineering liquidity swept BEFORE accepting the return to the zone",
-      "Valid SCM in OB or FVG: long wick + sweep of recent highs/lows + close back",
-      "SL beyond zone / SCM wick; TP at opposite HTF structure",
-      "Stacking: new SCM in the same zone after a new inducement",
+      "H4 NEUTRAL = no trade (no bias)",
+      "15M and 1M must break in the same direction as H4",
+      "LONG only with price in Discount (below 50% of swing)",
+      "SHORT only with price in Premium (above 50% of swing)",
+      "Confidence ≥ 90 (all checks aligned)",
+      "SL beyond opposite LTF swing; TP at H4 structure",
     ],
     invalidation: [
-      "SCM mid-range with no marked HTF OB/FVG",
-      "Enter HTF zone with no prior inducement (classic trap)",
-      "Trade against HTF BOS / bias",
-      "Candle that does not take prior highs/lows (no liquidity grab)",
-      "Body closes through the zone / SCM against you",
-      "Chase outside the HTF OB/FVG",
+      "H4 without a clear bullish/bearish breakout (NEUTRAL)",
+      "15M or 1M does not confirm H4 bias",
+      "LONG in Premium / SHORT in Discount",
+      "Confidence < 90",
+      "Trade against the breakout candle close",
     ],
     entrySteps: [
       {
         id: "ml02-e1",
-        label: "HTF bias + mark HTF OB / FVG",
+        label: "H4 bias — 3-candle breakout",
         detail:
-          "SELL: bearish BOS → supply OB and/or bearish FVG. BUY: bullish BOS → demand OB and/or bullish FVG.",
+          "Bull: High > max(prior 3 H4) and Close > Open. Bear: Low < min(3) and Close < Open. Else → NEUTRAL.",
       },
       {
         id: "ml02-e2",
-        label: "Wait for inducement / eng. liquidity",
+        label: "15M confirm + Premium/Discount",
         detail:
-          "Do not take the first mid pullback OB — sweep inducement first, then return to HTF OB or FVG.",
+          "Same 3-candle breakout on 15M aligned with H4. LONG needs Discount; SHORT Premium (eq = 50% swing).",
       },
       {
         id: "ml02-e3",
-        label: "Price returns to HTF OB or imbalance",
+        label: "1M confirm + PD entry",
         detail:
-          "Mitigating the HTF zone (OB body or FVG) is the trade. No touch → no setup.",
+          "1M breakout same direction + correct PD zone. Enter on active candle close / rejection.",
       },
       {
         id: "ml02-e4",
-        label: "SCM takes prior highs/lows",
+        label: "Confidence ≥ 90",
         detail:
-          "Long wick sweeps recent highs/lows and closes with rejection inside/at the HTF zone edge.",
+          "Score sums H4 bias, 15M/1M confirms, and optimal PD. Below 90 → WAIT.",
       },
       {
         id: "ml02-e5",
         label: "Entry · SL · TP",
         detail:
-          "Enter on SCM rejection. SL beyond zone/SCM. TP1 internal liquidity · TP2 HTF high/low.",
+          "Enter on 1M confirm. SL beyond LTF swing. TP1 15M liquidity · TP2 H4 structure.",
       },
     ],
     exitSteps: [
-      { id: "ml02-x1", label: "TP1: liquidity / internal LTF swing" },
-      { id: "ml02-x2", label: "TP2: HTF structure (bias high/low)" },
+      { id: "ml02-x1", label: "TP1: liquidity / 15M swing" },
+      { id: "ml02-x2", label: "TP2: H4 structure (bias high/low)" },
       {
         id: "ml02-x3",
-        label: "BE / exit if body closes through zone / SCM against you",
+        label: "BE / exit if H4 closes against bias",
       },
-      { id: "ml02-x4", label: "No clean return to HTF OB/FVG → paper / no trade" },
+      { id: "ml02-x4", label: "No H4+15M+1M+PD alignment → paper / no trade" },
     ],
     byTimeframe: [
       {
-        timeframe: "15m / 1H",
-        focus: "Bias + HTF OB/FVG (thesis)",
+        timeframe: "H4",
+        focus: "Directional bias",
         steps: [
-          { id: "ml02-htf-1", label: "HTF BOS / momentum = direction" },
+          {
+            id: "ml02-htf-1",
+            label: "Compare active candle vs high/low of prior 3 H4",
+          },
           {
             id: "ml02-htf-2",
-            label: "Mark OB and/or FVG of the BOS impulse",
+            label: "Close > Open = bull · Close < Open = bear (with breakout)",
           },
           {
             id: "ml02-htf-3",
-            label: "Inducement first; mid zones without HTF thesis = traps",
+            label: "NEUTRAL → do not look for 15M/1M",
           },
         ],
       },
       {
-        timeframe: "1m / 3m",
-        focus: "SCM in OB/FVG (trigger)",
+        timeframe: "15M",
+        focus: "Confirm + PD",
         steps: [
           {
-            id: "ml02-ltf-1",
-            label: "Confirm price inside / at edge of HTF OB or FVG",
+            id: "ml02-m15-1",
+            label: "3-candle breakout same direction as H4",
           },
           {
-            id: "ml02-ltf-2",
-            label: "SCM: long wick + prior highs/lows + close back",
+            id: "ml02-m15-2",
+            label: "Mark swing → eq 50% · Discount / Premium",
           },
           {
-            id: "ml02-ltf-3",
-            label: "Entry + SL; stack only if new SCM stays in the zone",
+            id: "ml02-m15-3",
+            label: "LONG only Discount · SHORT only Premium",
+          },
+        ],
+      },
+      {
+        timeframe: "1M",
+        focus: "Entry trigger",
+        steps: [
+          {
+            id: "ml02-m1-1",
+            label: "3-candle breakout aligned + correct PD",
+          },
+          {
+            id: "ml02-m1-2",
+            label: "Confidence ≥ 90 before entry",
+          },
+          {
+            id: "ml02-m1-3",
+            label: "Entry + SL; no chase once price leaves PD zone",
           },
         ],
       },
@@ -1127,101 +1146,120 @@ export const PLAYBOOK_EN: Record<string, PlaybookEnOverlay> = {
   },
 
   ml02o: {
-    name: "Single Candle Mitigation",
-    markets: "Options CALL/PUT · HTF OB/FVG 15m/1H + LTF SCM · plan ≤35%",
+    name: "H4 → 15M → 1M",
+    markets: "Options CALL/PUT · H4 bias + 15M/1M + PD · plan ≤35%",
     summary:
-      "Mitigate an HTF zone: Order Block or impulse imbalance (FVG), while taking prior highs/lows. Mark bias + HTF OB/FVG · sweep inducement · price returns into the zone · long-wick SCM that grabs recent liquidity and rejects = entry. SCM alone mid-range / without HTF zone = no trade.",
-    sessionWindow: "Intraday · OB/FVG / bias 15m/1H · SCM 5m–15m · options plan ≤35%",
+      "H4 bias (3-candle breakout + close with direction). 15M confirms same side + Premium/Discount. 1M confirms + PD for entry. LONG only in Discount · SHORT only in Premium · confidence ≥ 90.",
+    sessionWindow: "Intraday · H4 bias · 15M confirm · 1M entry · options plan ≤35%",
     riskNotes: [
-      "Thesis = HTF OB or FVG mitigation + prior liquidity take — not a lone mid-range pullback",
-      "HTF bias (BOS / momentum) aligned with the zone side",
-      "Mark HTF OB and/or FVG from the BOS impulse",
-      "Inducement or engineering liquidity swept BEFORE accepting the return to the zone",
-      "Valid SCM in OB or FVG: long wick + sweep of recent highs/lows + close back",
-      "SL beyond zone / SCM wick; TP at opposite HTF structure",
-      "Stacking: new SCM in the same zone after a new inducement",
+      "H4 NEUTRAL = no trade (no bias)",
+      "15M and 1M must break in the same direction as H4",
+      "LONG only with price in Discount (below 50% of swing)",
+      "SHORT only with price in Premium (above 50% of swing)",
+      "Confidence ≥ 90 (all checks aligned)",
+      "SL beyond opposite LTF swing; TP at H4 structure",
       "Options: ATM/OTM in range · plan 10/20/35% — not 100% plan",
     ],
     invalidation: [
-      "SCM mid-range with no marked HTF OB/FVG",
-      "Enter HTF zone with no prior inducement (classic trap)",
-      "Trade against HTF BOS / bias",
-      "Candle that does not take prior highs/lows (no liquidity grab)",
-      "Body closes through the zone / SCM against you",
-      "Chase outside the HTF OB/FVG",
+      "H4 without a clear bullish/bearish breakout (NEUTRAL)",
+      "15M or 1M does not confirm H4 bias",
+      "LONG in Premium / SHORT in Discount",
+      "Confidence < 90",
+      "Trade against the breakout candle close",
     ],
     entrySteps: [
       {
         id: "ml02o-e1",
-        label: "HTF bias + mark HTF OB / FVG",
+        label: "H4 bias — 3-candle breakout",
         detail:
-          "PUT: bearish BOS → supply OB and/or bearish FVG. CALL: bullish BOS → demand OB and/or bullish FVG (15m/1H).",
+          "CALL: High > max(prior 3 H4) + bullish close. PUT: Low < min(3) + bearish close. Else → no trade.",
       },
       {
         id: "ml02o-e2",
-        label: "Wait for inducement / eng. liquidity",
+        label: "15M confirm + Premium/Discount",
         detail:
-          "Do not take the first mid pullback OB — sweep inducement first, then return to HTF OB or FVG.",
+          "Same 3-candle breakout on 15M aligned with H4. LONG needs Discount; SHORT Premium (eq = 50% swing).",
       },
       {
         id: "ml02o-e3",
-        label: "Price returns to HTF OB or imbalance",
+        label: "1M confirm + PD entry",
         detail:
-          "Mitigating the HTF zone (OB body or FVG) is the trade. No touch → no setup.",
+          "1M breakout same direction + correct PD zone. Enter on active candle close / rejection.",
       },
       {
         id: "ml02o-e4",
-        label: "SCM takes prior highs/lows",
+        label: "Confidence ≥ 90",
         detail:
-          "Long wick sweeps recent highs/lows and closes with rejection inside/at the HTF zone edge.",
+          "Score sums H4 bias, 15M/1M confirms, and optimal PD. Below 90 → WAIT.",
       },
       {
         id: "ml02o-e5",
         label: "Entry · SL · TP",
         detail:
-          "Enter on SCM rejection. SL beyond zone/SCM. Options plan ≤35% · TP HTF swing.",
+          "Enter on 1M confirm. SL beyond LTF swing. Options plan ≤35% · TP H4 swing.",
       },
     ],
     exitSteps: [
-      { id: "ml02o-x1", label: "TP1: liquidity / internal LTF swing" },
-      { id: "ml02o-x2", label: "TP2: HTF structure (bias high/low)" },
+      { id: "ml02o-x1", label: "TP1: liquidity / 15M swing" },
+      { id: "ml02o-x2", label: "TP2: H4 structure (bias high/low)" },
       {
         id: "ml02o-x3",
-        label: "BE / exit if body closes through zone / SCM against you",
+        label: "BE / exit if H4 closes against bias",
       },
-      { id: "ml02o-x4", label: "No clean return to HTF OB/FVG → paper / no trade" },
+      { id: "ml02o-x4", label: "No H4+15M+1M+PD alignment → paper / no trade" },
     ],
     byTimeframe: [
       {
-        timeframe: "15m / 1H",
-        focus: "Bias + HTF OB/FVG (thesis)",
+        timeframe: "H4",
+        focus: "Directional bias",
         steps: [
-          { id: "ml02o-htf-1", label: "HTF BOS / momentum = direction" },
+          {
+            id: "ml02o-htf-1",
+            label: "Compare active candle vs high/low of prior 3 H4",
+          },
           {
             id: "ml02o-htf-2",
-            label: "Mark OB and/or FVG of the BOS impulse",
+            label: "Close > Open = bull · Close < Open = bear (with breakout)",
           },
           {
             id: "ml02o-htf-3",
-            label: "Inducement first; mid zones without HTF thesis = traps",
+            label: "NEUTRAL → do not look for 15M/1M",
           },
         ],
       },
       {
-        timeframe: "5m / 15m",
-        focus: "SCM in OB/FVG (trigger)",
+        timeframe: "15M",
+        focus: "Confirm + PD",
         steps: [
           {
-            id: "ml02o-ltf-1",
-            label: "Confirm price inside / at edge of HTF OB or FVG",
+            id: "ml02o-m15-1",
+            label: "3-candle breakout same direction as H4",
           },
           {
-            id: "ml02o-ltf-2",
-            label: "SCM: long wick + prior highs/lows + close back",
+            id: "ml02o-m15-2",
+            label: "Mark swing → eq 50% · Discount / Premium",
           },
           {
-            id: "ml02o-ltf-3",
-            label: "Entry + SL; stack only if new SCM stays in the zone",
+            id: "ml02o-m15-3",
+            label: "LONG only Discount · SHORT only Premium",
+          },
+        ],
+      },
+      {
+        timeframe: "1M",
+        focus: "Entry trigger",
+        steps: [
+          {
+            id: "ml02o-m1-1",
+            label: "3-candle breakout aligned + correct PD",
+          },
+          {
+            id: "ml02o-m1-2",
+            label: "Confidence ≥ 90 before entry",
+          },
+          {
+            id: "ml02o-m1-3",
+            label: "Entry + SL; no chase once price leaves PD zone",
           },
         ],
       },

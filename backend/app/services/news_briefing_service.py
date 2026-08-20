@@ -145,6 +145,7 @@ class NewsBriefingService:
             if not calendar_events:
                 calendar_events = _sample_week_calendar(week_start, week_end)
                 provider = "sample" if calendar_events else "none"
+            calendar_events = _red_carpet_only(calendar_events)
             return NewsBriefingResponse(
                 as_of=datetime.now(UTC),
                 session_date=day,
@@ -153,17 +154,18 @@ class NewsBriefingService:
                 provider=provider,
                 configured=False,
                 message=(
+                    "Red-carpet only (FF High Impact). "
                     "Calendar via Forex Factory weekly export (Fair Economy). "
                     "Add FINNHUB_API_KEY for market headlines when available."
                     if provider == "faireconomy"
                     else (
-                        "No FINNHUB_API_KEY — calendar via EconPulse (US macro)."
+                        "Red-carpet only. No FINNHUB_API_KEY — calendar via EconPulse (US macro)."
                         if provider == "econpulse"
-                        else "No live calendar source — showing sample rows."
+                        else "Red-carpet only. No live calendar source — showing sample rows."
                     )
                 ),
                 calendar_events=calendar_events,
-                red_events=[e for e in calendar_events if e.impact == "red"],
+                red_events=calendar_events,
                 aware_items=_static_awareness_checklist(day),
             )
 
@@ -230,7 +232,8 @@ class NewsBriefingService:
             notes.append(f"Watchlist news error: {_safe_error(exc)}")
             logger.warning("Finnhub watchlist news failed", exc_info=True)
 
-        red_events = [e for e in calendar_events if e.impact == "red"]
+        calendar_events = _red_carpet_only(calendar_events)
+        red_events = list(calendar_events)
 
         if not market and not watchlist and not calendar_events:
             return NewsBriefingResponse(
@@ -316,17 +319,15 @@ class NewsBriefingService:
             impact = _map_finnhub_impact(row.get("impact"))
             country = str(row.get("country") or "")
             currency = country_to_currency(country)
-            # Keep major FX + anything high-impact
-            if currency not in MAJOR_CCY and impact not in ("red", "orange"):
+            # Desk calendar: red carpet (high impact) only.
+            if impact != "red":
+                continue
+            if currency not in MAJOR_CCY:
                 continue
             event_name = str(row.get("event") or row.get("title") or "Economic event")
             scheduled = _parse_finnhub_time(row.get("time") or row.get("date"))
             eid = _stable_id("econ", country, event_name, str(scheduled))
-            reason = ""
-            if impact == "red":
-                reason = "High impact — size down / avoid chasing into the print"
-            elif impact == "orange":
-                reason = "Medium impact — watch spreads around the release"
+            reason = "High impact — size down / avoid chasing into the print"
             events.append(
                 EconomicEventOut(
                     id=eid,
@@ -379,20 +380,17 @@ class NewsBriefingService:
                 ccy_raw = str(row.get("country") or "").strip().upper()
                 currency = ccy_raw if len(ccy_raw) == 3 else country_to_currency(ccy_raw)
                 impact = _map_ff_impact(row.get("impact"))
-                if currency not in MAJOR_CCY and impact not in ("red", "orange"):
+                # Desk calendar: red carpet (FF High) only.
+                if impact != "red":
+                    continue
+                if currency not in MAJOR_CCY:
                     continue
                 scheduled = _parse_finnhub_time(row.get("date"))
                 if scheduled is None:
                     continue
-                reason = ""
-                if impact == "red":
-                    reason = (
-                        "Forex Factory high impact — size down / avoid chasing into the print"
-                    )
-                elif impact == "orange":
-                    reason = "Forex Factory medium impact — watch spreads around the release"
-                else:
-                    reason = "Forex Factory calendar"
+                reason = (
+                    "Forex Factory high impact — size down / avoid chasing into the print"
+                )
                 parsed.append(
                     EconomicEventOut(
                         id=_stable_id(
@@ -455,6 +453,8 @@ class NewsBriefingService:
             if day < start or day > end:
                 continue
             impact = _map_econpulse_impact(row.get("importance"))
+            if impact != "red":
+                continue
             name = str(row.get("name") or "US release")
             time_utc = str(row.get("release_time_utc") or "12:30:00")
             try:
@@ -535,6 +535,11 @@ def _safe_error(exc: Exception) -> str:
 
 def _safe_http_error(exc: httpx.HTTPStatusError) -> str:
     return f"HTTP {exc.response.status_code} on {exc.request.url.path}"
+
+
+def _red_carpet_only(events: list[EconomicEventOut]) -> list[EconomicEventOut]:
+    """Desk News shows Forex Factory High Impact (red folder) only."""
+    return [e for e in events if e.impact == "red"]
 
 
 def _map_finnhub_impact(raw: Any) -> ImpactLevel:

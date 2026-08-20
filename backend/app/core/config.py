@@ -64,6 +64,26 @@ class Settings(BaseSettings):
     # Live SELL_TO_CLOSE / equity SELL via Trader API (requires Accounts & Trading product).
     schwab_trading_enabled: bool = Field(default=True, alias="SCHWAB_TRADING_ENABLED")
 
+    # Coinbase Advanced Trade (crypto rebalance bot). Keys from CDP portal.
+    coinbase_api_key: str = Field(default="", alias="COINBASE_API_KEY")
+    coinbase_api_secret: str = Field(default="", alias="COINBASE_API_SECRET")
+    coinbase_key_file: str = Field(default="", alias="COINBASE_KEY_FILE")
+    coinbase_quote: str = Field(default="USD", alias="COINBASE_QUOTE")
+    coinbase_assets: str = Field(default="BTC,ETH", alias="COINBASE_ASSETS")
+    coinbase_cash_pct: float = Field(default=0.10, alias="COINBASE_CASH_PCT")
+    coinbase_lookback_days: int = Field(default=30, alias="COINBASE_LOOKBACK_DAYS")
+    coinbase_max_trade_usd: float = Field(default=25.0, alias="COINBASE_MAX_TRADE_USD")
+    coinbase_min_trade_usd: float = Field(default=5.0, alias="COINBASE_MIN_TRADE_USD")
+    coinbase_rebalance_threshold_pct: float = Field(
+        default=5.0,
+        alias="COINBASE_REBALANCE_THRESHOLD_PCT",
+    )
+    coinbase_dry_run: bool = Field(default=True, alias="COINBASE_DRY_RUN")
+    coinbase_trading_enabled: bool = Field(
+        default=False,
+        alias="COINBASE_TRADING_ENABLED",
+    )
+
     # TradeAdvocate (futures)
     tradeadvocate_api_key: str = Field(default="", alias="TRADEADVOCATE_API_KEY")
     tradeadvocate_api_secret: str = Field(

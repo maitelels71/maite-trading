@@ -28,7 +28,15 @@ def test_news_briefing_checklist_without_key(monkeypatch: pytest.MonkeyPatch) ->
                         "impact": "High",
                         "forecast": "",
                         "previous": "",
-                    }
+                    },
+                    {
+                        "title": "Building Permits",
+                        "country": "USD",
+                        "date": "2026-08-18T08:30:00-04:00",
+                        "impact": "Medium",
+                        "forecast": "",
+                        "previous": "",
+                    },
                 ],
             )
         return httpx.Response(404)
@@ -48,6 +56,8 @@ def test_news_briefing_checklist_without_key(monkeypatch: pytest.MonkeyPatch) ->
     assert len(briefing.calendar_events) >= 1
     assert briefing.week_start is not None
     assert briefing.provider == "faireconomy"
+    assert all(e.impact == "red" for e in briefing.calendar_events)
+    assert all(e.event != "Building Permits" for e in briefing.calendar_events)
     assert any(e.impact == "red" for e in briefing.calendar_events)
 
 
@@ -157,6 +167,14 @@ def test_news_briefing_calendar_403_falls_back_to_faireconomy(
                         "forecast": "",
                         "previous": "",
                     },
+                    {
+                        "title": "Crude Oil Inventories",
+                        "country": "USD",
+                        "date": "2026-08-20T10:30:00-04:00",
+                        "impact": "Low",
+                        "forecast": "",
+                        "previous": "",
+                    },
                 ],
             )
         if "econpulse" in host and path.endswith("/calendar"):
@@ -179,7 +197,9 @@ def test_news_briefing_calendar_403_falls_back_to_faireconomy(
     briefing = NewsBriefingService(cfg).briefing(session_date=date(2026, 8, 20))
     assert briefing.configured is True
     assert "faireconomy" in briefing.provider
+    assert all(e.impact == "red" for e in briefing.calendar_events)
     red_names = {e.event for e in briefing.red_events}
     assert "CPI m/m" in red_names
     assert "FOMC Meeting Minutes" in red_names
+    assert "Crude Oil Inventories" not in red_names
     assert len(briefing.market_items) == 1

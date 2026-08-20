@@ -83,12 +83,12 @@ const DESK_OPENS_ENABLED = false;
  * can use live equity/cash. Order POSTs stay off (DESK_OPENS_ENABLED).
  */
 const SCHWAB_TRADER_READS = true;
-const DESK_SYNC_TFS = ["1h", "1d", "15m"] as const;
-const DESK_LOOKBACK_DAYS = 25;
+const DESK_SYNC_TFS = ["1h", "1d", "15m", "4h", "1m"] as const;
+const DESK_LOOKBACK_DAYS = 30;
 const DESK_15M_LOOKBACK_DAYS = 14;
-/** Futures live desk: HTF + LTF so ML01/ML02 evaluate structure whenever Globex is open. */
-const DESK_SYNC_TFS_FUTURES = ["1h", "15m", "5m", "1m"] as const;
-const DESK_LOOKBACK_FUTURES = 14;
+/** Futures live desk: H4 (ML02) + HTF/LTF for ML01/ML03 whenever Globex is open. */
+const DESK_SYNC_TFS_FUTURES = ["4h", "1h", "15m", "5m", "1m"] as const;
+const DESK_LOOKBACK_FUTURES = 30;
 const DESK_1M_LOOKBACK_DAYS = 2;
 /** One strategy per HTTP call — extras (15m/1m) still trip API Gateway ~29s. */
 const DESK_STRATEGY_CHUNK = 1;

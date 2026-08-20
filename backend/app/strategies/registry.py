@@ -1,3 +1,4 @@
+from app.core.constants import STRATEGY_ML02_H4
 from app.ports.strategy import Strategy
 from app.strategies.bb15_gap_open import Bb15GapOpenStrategy
 from app.strategies.bb_trend_flip_h import BbTrendFlipHStrategy
@@ -5,11 +6,14 @@ from app.strategies.creando_riquezas import ALL_CR_STRATEGIES
 from app.strategies.daily_mid_bounce import DailyMidBounceStrategy
 from app.strategies.magnet_ma20_gap import MagnetMa20GapStrategy
 from app.strategies.ml01_structure_choch_bos import Ml01StructureChochBosStrategy
-from app.strategies.ml02_single_candle_mitigation import (
-    Ml02SingleCandleMitigationStrategy,
-)
+from app.strategies.ml02_h4_15m_1m import Ml02H4M15M1Strategy
 from app.strategies.ml03_first_ny5m import Ml03FirstNy5mStrategy
 from app.strategies.opening_range_breakout import OpeningRangeBreakoutStrategy
+
+# Old playbook / localStorage keys → current strategy name.
+_STRATEGY_ALIASES: dict[str, str] = {
+    "ml02_single_candle_mitigation": STRATEGY_ML02_H4,
+}
 
 
 class StrategyRegistry:
@@ -20,8 +24,9 @@ class StrategyRegistry:
         self._strategies[strategy.name] = strategy
 
     def get(self, name: str) -> Strategy:
+        resolved = _STRATEGY_ALIASES.get(name, name)
         try:
-            return self._strategies[name]
+            return self._strategies[resolved]
         except KeyError as exc:
             known = ", ".join(sorted(self._strategies)) or "(none)"
             raise KeyError(f"Unknown strategy '{name}'. Known: {known}") from exc
@@ -38,7 +43,7 @@ def build_default_registry() -> StrategyRegistry:
     registry.register(DailyMidBounceStrategy())
     registry.register(BbTrendFlipHStrategy())
     registry.register(Ml01StructureChochBosStrategy())
-    registry.register(Ml02SingleCandleMitigationStrategy())
+    registry.register(Ml02H4M15M1Strategy())
     registry.register(Ml03FirstNy5mStrategy())
     for strategy in ALL_CR_STRATEGIES:
         registry.register(strategy)

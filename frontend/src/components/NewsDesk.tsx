@@ -7,8 +7,6 @@ import { useLocale } from "@/components/LocaleProvider";
 import { fetchNewsBriefing } from "@/lib/api";
 import type { EconomicEvent, NewsBriefing, NewsItem } from "@/lib/types";
 
-type ImpactFilter = "all" | "red" | "orange" | "yellow";
-
 function todayNyIso(): string {
   return new Intl.DateTimeFormat("en-CA", {
     timeZone: "America/New_York",
@@ -99,7 +97,6 @@ export function NewsDesk() {
   const [anchor, setAnchor] = useState(todayNyIso);
   const [briefing, setBriefing] = useState<NewsBriefing | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [impactFilter, setImpactFilter] = useState<ImpactFilter>("all");
   const [pending, startTransition] = useTransition();
 
   const weekStart = useMemo(
@@ -127,14 +124,14 @@ export function NewsDesk() {
     load();
   }, [load]);
 
+  /** Red carpet (high impact) only — Med/Low never shown. */
   const calendar = useMemo(() => {
     const rows =
-      briefing?.calendar_events?.length
-        ? briefing.calendar_events
-        : (briefing?.red_events ?? []);
-    if (impactFilter === "all") return rows;
-    return rows.filter((e) => e.impact === impactFilter);
-  }, [briefing, impactFilter]);
+      briefing?.red_events?.length
+        ? briefing.red_events
+        : (briefing?.calendar_events ?? []);
+    return rows.filter((e) => e.impact === "red");
+  }, [briefing]);
 
   const grouped = useMemo(() => {
     const map = new Map<string, EconomicEvent[]>();
@@ -217,28 +214,12 @@ export function NewsDesk() {
         >
           {t("news.today")}
         </button>
-        <div className="ml-auto flex flex-wrap items-center gap-1.5">
-          {(
-            [
-              ["all", t("news.filterAll")],
-              ["red", t("news.filterHigh")],
-              ["orange", t("news.filterMed")],
-              ["yellow", t("news.filterLow")],
-            ] as const
-          ).map(([key, label]) => (
-            <button
-              key={key}
-              type="button"
-              onClick={() => setImpactFilter(key)}
-              className={`rounded px-2 py-1 text-[11px] font-medium ${
-                impactFilter === key
-                  ? "bg-white text-[#1e3a5f]"
-                  : "bg-white/10 text-white hover:bg-white/20"
-              }`}
-            >
-              {label}
-            </button>
-          ))}
+        <div className="ml-auto flex items-center gap-2 text-[11px] font-medium">
+          <span
+            className="inline-block h-3.5 w-4 rounded-sm bg-red-500"
+            aria-hidden
+          />
+          {t("news.redCarpetOnly")}
         </div>
       </div>
 
@@ -339,15 +320,7 @@ export function NewsDesk() {
         <div className="flex flex-wrap gap-3 border-t border-[var(--border)] px-3 py-2 text-[10px] text-[var(--muted)]">
           <span className="inline-flex items-center gap-1">
             <span className="inline-block h-2.5 w-3 rounded-sm bg-red-500" />{" "}
-            {t("news.legendHigh")}
-          </span>
-          <span className="inline-flex items-center gap-1">
-            <span className="inline-block h-2.5 w-3 rounded-sm bg-orange-400" />{" "}
-            {t("news.legendMed")}
-          </span>
-          <span className="inline-flex items-center gap-1">
-            <span className="inline-block h-2.5 w-3 rounded-sm bg-amber-300" />{" "}
-            {t("news.legendLow")}
+            {t("news.redCarpetOnly")}
           </span>
           <span className="ml-auto">{t("news.timesNy")}</span>
         </div>

@@ -1,16 +1,12 @@
-/** Maylels ML02 — Single Candle Mitigation (Options + Futures desks). */
+/** Maylels ML02 — H4 bias → 15M confirm + PD → 1M entry (Options + Futures). */
 
 import type { StrategyPlaybook } from "@/lib/playbook-types";
 import type { Venue } from "@/lib/types";
 
 /**
- * Single Candle Mitigation on an HTF Order Block or imbalance (FVG)
- * (SMC style, e.g. https://www.youtube.com/watch?v=odUhiJR3ork)
- *
- * Trade thesis = mitigate the HTF zone (OB body or impulse FVG) while
- * taking prior highs/lows. Inducement is swept first; then price returns
- * into that HTF zone. The SCM candle is only the LTF entry trigger —
- * not a mid-range internal-structure trade on its own.
+ * Multi-timeframe breakout with premium/discount filter.
+ * H4 sets bias (3-candle breakout). 15M and 1M must confirm the same
+ * direction and sit in Discount (LONG) or Premium (SHORT). Confidence ≥ 90.
  */
 function ml02Playbook(venue: Venue, id: string): StrategyPlaybook {
   const isFutures = venue === "tradeadvocate";
@@ -18,131 +14,145 @@ function ml02Playbook(venue: Venue, id: string): StrategyPlaybook {
     id,
     venue,
     group: "Maylels",
-    setupImage: "/brand/ml02-scm-setup.png",
-    strategyKey: "ml02_single_candle_mitigation",
-    preferredTimeframe: isFutures ? "15m" : "15m",
-    syncTimeframes: isFutures ? ["15m", "5m", "1m"] : ["1h", "15m", "5m"],
-    syncLookbackDays: 14,
-    name: "Single Candle Mitigation",
+    strategyKey: "ml02_h4_15m_1m",
+    preferredTimeframe: "4h",
+    syncTimeframes: ["4h", "15m", "1m"],
+    syncLookbackDays: 30,
+    name: "H4 → 15M → 1M",
     shortName: "ML02",
     markets: isFutures
-      ? "Futuros LONG/SHORT · MNQ · MES · 6E · 6A · 6B · GC · OB/FVG HTF 15m + SCM 1m/3m"
-      : "Opciones CALL/PUT · OB/FVG HTF 15m/1H + SCM LTF · plan ≤35%",
+      ? "Futuros LONG/SHORT · MNQ · MES · 6E · 6A · 6B · GC · H4 bias + 15M/1M + PD"
+      : "Opciones CALL/PUT · H4 bias + 15M/1M + PD · plan ≤35%",
     summary:
-      "Mitigar zona HTF: Order Block o imbalance (FVG) del impulso del BOS, " +
-      "llevándose máximos/mínimos previos. " +
-      "Bias + marcar OB/FVG HTF · barrer inducement · precio vuelve a la zona · " +
-      "SCM = mecha larga que toma liquidez previa y cierra de rechazo. " +
-      "SCM sola a mitad de rango / sin zona HTF = no trade.",
+      "Bias H4 (ruptura de las 3 velas previas + close a favor). " +
+      "15M confirma misma dirección y Premium/Discount. " +
+      "1M confirma + PD para entrada. " +
+      "LONG solo en Discount · SHORT solo en Premium · confianza ≥ 90.",
     sessionWindow: isFutures
-      ? "Intradía · OB/FVG / bias 15m · SCM entrada 1m–3m"
-      : "Intradía · OB/FVG / bias 15m/1H · SCM 5m–15m · options plan ≤35%",
+      ? "Intradía · bias H4 · confirm 15M · entrada 1M"
+      : "Intradía · bias H4 · confirm 15M · entrada 1M · options plan ≤35%",
     riskNotes: [
-      "Tesis = mitigación HTF (OB o FVG) + toma de liquidez previa — no pullback suelto",
-      "Bias HTF (BOS / momentum) alineado con el lado de la zona",
-      "Marcar OB HTF y/o imbalance (FVG) del impulso del BOS",
-      "Inducement o engineering liquidity barrido ANTES del return a la zona",
-      "SCM válida en OB o FVG HTF: mecha larga + sweep de máximos/mínimos previos + close back",
-      "SL más allá del wick SCM / zona; TP a estructura HTF opuesta",
-      "Stacking: nueva SCM en la misma zona tras nuevo inducement",
+      "H4 NEUTRAL = no trade (sin bias)",
+      "15M y 1M deben romper en la misma dirección que H4",
+      "LONG solo con precio en Discount (bajo el 50% del swing)",
+      "SHORT solo con precio en Premium (sobre el 50% del swing)",
+      "Confianza ≥ 90 (todos los checks alineados)",
+      "SL más allá del swing contrario LTF; TP a estructura H4",
       ...(isFutures
         ? []
         : ["Options: ATM/OTM en rango · plan 10/20/35% — no plan 100%"]),
     ],
     invalidation: [
-      "SCM a mitad de rango sin OB/FVG HTF marcado",
-      "Entrar en zona HTF sin inducement previo (trap típico)",
-      "Operar contra BOS / bias HTF",
-      "Vela que no barre máximos/mínimos previos (no toma liquidez)",
-      "Body que cierra a través de la zona / SCM en contra",
-      "Chase fuera del OB/FVG HTF",
+      "H4 sin ruptura alcista/bajista clara (NEUTRAL)",
+      "15M o 1M no confirman el bias H4",
+      "LONG en Premium / SHORT en Discount",
+      "Confianza < 90",
+      "Operar contra el close de la vela de ruptura",
     ],
     entrySteps: [
       {
         id: `${id}-e1`,
-        label: "Bias HTF + marcar OB / FVG HTF",
+        label: "Bias H4 — ruptura de 3 velas",
         detail: isFutures
-          ? "SELL: BOS bajista → OB oferta y/o FVG bearish del impulso. BUY: BOS alcista → OB demanda y/o FVG bullish."
-          : "PUT: BOS bajista → OB/FVG oferta. CALL: BOS alcista → OB/FVG demanda (15m/1H).",
+          ? "Bull: High > max(3 H4 previas) y Close > Open. Bear: Low < min(3) y Close < Open. Si no → NEUTRAL."
+          : "CALL: High > max(3 H4) + close alcista. PUT: Low < min(3) + close bajista. Si no → no trade.",
       },
       {
         id: `${id}-e2`,
-        label: "Esperar inducement / eng. liquidity",
+        label: "15M confirma + Premium/Discount",
         detail:
-          "No entrar en el primer OB intermedio del pullback — primero barrido de inducement, luego return a OB o FVG HTF.",
+          "Misma ruptura de 3 velas en 15M alineada con H4. LONG necesita Discount; SHORT Premium (eq = 50% swing).",
       },
       {
         id: `${id}-e3`,
-        label: "Precio vuelve a OB o imbalance HTF",
+        label: "1M confirma + PD entrada",
         detail:
-          "La mitigación de la zona HTF (OB body o FVG) es el trade. Sin tocar la zona → no setup.",
+          "Ruptura 1M en la misma dirección + zona PD correcta. Entrada en close / rechazo de la vela activa.",
       },
       {
         id: `${id}-e4`,
-        label: "SCM toma máximos/mínimos previos",
+        label: "Confianza ≥ 90",
         detail:
-          "Mecha larga barre highs/lows recientes y cierra de rechazo dentro/en el borde de la zona HTF. Color irrelevante.",
+          "Score suma bias H4, confirm 15M/1M y PD óptimo. Por debajo de 90 → WAIT.",
       },
       {
         id: `${id}-e5`,
         label: "Entrada · SL · TP",
         detail: isFutures
-          ? "Entrada en rechazo SCM. SL más allá zona/SCM. TP1 liquidez interna · TP2 low/high HTF."
-          : "Entrada en rechazo SCM. SL más allá zona/SCM. Options plan ≤35% · TP swing HTF.",
+          ? "Entrada al confirmar 1M. SL más allá swing LTF. TP1 liquidez 15M · TP2 estructura H4."
+          : "Entrada al confirmar 1M. SL más allá swing LTF. Options plan ≤35% · TP swing H4.",
       },
     ],
     exitSteps: [
       {
         id: `${id}-x1`,
-        label: "TP1: liquidez / swing interno LTF",
+        label: "TP1: liquidez / swing 15M",
       },
       {
         id: `${id}-x2`,
-        label: "TP2: estructura HTF (low/high del bias)",
+        label: "TP2: estructura H4 (high/low del bias)",
       },
       {
         id: `${id}-x3`,
-        label: "BE / salir si body cierra a través de la zona / SCM en contra",
+        label: "BE / salir si H4 cierra en contra del bias",
       },
       {
         id: `${id}-x4`,
-        label: "Sin return limpio al OB/FVG HTF → paper / no trade",
+        label: "Sin alineación H4+15M+1M+PD → paper / no trade",
       },
     ],
     byTimeframe: [
       {
-        timeframe: "15m / 1H",
-        focus: "Bias + OB/FVG HTF (tesis)",
+        timeframe: "H4",
+        focus: "Bias direccional",
         steps: [
           {
             id: `${id}-htf-1`,
-            label: "BOS / momentum HTF = dirección",
+            label: "Comparar vela activa vs high/low de las 3 H4 previas",
           },
           {
             id: `${id}-htf-2`,
-            label: "Marcar OB y/o FVG del impulso del BOS",
+            label: "Close > Open = bull · Close < Open = bear (con ruptura)",
           },
           {
             id: `${id}-htf-3`,
-            label: "Inducement primero; zonas mid sin tesis HTF = traps",
+            label: "NEUTRAL → no buscar 15M/1M",
           },
         ],
       },
       {
-        timeframe: isFutures ? "1m / 3m" : "5m / 15m",
-        focus: "SCM en OB/FVG (trigger)",
+        timeframe: "15M",
+        focus: "Confirmación + PD",
         steps: [
           {
-            id: `${id}-ltf-1`,
-            label: "Confirmar precio dentro / en borde de OB o FVG HTF",
+            id: `${id}-m15-1`,
+            label: "Ruptura 3 velas en la misma dirección que H4",
           },
           {
-            id: `${id}-ltf-2`,
-            label: "SCM: mecha larga + toma highs/lows previos + close back",
+            id: `${id}-m15-2`,
+            label: "Marcar swing → eq 50% · Discount / Premium",
           },
           {
-            id: `${id}-ltf-3`,
-            label: "Entrada + SL; stack solo si nueva SCM sigue en la zona",
+            id: `${id}-m15-3`,
+            label: "LONG solo Discount · SHORT solo Premium",
+          },
+        ],
+      },
+      {
+        timeframe: "1M",
+        focus: "Trigger de entrada",
+        steps: [
+          {
+            id: `${id}-m1-1`,
+            label: "Ruptura 3 velas alineada + PD correcto",
+          },
+          {
+            id: `${id}-m1-2`,
+            label: "Confianza ≥ 90 antes de entrar",
+          },
+          {
+            id: `${id}-m1-3`,
+            label: "Entrada + SL; no chase si ya salió de la zona PD",
           },
         ],
       },
