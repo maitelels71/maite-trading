@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 
+import { BrandMark } from "@/components/BrandMark";
 import { LanguageToggle } from "@/components/LanguageToggle";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { useLocale } from "@/components/LocaleProvider";
@@ -148,13 +149,16 @@ export function CoinbaseDesk() {
     <div className="min-h-screen text-[var(--foreground)]">
       <header className="sticky top-0 z-40 border-b border-[var(--border)] bg-[var(--surface)]">
         <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-3 px-4 py-3 sm:px-6">
-          <div className="min-w-0 flex-1">
-            <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-[var(--info)]">
-              {t("hub.coinbaseEyebrow")}
-            </p>
-            <h1 className="text-lg font-bold leading-tight">
-              {t("coinbase.title")}
-            </h1>
+          <div className="min-w-0 flex-1 flex items-center gap-3">
+            <BrandMark className="h-9 w-9 shrink-0" />
+            <div className="min-w-0">
+              <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-[var(--info)]">
+                {t("hub.coinbaseEyebrow")}
+              </p>
+              <h1 className="text-lg font-bold leading-tight">
+                {t("hub.coinbaseTitle")}
+              </h1>
+            </div>
           </div>
           <LanguageToggle />
           <ThemeToggle />

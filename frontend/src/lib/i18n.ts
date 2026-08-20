@@ -120,10 +120,10 @@ const en: Dict = {
   "hub.futuresTitle": "Futures",
   "hub.futuresBody": "MNQ, ES, and the futures playbooks — Tradovate flow.",
   "hub.futuresCta": "Open Futures",
-  "hub.coinbaseEyebrow": "Crypto",
-  "hub.coinbaseTitle": "Coinbase",
+  "hub.coinbaseEyebrow": "Coinbase",
+  "hub.coinbaseTitle": "Crypto",
   "hub.coinbaseBody": "BTC & ETH rebalance bot. See the plan, run a test, then live if you want.",
-  "hub.coinbaseCta": "Open Coinbase",
+  "hub.coinbaseCta": "Open Crypto",
 
   "coinbase.title": "Coinbase bot",
   "coinbase.intro":
@@ -807,10 +807,10 @@ const es: Dict = {
   "hub.futuresTitle": "Futures",
   "hub.futuresBody": "MNQ, ES y los playbooks de futuros — flujo Tradovate.",
   "hub.futuresCta": "Abrir Futures",
-  "hub.coinbaseEyebrow": "Crypto",
-  "hub.coinbaseTitle": "Coinbase",
+  "hub.coinbaseEyebrow": "Coinbase",
+  "hub.coinbaseTitle": "Crypto",
   "hub.coinbaseBody": "Bot BTC y ETH. Ves el plan, corres un test, y live si quieres.",
-  "hub.coinbaseCta": "Abrir Coinbase",
+  "hub.coinbaseCta": "Abrir Crypto",
 
   "coinbase.title": "Bot de Coinbase",
   "coinbase.intro":

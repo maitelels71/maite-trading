@@ -13,6 +13,7 @@ import { DESK_VERSION } from "@/lib/desk-version";
 import {
   absorbDeskTokenFromLocation,
   clearDeskToken,
+  getDeskToken,
   setDeskToken,
   withDeskSessionHash,
 } from "@/lib/desk-session";
@@ -21,7 +22,13 @@ function safeNextPath(raw: string | null): string {
   if (!raw) return "";
   const path = raw.trim();
   if (!path.startsWith("/") || path.startsWith("//")) return "";
-  return path;
+  try {
+    const u = new URL(path, "https://desk.local");
+    u.searchParams.delete("ds");
+    return `${u.pathname}${u.search}` || path;
+  } catch {
+    return path;
+  }
 }
 
 export function HubLanding() {
@@ -190,6 +197,7 @@ export function HubLanding() {
                 body={t("hub.coinbaseBody")}
                 cta={t("hub.coinbaseCta")}
                 tint="blue"
+                showBull
               />
             </div>
             <figure className="hub-quote mt-8 w-full overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--surface)]/90 shadow-sm backdrop-blur">
@@ -238,6 +246,7 @@ function DeskCard({
   body,
   cta,
   tint,
+  showBull = false,
 }: {
   href: string;
   eyebrow: string;
@@ -245,6 +254,7 @@ function DeskCard({
   body: string;
   cta: string;
   tint: "teal" | "bronze" | "blue";
+  showBull?: boolean;
 }) {
   const ring =
     tint === "teal"
@@ -261,13 +271,28 @@ function DeskCard({
   return (
     <a
       href={href}
+      onClick={(e) => {
+        // Full navigation; re-assert session cookie right before leaving hub.
+        if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) {
+          return;
+        }
+        e.preventDefault();
+        const t = getDeskToken();
+        if (t) setDeskToken(t);
+        window.location.assign(href);
+      }}
       className={`group flex flex-col rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md hover:ring-2 ${ring}`}
     >
-      <span
-        className={`inline-flex w-fit rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-[0.14em] ${badge}`}
-      >
-        {eyebrow}
-      </span>
+      <div className="flex items-start justify-between gap-3">
+        <span
+          className={`inline-flex w-fit rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-[0.14em] ${badge}`}
+        >
+          {eyebrow}
+        </span>
+        {showBull ? (
+          <BrandMark className="h-10 w-10 shrink-0 opacity-95" />
+        ) : null}
+      </div>
       <h2 className="mt-4 text-xl font-bold">{title}</h2>
       <p className="mt-2 flex-1 text-sm leading-relaxed text-[var(--muted)]">
         {body}

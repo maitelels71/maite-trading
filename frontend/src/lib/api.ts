@@ -40,7 +40,10 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       // ignore parse errors
     }
     if (res.status === 401 && path !== "/auth/login") {
-      clearDeskToken();
+      // Hub session only — do not treat Schwab/broker 401 as "logged out of desk".
+      if (path.startsWith("/auth/") || path.startsWith("/coinbase")) {
+        clearDeskToken();
+      }
     }
     if (res.status === 503) {
       const scan = /\/strateg|\/scan/i.test(path);
