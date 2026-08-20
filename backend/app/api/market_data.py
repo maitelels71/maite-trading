@@ -53,23 +53,24 @@ def sync_market_data(
                 body.end,
             )
             provider_name = str(instrument.get("data_provider") or "")
+            fetched: list | None = None
             if should_fetch_provider_candles(
                 force_refresh=body.force_refresh,
                 data_provider=provider_name,
                 cached_count=len(cached),
             ):
                 provider = get_provider_factory().get(DataProviderName(provider_name))
-                candles = provider.get_historical_candles(
+                fetched = provider.get_historical_candles(
                     body.ticker, body.timeframe, body.start, body.end
                 )
-                validate_candles(candles)
+                validate_candles(fetched)
                 store.save_candles(
                     instrument["symbol"],
                     instrument["market_type"],
                     body.timeframe,
-                    candles,
+                    fetched,
                 )
-                count = len(candles)
+                rows = fetched
             else:
                 logger.info(
                     "Using %s cached candles for %s %s (Schwab fetch skipped)",
@@ -77,13 +78,16 @@ def sync_market_data(
                     body.ticker,
                     body.timeframe,
                 )
-                count = len(cached)
+                rows = cached
         except Exception as exc:  # noqa: BLE001
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+        ordered = sorted(rows, key=lambda c: c.timestamp) if rows else []
         return MarketDataSyncResponse(
             ticker=body.ticker,
             timeframe=body.timeframe,
-            candles_count=count,
+            candles_count=len(ordered),
+            first_timestamp=ordered[0].timestamp if ordered else None,
+            last_timestamp=ordered[-1].timestamp if ordered else None,
         )
 
     service = MarketDataService(db)
@@ -99,10 +103,13 @@ def sync_market_data(
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
+    ordered = sorted(candles, key=lambda c: c.timestamp) if candles else []
     return MarketDataSyncResponse(
         ticker=body.ticker,
         timeframe=body.timeframe,
         candles_count=len(candles),
+        first_timestamp=ordered[0].timestamp if ordered else None,
+        last_timestamp=ordered[-1].timestamp if ordered else None,
     )
 
 

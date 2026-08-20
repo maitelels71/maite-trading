@@ -193,8 +193,18 @@ const en: Dict = {
   "analyzer.sync": "Sync market data",
   "analyzer.syncHint": "Downloads the playbook TFs from the broker into the DB before running.",
   "analyzer.syncBeforeRun": "Syncing playbook TFs before run…",
+  "analyzer.syncReportTitle": "Last sync",
+  "analyzer.syncReportEmpty": "No sync yet for this symbol. Click Sync market data.",
+  "analyzer.syncReportAt": "Synced {when} ET · {symbol}",
+  "analyzer.syncTfRow": "{tf}: {count} bars · {from} → {to}",
+  "analyzer.syncTfEmpty": "{tf}: 0 bars",
+  "analyzer.syncTfErr": "{tf}: error — {error}",
+  "analyzer.range1mWarn":
+    "Yahoo 1m only covers ~7 days. Narrow the range to the last week (or Sync will still only fill recent 1m).",
   "analyzer.zeroTradesHint":
-    "0 trades. ML03 needs 5m+1m in the DB (Yahoo 1m ≈ 7 days). Sync, then re-run — or no FVG+engulfing setup in range.",
+    "0 trades. Need every playbook TF in DB (Yahoo 1m ≈ 7 days). Sync, then re-run — or no full setup in range.",
+  "analyzer.zeroTradesHintMl02":
+    "0 trades. ML02 needs H4+15M+1M breakout + PD (conf ≥ 90) on a 1m bar. Yahoo 1m ≈ 7 days — use a short range, Sync, then re-run.",
   "analyzer.metrics": "Results",
   "analyzer.trades": "Trades",
   "analyzer.signals": "Signals",
@@ -216,6 +226,7 @@ const en: Dict = {
   "analyzer.groupBb": "BB desk · E01–E04",
   "analyzer.groupCr": "Creando Riquezas · CR01–CR11",
   "analyzer.groupMaylels": "Maylels",
+  "analyzer.groupChannel": "Channel · CH01–CH06",
   "analyzer.groupOther": "Other / engine",
   "analyzer.wins": "Wins",
   "analyzer.losses": "Losses",
@@ -367,6 +378,7 @@ const en: Dict = {
   "strategies.groupBb": "BB · E01–E04",
   "strategies.groupCr": "Creando Riquezas · CR01–CR11",
   "strategies.groupMaylels": "Maylels",
+  "strategies.groupChannel": "Channel · CH01–CH06",
   "strategies.groupOther": "Other",
   "session.pickPlaybook": "Focus playbook",
   "session.pickPlaybookHint":
@@ -881,8 +893,18 @@ const es: Dict = {
   "analyzer.sync": "Sincronizar datos de mercado",
   "analyzer.syncHint": "Baja los TFs del playbook desde el broker a la DB antes de correr.",
   "analyzer.syncBeforeRun": "Sincronizando TFs del playbook antes de correr…",
+  "analyzer.syncReportTitle": "Último sync",
+  "analyzer.syncReportEmpty": "Aún no hay sync de este símbolo. Pulsa Sincronizar datos de mercado.",
+  "analyzer.syncReportAt": "Sync {when} ET · {symbol}",
+  "analyzer.syncTfRow": "{tf}: {count} velas · {from} → {to}",
+  "analyzer.syncTfEmpty": "{tf}: 0 velas",
+  "analyzer.syncTfErr": "{tf}: error — {error}",
+  "analyzer.range1mWarn":
+    "Yahoo 1m solo cubre ~7 días. Acorta el rango a la última semana (o el Sync solo llenará el 1m reciente).",
   "analyzer.zeroTradesHint":
-    "0 trades. ML03 necesita 5m+1m en la DB (Yahoo 1m ≈ 7 días). Haz Sync y vuelve a correr — o no hubo FVG+envolvente en el rango.",
+    "0 trades. Faltan TFs del playbook en la DB (Yahoo 1m ≈ 7 días). Haz Sync y vuelve a correr — o no hubo setup completo en el rango.",
+  "analyzer.zeroTradesHintMl02":
+    "0 trades. ML02 pide ruptura H4+15M+1M + PD (conf ≥ 90) en una vela 1m. Yahoo 1m ≈ 7 días — acorta el rango, Sync y reintenta.",
   "analyzer.metrics": "Resultados",
   "analyzer.trades": "Trades",
   "analyzer.signals": "Señales",
@@ -904,6 +926,7 @@ const es: Dict = {
   "analyzer.groupBb": "BB desk · E01–E04",
   "analyzer.groupCr": "Creando Riquezas · CR01–CR11",
   "analyzer.groupMaylels": "Maylels",
+  "analyzer.groupChannel": "Channel · CH01–CH06",
   "analyzer.groupOther": "Otras / motor",
   "analyzer.wins": "Ganadores",
   "analyzer.losses": "Perdedores",
@@ -1055,6 +1078,7 @@ const es: Dict = {
   "strategies.groupBb": "BB · E01–E04",
   "strategies.groupCr": "Creando Riquezas · CR01–CR11",
   "strategies.groupMaylels": "Maylels",
+  "strategies.groupChannel": "Channel · CH01–CH06",
   "strategies.groupOther": "Otras",
   "session.pickPlaybook": "Enfocar playbook",
   "session.pickPlaybookHint":

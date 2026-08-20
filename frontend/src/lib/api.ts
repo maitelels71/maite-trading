@@ -94,7 +94,12 @@ export async function syncMarketData(payload: {
   end: string;
   market_type?: string;
   force_refresh?: boolean;
-}): Promise<{ candles_count: number }> {
+}): Promise<{
+  candles_count: number;
+  first_timestamp?: string | null;
+  last_timestamp?: string | null;
+  provider_symbol?: string | null;
+}> {
   return request("/market-data/sync", {
     method: "POST",
     body: JSON.stringify(payload),

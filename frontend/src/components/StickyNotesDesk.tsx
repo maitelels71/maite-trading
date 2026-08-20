@@ -19,7 +19,7 @@ import {
   type StickyNoteCard,
 } from "@/lib/sticky-boards";
 
-const OPEN_STORAGE_KEY = "maite.sticky.boards.open";
+const OPEN_STORAGE_KEY = "maite.sticky.boards.open.v2";
 
 function sideBias(markets: string): "CALL" | "PUT" | "CALL/PUT" {
   const m = markets.toUpperCase();

@@ -91,6 +91,80 @@ function holdLabel(entryIso: string, exitIso: string | null | undefined): string
   return `${days}d ${hours % 24}h`;
 }
 
+type SyncTfRow = {
+  tf: string;
+  count: number;
+  first?: string | null;
+  last?: string | null;
+  error?: string;
+};
+
+type SyncReport = {
+  at: string;
+  symbol: string;
+  bars: number;
+  rows: SyncTfRow[];
+};
+
+function syncStorageKey(venue: Venue, symbol: string): string {
+  return `maite.analyzer.lastSync.${venue}.${symbol}`;
+}
+
+function loadSyncReport(venue: Venue, symbol: string): SyncReport | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(syncStorageKey(venue, symbol));
+    if (!raw) return null;
+    return JSON.parse(raw) as SyncReport;
+  } catch {
+    return null;
+  }
+}
+
+function saveSyncReport(venue: Venue, report: SyncReport): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(syncStorageKey(venue, report.symbol), JSON.stringify(report));
+  } catch {
+    /* ignore */
+  }
+}
+
+function fmtTsEt(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "—";
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/New_York",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(d);
+}
+
+function fmtWhenEt(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "—";
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/New_York",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(d);
+}
+
+function daysBetweenIso(start: string, end: string): number {
+  const a = new Date(`${start}T12:00:00Z`).getTime();
+  const b = new Date(`${end}T12:00:00Z`).getTime();
+  if (Number.isNaN(a) || Number.isNaN(b)) return 0;
+  return Math.max(0, Math.round((b - a) / 86_400_000));
+}
+
 export function Dashboard() {
   const { t, locale } = useLocale();
   const { venue, label } = useDeskMode();
@@ -123,6 +197,7 @@ export function Dashboard() {
   const [selectedTradeIdx, setSelectedTradeIdx] = useState<number | null>(null);
   const [candles, setCandles] = useState<Candle[]>([]);
   const [pending, startTransition] = useTransition();
+  const [syncReport, setSyncReport] = useState<SyncReport | null>(null);
 
   const venueInstruments = useMemo(() => {
     const filtered = instruments.filter(
@@ -161,11 +236,13 @@ export function Dashboard() {
         const group =
           p.group === "Maylels" || p.id.startsWith("ml")
             ? ("maylels" as const)
-            : p.id.startsWith("cr")
-              ? ("cr" as const)
-              : p.id.startsWith("e")
-                ? ("bb" as const)
-                : ("other" as const);
+            : p.group?.startsWith("Channel") || p.id.startsWith("ch")
+              ? ("ch" as const)
+              : p.id.startsWith("cr")
+                ? ("cr" as const)
+                : p.id.startsWith("e")
+                  ? ("bb" as const)
+                  : ("other" as const);
         return {
           key: p.strategyKey!,
           label: localizedPlaybookLabel(p, locale),
@@ -218,6 +295,10 @@ export function Dashboard() {
       setTfLocked(false);
     }
   }, [strategy]);
+
+  useEffect(() => {
+    setSyncReport(loadSyncReport(venue, symbol));
+  }, [venue, symbol]);
 
   useEffect(() => {
     let cancelled = false;
@@ -287,20 +368,34 @@ export function Dashboard() {
     return base;
   }
 
+  const needs1m = syncTfs.includes("1m");
+  const rangeTooLongFor1m =
+    needs1m &&
+    mode === "backtest" &&
+    daysBetweenIso(startDate, endDate) > 7;
+
   async function syncPlaybookTfs(): Promise<{
     bars: number;
     errs: number;
-    perTf: { tf: string; count: number; error?: string }[];
+    perTf: SyncTfRow[];
   }> {
     const { start, end } = rangeForCandles();
     let bars = 0;
     let errs = 0;
-    const perTf: { tf: string; count: number; error?: string }[] = [];
+    const perTf: SyncTfRow[] = [];
     for (const tf of syncTfs) {
       try {
         const lookback = lookbackDaysForTf(tf);
-        const startDt = new Date(start);
-        startDt.setUTCDate(startDt.getUTCDate() - lookback);
+        // For 1m, anchor lookback to range end so Yahoo's ~7d window is recent.
+        const endDt = new Date(end);
+        const startDt =
+          tf === "1m"
+            ? new Date(endDt.getTime() - lookback * 86_400_000)
+            : (() => {
+                const s = new Date(start);
+                s.setUTCDate(s.getUTCDate() - lookback);
+                return s;
+              })();
         const res = await syncMarketData({
           ticker: symbol,
           timeframe: tf,
@@ -310,7 +405,12 @@ export function Dashboard() {
           force_refresh: true,
         });
         bars += res.candles_count;
-        perTf.push({ tf, count: res.candles_count });
+        perTf.push({
+          tf,
+          count: res.candles_count,
+          first: res.first_timestamp ?? null,
+          last: res.last_timestamp ?? null,
+        });
         if (res.candles_count === 0) errs += 1;
       } catch (err) {
         errs += 1;
@@ -321,6 +421,14 @@ export function Dashboard() {
         });
       }
     }
+    const report: SyncReport = {
+      at: new Date().toISOString(),
+      symbol,
+      bars,
+      rows: perTf,
+    };
+    setSyncReport(report);
+    saveSyncReport(venue, report);
     return { bars, errs, perTf };
   }
 
@@ -361,6 +469,11 @@ export function Dashboard() {
     setSelectedTradeIdx(res.trades.length ? 0 : null);
   }
 
+  function zeroTradesHint(): string {
+    if (strategy.startsWith("ml02")) return t("analyzer.zeroTradesHintMl02");
+    return t("analyzer.zeroTradesHint");
+  }
+
   function onSync() {
     setError(null);
     setStatus(null);
@@ -368,9 +481,15 @@ export function Dashboard() {
       try {
         const { bars, errs, perTf } = await syncPlaybookTfs();
         const detail = perTf
-          .map((p) => (p.error ? `${p.tf}:ERR` : `${p.tf}:${p.count}`))
+          .map((p) =>
+            p.error
+              ? `${p.tf}:ERR`
+              : `${p.tf}:${p.count}${p.last ? ` (→${fmtTsEt(p.last)})` : ""}`,
+          )
           .join(" · ");
-        setStatus(`Synced ${bars} candles · ${detail}${errs ? ` · ${errs} issues` : ""}`);
+        setStatus(
+          `Synced ${bars} candles · ${detail}${errs ? ` · ${errs} issues` : ""}`,
+        );
         const missing = perTf.filter((p) => p.count === 0);
         if (missing.length) {
           setError(
@@ -380,6 +499,8 @@ export function Dashboard() {
                 : "Revisa el rango / símbolo."
             }`,
           );
+        } else if (rangeTooLongFor1m) {
+          setError(t("analyzer.range1mWarn"));
         }
         await loadCandles();
       } catch (err) {
@@ -393,6 +514,9 @@ export function Dashboard() {
     setStatus(null);
     startTransition(async () => {
       try {
+        if (rangeTooLongFor1m) {
+          setError(t("analyzer.range1mWarn"));
+        }
         // Multi-TF playbooks (ML02/ML03) need every listed TF in the DB.
         if (syncTfs.length > 1) {
           setStatus(t("analyzer.syncBeforeRun"));
@@ -417,9 +541,7 @@ export function Dashboard() {
           });
           applyEvaluate(res);
           const zeroHint =
-            res.trades.length === 0 && syncTfs.includes("1m")
-              ? ` · ${t("analyzer.zeroTradesHint")}`
-              : "";
+            res.trades.length === 0 && needs1m ? ` · ${zeroTradesHint()}` : "";
           setStatus(
             `${strategyDisplayName(strategy)} · ${symbol} · ${date} · ${res.signals?.length ?? 0} signals · ${res.trades.length} trades${zeroHint}`,
           );
@@ -435,9 +557,7 @@ export function Dashboard() {
           });
           applyBacktest(res);
           const zeroHint =
-            res.total_trades === 0 && syncTfs.includes("1m")
-              ? ` · ${t("analyzer.zeroTradesHint")}`
-              : "";
+            res.total_trades === 0 && needs1m ? ` · ${zeroTradesHint()}` : "";
           setStatus(
             `${strategyDisplayName(strategy)} · backtest ${startDate}→${endDate} · ${res.total_trades} trades${res.run_id ? ` · run ${res.run_id}` : ""}${zeroHint}`,
           );
@@ -458,6 +578,7 @@ export function Dashboard() {
   const bbOpts = strategyOptions.filter((o) => o.group === "bb");
   const crOpts = strategyOptions.filter((o) => o.group === "cr");
   const maylelsOpts = strategyOptions.filter((o) => o.group === "maylels");
+  const chOpts = strategyOptions.filter((o) => o.group === "ch");
   const otherOpts = strategyOptions.filter((o) => o.group === "other");
 
   return (
@@ -528,6 +649,15 @@ export function Dashboard() {
                 {maylelsOpts.length > 0 ? (
                   <optgroup label={t("analyzer.groupMaylels")}>
                     {maylelsOpts.map((o) => (
+                      <option key={o.key} value={o.key}>
+                        {o.label}
+                      </option>
+                    ))}
+                  </optgroup>
+                ) : null}
+                {chOpts.length > 0 ? (
+                  <optgroup label={t("analyzer.groupChannel")}>
+                    {chOpts.map((o) => (
                       <option key={o.key} value={o.key}>
                         {o.label}
                       </option>
@@ -670,6 +800,44 @@ export function Dashboard() {
               <p className="text-[10px] text-[var(--muted)]">
                 {t("analyzer.syncHint")} · {syncTfs.join(" + ")}
               </p>
+              {rangeTooLongFor1m ? (
+                <p className="text-[10px] text-amber-800 dark:text-amber-200">
+                  {t("analyzer.range1mWarn")}
+                </p>
+              ) : null}
+              <div className="rounded-md border border-[var(--border)] bg-[var(--surface-muted)] px-2.5 py-2 text-[10px] text-[var(--muted)]">
+                <p className="font-semibold uppercase tracking-wide text-[var(--foreground)]">
+                  {t("analyzer.syncReportTitle")}
+                </p>
+                {syncReport ? (
+                  <>
+                    <p className="mt-1 text-[var(--foreground)]">
+                      {t("analyzer.syncReportAt")
+                        .replace("{when}", fmtWhenEt(syncReport.at))
+                        .replace("{symbol}", syncReport.symbol)}
+                    </p>
+                    <ul className="mt-1 space-y-0.5">
+                      {syncReport.rows.map((row) => (
+                        <li key={row.tf}>
+                          {row.error
+                            ? t("analyzer.syncTfErr")
+                                .replace("{tf}", row.tf)
+                                .replace("{error}", row.error)
+                            : row.count === 0
+                              ? t("analyzer.syncTfEmpty").replace("{tf}", row.tf)
+                              : t("analyzer.syncTfRow")
+                                  .replace("{tf}", row.tf)
+                                  .replace("{count}", String(row.count))
+                                  .replace("{from}", fmtTsEt(row.first))
+                                  .replace("{to}", fmtTsEt(row.last))}
+                        </li>
+                      ))}
+                    </ul>
+                  </>
+                ) : (
+                  <p className="mt-1">{t("analyzer.syncReportEmpty")}</p>
+                )}
+              </div>
             </div>
           </section>
           </DeskSession>
@@ -687,6 +855,16 @@ export function Dashboard() {
               <p className="text-[10px] text-[var(--muted)]">
                 {playbook.markets} · {playbook.sessionWindow}
               </p>
+              {playbook.setupImage ? (
+                <figure className="overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--surface-muted)]">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={playbook.setupImage}
+                    alt={`${t("strategies.setup")} ${localizedPlaybookLabel(playbook, locale)}`}
+                    className="h-auto w-full object-contain"
+                  />
+                </figure>
+              ) : null}
               <div>
                 <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-[var(--muted)]">
                   {t("analyzer.entrySteps")}

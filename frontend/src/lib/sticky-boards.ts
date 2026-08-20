@@ -66,7 +66,7 @@ export const STICKY_BOARDS: StickyBoardDef[] = [
     kind: "playbooks",
     venue: "schwab",
     family: "ch",
-    defaultOpen: false,
+    defaultOpen: true,
   },
   {
     id: "chFutures",
@@ -75,7 +75,7 @@ export const STICKY_BOARDS: StickyBoardDef[] = [
     kind: "playbooks",
     venue: "tradeadvocate",
     family: "ch",
-    defaultOpen: false,
+    defaultOpen: true,
   },
   {
     id: "ml",

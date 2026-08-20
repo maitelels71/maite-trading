@@ -2534,6 +2534,8 @@ function playbookGroupLabel(
 ): string {
   if (p.group === "Maylels" || p.id.startsWith("ml"))
     return t("strategies.groupMaylels");
+  if (p.group?.startsWith("Channel") || p.id.startsWith("ch"))
+    return t("strategies.groupChannel");
   if (p.group?.startsWith("BB") || p.id.startsWith("e"))
     return t("strategies.groupBb");
   if (p.group?.startsWith("Creando") || p.id.startsWith("cr"))

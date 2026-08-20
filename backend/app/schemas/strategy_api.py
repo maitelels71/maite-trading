@@ -25,6 +25,9 @@ class MarketDataSyncResponse(BaseModel):
     ticker: str
     timeframe: str
     candles_count: int
+    first_timestamp: datetime | None = None
+    last_timestamp: datetime | None = None
+    provider_symbol: str | None = None
 
 
 class StrategyEvaluateRequest(BaseModel):

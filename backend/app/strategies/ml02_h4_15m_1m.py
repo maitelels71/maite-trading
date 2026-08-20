@@ -480,40 +480,38 @@ class Ml02H4M15M1Strategy(BaseStrategy):
         ticker = context.ticker
 
         def score_day(day: date) -> StrategyResult | None:
-            # As-of: last 1m bar of the day (or last available).
+            # Walk 1m bars of the day (first setup wins). EOD-only missed
+            # setups that appeared mid-session and were gone by the close.
             day_m1 = [
                 c for c in m1 if local_ts(c.timestamp, tz).date() == day
             ]
             if not day_m1:
-                day_m1 = [
-                    c
-                    for c in m1
-                    if local_ts(c.timestamp, tz).date() <= day
-                ]
-            if not day_m1:
                 return None
-            as_of = day_m1[-1].timestamp
-            snap = analyze_mtf(
-                _slice_as_of(h4, as_of),
-                _slice_as_of(m15, as_of),
-                _slice_as_of(m1, as_of),
-                lookback=lookback,
-                pivot_length=pivot_length,
-                pd_level=pd_level,
-                use_active=use_active,
-                confidence_threshold=conf_th,
-            )
-            if snap.signal == "WAIT":
-                return None
-            side = Side.LONG if snap.signal == "LONG" else Side.SHORT
-            return signal_and_session_trade(
-                bar=day_m1[-1],
-                side=side,
-                reason=_format_reason(snap),
-                ticker=ticker,
-                day_bars=day_m1,
-                notes=f"conf={snap.confidence}",
-            )
+            # Warm-up: need enough LTF history before the day for PD/breakouts.
+            for bar in day_m1:
+                as_of = bar.timestamp
+                snap = analyze_mtf(
+                    _slice_as_of(h4, as_of),
+                    _slice_as_of(m15, as_of),
+                    _slice_as_of(m1, as_of),
+                    lookback=lookback,
+                    pivot_length=pivot_length,
+                    pd_level=pd_level,
+                    use_active=use_active,
+                    confidence_threshold=conf_th,
+                )
+                if snap.signal == "WAIT":
+                    continue
+                side = Side.LONG if snap.signal == "LONG" else Side.SHORT
+                return signal_and_session_trade(
+                    bar=bar,
+                    side=side,
+                    reason=_format_reason(snap),
+                    ticker=ticker,
+                    day_bars=day_m1,
+                    notes=f"conf={snap.confidence}",
+                )
+            return None
 
         return evaluate_each_session_day(
             context,
