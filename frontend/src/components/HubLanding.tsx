@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 
 import { BrandMark } from "@/components/BrandMark";
 import { LanguageToggle } from "@/components/LanguageToggle";
@@ -8,10 +9,24 @@ import { ThemeToggle } from "@/components/ThemeToggle";
 import { useLocale } from "@/components/LocaleProvider";
 import { deskLogin } from "@/lib/api";
 import { futuresDeskHref, optionsDeskHref } from "@/lib/app-mode";
-import { clearDeskToken, getDeskToken, setDeskToken } from "@/lib/desk-session";
+import { DESK_VERSION } from "@/lib/desk-version";
+import {
+  absorbDeskTokenFromLocation,
+  clearDeskToken,
+  setDeskToken,
+  withDeskSessionHash,
+} from "@/lib/desk-session";
+
+function safeNextPath(raw: string | null): string {
+  if (!raw) return "";
+  const path = raw.trim();
+  if (!path.startsWith("/") || path.startsWith("//")) return "";
+  return path;
+}
 
 export function HubLanding() {
   const { t } = useLocale();
+  const searchParams = useSearchParams();
   const [token, setToken] = useState<string | undefined>(undefined);
   const [username, setUsername] = useState("maite");
   const [password, setPassword] = useState("");
@@ -19,8 +34,13 @@ export function HubLanding() {
   const [pending, setPending] = useState(false);
 
   useEffect(() => {
-    setToken(getDeskToken());
-  }, []);
+    const existing = absorbDeskTokenFromLocation();
+    setToken(existing);
+    const next = safeNextPath(searchParams.get("next"));
+    if (existing && next) {
+      window.location.replace(withDeskSessionHash(next, existing));
+    }
+  }, [searchParams]);
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -30,6 +50,11 @@ export function HubLanding() {
       const res = await deskLogin(username, password);
       setDeskToken(res.token);
       setToken(res.token);
+      const next = safeNextPath(searchParams.get("next"));
+      if (next) {
+        window.location.assign(withDeskSessionHash(next, res.token));
+        return;
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : t("hub.loginFailed"));
     } finally {
@@ -66,6 +91,12 @@ export function HubLanding() {
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-2">
+          <span
+            className="tabular-nums text-[10px] font-semibold text-[var(--muted)]"
+            title={DESK_VERSION}
+          >
+            {DESK_VERSION}
+          </span>
           <LanguageToggle />
           <ThemeToggle />
           {token ? (
@@ -137,7 +168,7 @@ export function HubLanding() {
             </h1>
             <div className="mt-6 grid gap-4 sm:grid-cols-3">
               <DeskCard
-                href={optionsDeskHref()}
+                href={withDeskSessionHash(optionsDeskHref(), token)}
                 eyebrow={t("hub.optionsEyebrow")}
                 title={t("hub.optionsTitle")}
                 body={t("hub.optionsBody")}
@@ -145,7 +176,7 @@ export function HubLanding() {
                 tint="teal"
               />
               <DeskCard
-                href={futuresDeskHref()}
+                href={withDeskSessionHash(futuresDeskHref(), token)}
                 eyebrow={t("hub.futuresEyebrow")}
                 title={t("hub.futuresTitle")}
                 body={t("hub.futuresBody")}
@@ -153,7 +184,7 @@ export function HubLanding() {
                 tint="bronze"
               />
               <DeskCard
-                href="/coinbase/"
+                href={withDeskSessionHash("/coinbase/", token)}
                 eyebrow={t("hub.coinbaseEyebrow")}
                 title={t("hub.coinbaseTitle")}
                 body={t("hub.coinbaseBody")}
@@ -230,8 +261,6 @@ function DeskCard({
   return (
     <a
       href={href}
-      target="_blank"
-      rel="noopener noreferrer"
       className={`group flex flex-col rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md hover:ring-2 ${ring}`}
     >
       <span

@@ -3,15 +3,18 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
-import { getDeskToken } from "@/lib/desk-session";
+import { absorbDeskTokenFromLocation } from "@/lib/desk-session";
 
 export function RequireDeskAuth({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const [ok, setOk] = useState(false);
 
   useEffect(() => {
-    if (!getDeskToken()) {
-      router.replace("/");
+    const token = absorbDeskTokenFromLocation();
+    if (!token) {
+      const next = `${window.location.pathname}${window.location.search}`;
+      const qs = next && next !== "/" ? `?next=${encodeURIComponent(next)}` : "";
+      router.replace(`/${qs}`);
       return;
     }
     setOk(true);

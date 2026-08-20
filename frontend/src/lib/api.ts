@@ -44,10 +44,13 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     }
     if (res.status === 503) {
       const scan = /\/strateg|\/scan/i.test(path);
+      if (detail && !scan) {
+        throw new Error(detail);
+      }
       throw new Error(
         scan
           ? "Scan timed out (API ~29s). Sync & Scan now runs in smaller batches — retry."
-          : "Request timed out (API ~29s). Retry.",
+          : detail || "Request timed out (API ~29s). Retry.",
       );
     }
     if (res.status === 429) {
