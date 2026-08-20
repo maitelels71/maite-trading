@@ -33,7 +33,6 @@ import {
 import { DEFAULT_OTM_PREMIUM, sizeForSymbol, sizeLongOption } from "@/lib/option-sizing";
 import {
   groupInstrumentsForVenue,
-  WATCH_SYMBOLS,
 } from "@/lib/instrument-groups";
 import { setHoldTrader } from "@/lib/schwab-hold";
 import {
@@ -83,8 +82,8 @@ const DESK_OPENS_ENABLED = false;
  * can use live equity/cash. Order POSTs stay off (DESK_OPENS_ENABLED).
  */
 const SCHWAB_TRADER_READS = true;
-/** Options TOP 5 — no 1m here (too slow across the equity book; Focus/ML02 pulls 1m). */
-const DESK_SYNC_TFS = ["1h", "1d", "15m", "4h"] as const;
+/** Options TOP 5 — 5m for Channel; no 1m (Focus/ML02 pulls 1m). */
+const DESK_SYNC_TFS = ["1h", "1d", "15m", "5m", "4h"] as const;
 const DESK_LOOKBACK_DAYS = 25;
 const DESK_15M_LOOKBACK_DAYS = 7;
 const DESK_5M_LOOKBACK_DAYS = 3;
@@ -103,9 +102,6 @@ const DESK_SCAN_SYMBOL_BATCH_FUTURES = 1;
 const HARD_SYNC_KEY = "maite.strategies.hardSyncDay";
 /** Session day when desk candle sync last completed (skip re-download on Auto). */
 const DESK_SYNCED_DAY_KEY = "maite.strategies.deskSyncedDay";
-/** Watch + rich-premium names stay on Focus Sync & Scan, not the TOP 5 universe. */
-const DESK_FOCUS_ONLY = new Set([...WATCH_SYMBOLS, "IOVA"]);
-
 function lookbackDaysForTf(tf: string, base: number): number {
   if (tf === "1m") return Math.min(base, DESK_1M_LOOKBACK_DAYS);
   if (tf === "5m") return Math.min(base, DESK_5M_LOOKBACK_DAYS);
@@ -305,6 +301,7 @@ const GATED_WATCH_DETAIL =
 function watchingStrategyRank(strategy: string): number {
   if (strategy.startsWith("ml01")) return 0;
   if (strategy.startsWith("ml02")) return 1;
+  if (strategy.startsWith("ch")) return 2;
   if (strategy.startsWith("ml03")) return 9;
   return 5;
 }
@@ -1219,12 +1216,8 @@ export function StrategiesDesk({ venue, autoScan = false }: StrategiesDeskProps)
     return FALLBACK_INSTRUMENTS.filter((i) => i.data_provider === venue);
   }, [venueInstruments, venue]);
 
-  const deskUniverse = useMemo(() => {
-    if (venue !== "schwab") return universe;
-    return universe.filter(
-      (i) => !DESK_FOCUS_ONLY.has(i.symbol.toUpperCase()),
-    );
-  }, [universe, venue]);
+  /** Full venue book — TOP 5 ranks confluence across every symbol + playbook. */
+  const deskUniverse = universe;
 
   useEffect(() => {
     setScan(null);

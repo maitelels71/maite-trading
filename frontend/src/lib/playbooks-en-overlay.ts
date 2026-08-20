@@ -1126,7 +1126,7 @@ export const PLAYBOOK_EN: Record<string, PlaybookEnOverlay> = {
 
   ml01: {
     name: "ChoCh + BOS Structure",
-    markets: "Futures LONG/SHORT · MNQ · MES · 6E · 6A · 6B · GC · HTF zones + 3m entry",
+    markets: "Futures LONG/SHORT · MNQ · MES · 6E · 6A · 6B · MGC · HTF zones + 3m entry",
     summary:
       "Real pullback in HTF zone (15m/1H). ChoCh = alert; BOS = entry confirmation. BUY at HTF demand · SELL at supply after break. No BOS, no entry.",
     sessionWindow: "Intraday · 15m/1H zones · 3m confirmation/entry",
@@ -1201,7 +1201,7 @@ export const PLAYBOOK_EN: Record<string, PlaybookEnOverlay> = {
   ml02: {
     name: "H4 → 15M → 1M",
     markets:
-      "Futures LONG/SHORT · MNQ · MES · 6E · 6A · 6B · GC · H4 bias + 15M/1M + PD",
+      "Futures LONG/SHORT · MNQ · MES · 6E · 6A · 6B · MGC · H4 bias + 15M/1M + PD",
     summary:
       "H4 bias (3-candle breakout + close with direction). 15M confirms same side + Premium/Discount. 1M confirms + PD for entry. LONG only in Discount · SHORT only in Premium · confidence ≥ 90.",
     sessionWindow: "Intraday · H4 bias · 15M confirm · 1M entry",
@@ -1442,7 +1442,7 @@ export const PLAYBOOK_EN: Record<string, PlaybookEnOverlay> = {
 
   ml03: {
     name: "First NY 5m candle",
-    markets: "Futures LONG/SHORT · MNQ · MES · GC · first NY 5m + 1m entry",
+    markets: "Futures LONG/SHORT · MNQ · MES · MGC · first NY 5m + 1m entry",
     summary:
       "First-candle rule: at 9:30 ET on 5m wait for the 9:30–9:35 close, mark that high/low for the day. On 1m do not buy the first touch — require a break with an FVG (gap between wicks), FVG retest, and an engulfing candle. RR ≈ 1:3 to 1:5.",
     sessionWindow: "RTH · 5m levels 9:30–9:35 · 1m trigger after 9:35",

@@ -208,6 +208,12 @@ function AppShellInner() {
           >
             ← {t("hub.homeBack")}
           </a>
+          <span
+            className="shrink-0 tabular-nums text-[10px] font-semibold text-[var(--muted)]"
+            title={DESK_VERSION}
+          >
+            {DESK_VERSION}
+          </span>
           <SettingsMenu
             adminActive={view === "admin"}
             adminHref={viewHref("admin", mode)}
@@ -245,12 +251,6 @@ function AppShellInner() {
                 );
               })}
             </nav>
-            <span
-              className="tabular-nums text-[10px] font-semibold text-[var(--muted)]"
-              title={DESK_VERSION}
-            >
-              {DESK_VERSION}
-            </span>
           </div>
         </div>
       </header>

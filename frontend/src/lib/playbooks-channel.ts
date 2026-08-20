@@ -23,6 +23,7 @@ type ChCore = {
   syncTimeframes?: string[];
   syncLookbackDays?: number;
   preferredTimeframe?: string;
+  setupImage: string;
 };
 
 const CH_CORE: ChCore[] = [
@@ -37,6 +38,7 @@ const CH_CORE: ChCore[] = [
     preferredTimeframe: "5m",
     syncTimeframes: ["5m"],
     syncLookbackDays: 10,
+    setupImage: "/brand/ch01-gap-go.svg",
     riskNotes: [
       "Gap sin volumen = ruido — requiere 2× promedio de sesión RTH",
       "Yahoo delay ~15 min (NQ=F / ETFs) — análisis, no ejecución ciega",
@@ -88,6 +90,7 @@ const CH_CORE: ChCore[] = [
       "Precio se aleja ≥1.5σ del VWAP de sesión RTH y empieza a revertir. " +
       "En futuros el VWAP se resetea en la sesión (9:30 ET), no en el día Globex.",
     sessionWindow: "RTH · tras ≥12 barras 5m desde 9:30 ET",
+    setupImage: "/brand/ch02-vwap-reversion.svg",
     riskNotes: [
       "Tendencia fuerte puede no revertir — no forzar",
       "VWAP = sesión RTH (reset 9:30), no rollover Globex completo",
@@ -138,6 +141,7 @@ const CH_CORE: ChCore[] = [
       "EMA 9 cruza EMA 20 al alza o a la baja en 5m, confirmado con volumen " +
       "creciente. Se traslada igual a futuros (MNQ/MES/…).",
     sessionWindow: "RTH · 5m (Yahoo)",
+    setupImage: "/brand/ch03-ema-cross.svg",
     riskNotes: [
       "Cruce sin volumen = falso — requiere vol creciente",
       "En rango lateral hay whipsaws",
@@ -182,6 +186,7 @@ const CH_CORE: ChCore[] = [
       "RSI(14) en 5m ≤30 o ≥70, con volumen decreciente en la extensión. " +
       "Volumen promedio / fade sobre la sesión RTH activa (futuros 24h ≠ avg Globex).",
     sessionWindow: "RTH · 5m",
+    setupImage: "/brand/ch04-rsi-extreme.svg",
     riskNotes: [
       "RSI extremo puede seguir extremo en tendencias fuertes",
       "Volumen debe fadear en la sesión RTH — no mezclar overnight",
@@ -227,6 +232,7 @@ const CH_CORE: ChCore[] = [
       "MNQ/NQ vs MES/ES cuando hay bench. Si no, vs propio promedio 5d.",
     sessionWindow: "RTH · ~primera hora desde 9:30 ET",
     syncLookbackDays: 12,
+    setupImage: "/brand/ch05-rel-strength.svg",
     riskNotes: [
       "Sin bench: proxy vs propio avg 5d (sync MES junto a MNQ ayuda)",
       "Momentum relativo no garantiza continuación",
@@ -275,6 +281,7 @@ const CH_CORE: ChCore[] = [
     preferredTimeframe: "5m",
     syncTimeframes: ["5m"],
     syncLookbackDays: 5,
+    setupImage: "/brand/ch06-orb.svg",
     riskNotes: [
       "ORB anclado a 9:30 ET cash/RTH — no al open Globex 18:00",
       "Default scan = 15m OR; params permiten 30m",
@@ -324,10 +331,9 @@ function chPlaybook(venue: Venue, core: ChCore): StrategyPlaybook {
     preferredTimeframe: core.preferredTimeframe ?? "5m",
     syncTimeframes: core.syncTimeframes ?? ["5m"],
     syncLookbackDays: core.syncLookbackDays ?? 10,
-    // Lab: Focus + Analyzer only until you promote winners into TOP 5.
-    deskTop5: false,
     name: core.name,
     shortName: `CH${core.num}`,
+    setupImage: core.setupImage,
     markets: isFutures
       ? `Futuros LONG/SHORT · MNQ · MES · Yahoo NQ=F/ES=F · ${core.name}`
       : `Opciones CALL/PUT · Yahoo · ${core.name}`,

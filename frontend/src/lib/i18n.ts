@@ -240,9 +240,9 @@ const en: Dict = {
   "strategies.playbook": "Playbook",
   "strategies.deskTopTitle": "Desk TOP 5",
   "strategies.deskTopHint":
-    "Syncs 1h + 1d (25d) on core names, ranks TOP 5, then Focus-scans #1 without re-downloading 1h/1d. Watch (USAR/UUUU/ONDS/IOVA) is Focus-only. Open to Schwab only if the debit fits 10% equity.",
+    "Syncs all desk symbols + every playbook (Maylels + Channel), ranks TOP 5 by confluence, then Focus-scans #1. Open to Schwab only if the debit fits 10% equity.",
   "strategies.deskTopHintFutures":
-    "Whenever Globex is open: sync 1h + 15m + 5m + 1m through now, then rank TOP 5. ML01/ML02 need 1H bias + LTF ChoCh/BOS on the current structure. ML03 is NY 9:30–16:00 only.",
+    "Whenever Globex is open: sync 4h/1h/15m/5m/1m, scan every playbook (ML01–ML03 + CH01–CH06) on MNQ·MES·FX·MGC, rank TOP 5 by confluence. ML03 is NY RTH-gated.",
   "strategies.deskTopScan": "Sync & TOP 5",
   "strategies.deskTopScanning": "Desk scan…",
   "strategies.deskTopEmpty": "No TOP 5 matches. Click the green Sync & TOP 5 to refresh.",
@@ -375,7 +375,7 @@ const en: Dict = {
   "session.deskTop5Hint":
     "Load capital first (live equity). Sync & TOP 5 (Yahoo). Copy the plan into TOS (BUY_TO_OPEN). Schwab Open in-app is off.",
   "session.deskTop5HintFutures":
-    "Ranks MNQ/MES/FX/GC whenever Globex is open. Live matches first; if none, shows watching candidates. ML03 only 9:30–11:30 ET (not afternoon).",
+    "Ranks MNQ/MES/FX/MGC across all Maylels + Channel playbooks whenever Globex is open. Highest confluence first; if none, shows watching candidates.",
   "session.liveScan": "Sync & Scan",
   "session.liveScanHint": "Sync candles for this playbook, then scan its universe.",
   "session.scanDesk": "Scan",
@@ -928,9 +928,9 @@ const es: Dict = {
   "strategies.playbook": "Playbook",
   "strategies.deskTopTitle": "Desk TOP 5",
   "strategies.deskTopHint":
-    "Sync 1h + 1d (25d) en nombres core, rankea TOP 5 y Focus-scan de #1 sin re-bajar 1h/1d. Watch (USAR/UUUU/ONDS/IOVA) solo en Focus. Abrir a Schwab solo si la prima cabe en el 10% del equity.",
+    "Sync de todos los símbolos + todos los playbooks (Maylels + Channel), rankea TOP 5 por confluencia y Focus-scan de #1. Abrir a Schwab solo si la prima cabe en el 10% del equity.",
   "strategies.deskTopHintFutures":
-    "Con Globex abierto: sync 1h + 15m + 5m + 1m hasta ahora, luego rankea TOP 5. ML01/ML02 piden sesgo 1H + ChoCh/BOS LTF sobre la estructura actual. ML03 solo NY 9:30–16:00.",
+    "Con Globex abierto: sync 4h/1h/15m/5m/1m, escanea todos los playbooks (ML01–ML03 + CH01–CH06) en MNQ·MES·FX·MGC, rankea TOP 5 por confluencia. ML03 con gate NY RTH.",
   "strategies.deskTopScan": "Sync & TOP 5",
   "strategies.deskTopScanning": "Desk scan…",
   "strategies.deskTopEmpty": "Sin TOP 5. Pulsa el Sync & TOP 5 verde para refrescar.",
@@ -1063,7 +1063,7 @@ const es: Dict = {
   "session.deskTop5Hint":
     "Primero Cargar capital (equity live). Sync & TOP 5 (Yahoo). Copia el plan a TOS (BUY_TO_OPEN). Open Schwab en el app está off.",
   "session.deskTop5HintFutures":
-    "Rankea MNQ/MES/FX/GC con Globex abierto. Primero matches live; si no hay, candidatos watching. ML03 solo 9:30–11:30 ET (no por la tarde).",
+    "Rankea MNQ/MES/FX/MGC con todos los playbooks Maylels + Channel (Globex abierto). Primero más confluencia; si no hay matches, candidatos watching.",
   "session.liveScan": "Sync & Scan",
   "session.liveScanHint": "Baja velas de este playbook y escanea su universo.",
   "session.scanDesk": "Scan",

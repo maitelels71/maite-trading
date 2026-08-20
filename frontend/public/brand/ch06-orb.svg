@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 540" role="img" aria-label="CH06 ORB">
+  <rect width="960" height="540" fill="#f8faf9"/>
+  <text x="48" y="48" font-family="Segoe UI, system-ui, sans-serif" font-size="28" font-weight="700" fill="#0f172a">CH06  Opening Range Breakout</text>
+  <text x="48" y="78" font-family="Segoe UI, system-ui, sans-serif" font-size="14" fill="#64748b">OR 1530m desde 9:30 ET · break + volumen · SL de vuelta al OR</text>
+
+  <rect x="48" y="110" width="560" height="340" rx="12" fill="#fff" stroke="#e2e8f0"/>
+  <!-- OR box -->
+  <rect x="120" y="200" width="160" height="120" fill="#fef3c7" stroke="#f59e0b" stroke-width="2" stroke-dasharray="6 4"/>
+  <text x="150" y="195" font-size="12" font-weight="700" fill="#b45309" font-family="Segoe UI, system-ui, sans-serif">Opening Range</text>
+  <text x="145" y="270" font-size="11" fill="#92400e" font-family="Segoe UI, system-ui, sans-serif">9:3010:00</text>
+  <line x1="120" y1="200" x2="560" y2="200" stroke="#f59e0b" stroke-width="1.5" opacity="0.5"/>
+  <line x1="120" y1="320" x2="560" y2="320" stroke="#f59e0b" stroke-width="1.5" opacity="0.5"/>
+  <text x="480" y="192" font-size="11" fill="#b45309" font-family="Segoe UI, system-ui, sans-serif">OR High</text>
+  <text x="480" y="338" font-size="11" fill="#b45309" font-family="Segoe UI, system-ui, sans-serif">OR Low</text>
+
+  <path d="M140 280 L180 250 L220 260 L260 240 L300 180 L360 150 L440 130 L520 110" fill="none" stroke="#0f766e" stroke-width="3"/>
+  <circle cx="300" cy="180" r="12" fill="#0f766e"/>
+  <text x="318" y="175" font-size="13" font-weight="700" fill="#0f766e" font-family="Segoe UI, system-ui, sans-serif">Break ‘ + vol ’ LONG</text>
+  <text x="90" y="430" font-size="12" fill="#64748b" font-family="Segoe UI, system-ui, sans-serif">RTH only · no Globex overnight OR</text>
+
+  <rect x="640" y="110" width="272" height="340" rx="12" fill="#fff7ed" stroke="#fed7aa"/>
+  <text x="660" y="150" font-size="15" font-weight="700" fill="#c2410c" font-family="Segoe UI, system-ui, sans-serif">Checklist</text>
+  <text x="660" y="190" font-size="13" fill="#7c2d12" font-family="Segoe UI, system-ui, sans-serif">1. Marcar OR 1530m @ 9:30</text>
+  <text x="660" y="225" font-size="13" fill="#7c2d12" font-family="Segoe UI, system-ui, sans-serif">2. Break high/low + volumen</text>
+  <text x="660" y="260" font-size="13" fill="#7c2d12" font-family="Segoe UI, system-ui, sans-serif">3. Seguir dirección del break</text>
+  <text x="660" y="310" font-size="13" font-weight="700" fill="#0f172a" font-family="Segoe UI, system-ui, sans-serif">TP</text>
+  <text x="690" y="310" font-size="13" fill="#334155" font-family="Segoe UI, system-ui, sans-serif">extensión / liquidez</text>
+  <text x="660" y="345" font-size="13" font-weight="700" fill="#b91c1c" font-family="Segoe UI, system-ui, sans-serif">SL</text>
+  <text x="690" y="345" font-size="13" fill="#334155" font-family="Segoe UI, system-ui, sans-serif">vuelta dentro del OR</text>
+</svg>

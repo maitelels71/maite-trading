@@ -17,7 +17,7 @@ SUPPORTED_TIMEFRAMES: tuple[Timeframe, ...] = (
 
 # Seed universe for MVP (persisted in Prompt 3).
 # Options desk (Schwab): index ETFs + liquid megacaps for CR/E options scans.
-# Futures desk: micros + FX + gold via Yahoo (MNQ=F, MES=F, 6E/6B/6A=F, GC=F).
+# Futures desk: micros + FX + micro gold via Yahoo (MNQ=F, MES=F, 6E/6B/6A=F, MGC=F).
 MVP_INSTRUMENTS: tuple[dict[str, str], ...] = (
     {
         "symbol": "MNQ",
@@ -50,10 +50,10 @@ MVP_INSTRUMENTS: tuple[dict[str, str], ...] = (
         "name": "British Pound Futures",
     },
     {
-        "symbol": "GC",
+        "symbol": "MGC",
         "market_type": MarketType.FUTURE.value,
         "data_provider": DataProviderName.TRADEADVOCATE.value,
-        "name": "Gold Futures",
+        "name": "Micro Gold Futures",
     },
     {
         "symbol": "SPY",

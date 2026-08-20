@@ -18,7 +18,7 @@ export const VENUE_META: Record<
     label: "Futures",
     shortLabel: "Tradovate",
     defaultSymbol: "MNQ",
-    hint: "MNQ · MES · 6E · 6A · 6B · GC",
+    hint: "MNQ · MES · 6E · 6A · 6B · MGC",
   },
 };
 
@@ -293,7 +293,7 @@ export const FUTURES_TICKERS = [
   "6E",
   "6A",
   "6B",
-  "GC",
+  "MGC",
 ] as const;
 
 export function providerLabel(provider: string | null | undefined): string {
@@ -319,7 +319,7 @@ export const FALLBACK_INSTRUMENTS: Instrument[] = [
   { symbol: "6E", name: "Euro FX Futures", market_type: "future", data_provider: "tradeadvocate", active: true },
   { symbol: "6A", name: "Australian Dollar Futures", market_type: "future", data_provider: "tradeadvocate", active: true },
   { symbol: "6B", name: "British Pound Futures", market_type: "future", data_provider: "tradeadvocate", active: true },
-  { symbol: "GC", name: "Gold Futures", market_type: "future", data_provider: "tradeadvocate", active: true },
+  { symbol: "MGC", name: "Micro Gold Futures", market_type: "future", data_provider: "tradeadvocate", active: true },
   // Indices / ETFs
   { symbol: "IWM", name: "iShares Russell 2000 ETF", market_type: "etf", data_provider: "schwab", active: true },
   { symbol: "QQQ", name: "Invesco QQQ Trust", market_type: "etf", data_provider: "schwab", active: true },

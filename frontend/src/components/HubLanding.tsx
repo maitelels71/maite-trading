@@ -92,7 +92,11 @@ export function HubLanding() {
       />
       <header className="relative z-10 mx-auto flex max-w-6xl items-center justify-between gap-3 px-5 py-5 sm:px-8">
         <div className="flex min-w-0 items-center gap-3">
-          <BrandMark className="h-11 w-11 shrink-0" />
+          <div className="flex shrink-0 items-center gap-1.5" aria-hidden>
+            <CandlesMark className="h-9 w-9" />
+            <FuturesMark className="h-9 w-9" />
+            <BitcoinMark className="h-9 w-9" />
+          </div>
           <div className="min-w-0">
             <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[var(--accent-fg)]">
               {t("hub.kicker")}
@@ -172,12 +176,17 @@ export function HubLanding() {
           </section>
         ) : (
           <>
-            <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-[var(--accent-fg)]">
-              {t("hub.hello")}
-            </p>
-            <h1 className="mt-2 max-w-2xl text-3xl font-bold tracking-tight sm:text-4xl">
-              {t("hub.title")}
-            </h1>
+            <div className="flex items-start gap-3 sm:gap-4">
+              <BrandMark className="mt-0.5 h-12 w-12 shrink-0 sm:h-14 sm:w-14" />
+              <div className="min-w-0">
+                <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-[var(--accent-fg)]">
+                  {t("hub.hello")}
+                </p>
+                <h1 className="mt-2 max-w-2xl text-3xl font-bold tracking-tight sm:text-4xl">
+                  {t("hub.title")}
+                </h1>
+              </div>
+            </div>
             <div className="mt-6 grid gap-4 sm:grid-cols-3">
               <DeskCard
                 href={withDeskSessionHash(optionsDeskHref(), token)}
@@ -186,7 +195,6 @@ export function HubLanding() {
                 body={t("hub.optionsBody")}
                 cta={t("hub.optionsCta")}
                 tint="teal"
-                icon="candles"
               />
               <DeskCard
                 href={withDeskSessionHash(futuresDeskHref(), token)}
@@ -195,7 +203,6 @@ export function HubLanding() {
                 body={t("hub.futuresBody")}
                 cta={t("hub.futuresCta")}
                 tint="bronze"
-                icon="futures"
               />
               <DeskCard
                 href={withDeskSessionHash(coinbaseDeskHref(), token)}
@@ -204,7 +211,6 @@ export function HubLanding() {
                 body={t("hub.coinbaseBody")}
                 cta={t("hub.coinbaseCta")}
                 tint="blue"
-                icon="bitcoin"
               />
             </div>
             <figure className="hub-quote mt-8 w-full overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--surface)]/90 shadow-sm backdrop-blur">
@@ -253,7 +259,6 @@ function DeskCard({
   body,
   cta,
   tint,
-  icon,
 }: {
   href: string;
   eyebrow: string;
@@ -261,7 +266,6 @@ function DeskCard({
   body: string;
   cta: string;
   tint: "teal" | "bronze" | "blue";
-  icon: "candles" | "futures" | "bitcoin";
 }) {
   const ring =
     tint === "teal"
@@ -275,12 +279,6 @@ function DeskCard({
       : tint === "bronze"
         ? "bg-[#f5e6d0] text-[#8a5420]"
         : "bg-[var(--info-soft)] text-[var(--info)]";
-  const Mark =
-    icon === "candles"
-      ? CandlesMark
-      : icon === "futures"
-        ? FuturesMark
-        : BitcoinMark;
   return (
     <a
       href={href}
@@ -296,14 +294,11 @@ function DeskCard({
       }}
       className={`group flex flex-col rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md hover:ring-2 ${ring}`}
     >
-      <div className="flex items-start justify-between gap-3">
-        <span
-          className={`inline-flex w-fit rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-[0.14em] ${badge}`}
-        >
-          {eyebrow}
-        </span>
-        <Mark className="h-10 w-10 shrink-0" />
-      </div>
+      <span
+        className={`inline-flex w-fit rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-[0.14em] ${badge}`}
+      >
+        {eyebrow}
+      </span>
       <h2 className="mt-4 text-xl font-bold">{title}</h2>
       <p className="mt-2 flex-1 text-sm leading-relaxed text-[var(--muted)]">
         {body}

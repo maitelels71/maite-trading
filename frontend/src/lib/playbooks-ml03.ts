@@ -17,7 +17,7 @@ export const ML03_FUTURES: StrategyPlaybook = {
   syncLookbackDays: 7,
   name: "Primera vela NY 5m",
   shortName: "ML03",
-  markets: "Futuros LONG/SHORT · MNQ · MES · GC · primera 5m NY + entrada 1m",
+  markets: "Futuros LONG/SHORT · MNQ · MES · MGC · primera 5m NY + entrada 1m",
   summary:
     "Regla de la primera vela: a las 9:30 ET en 5m esperas el cierre 9:30–9:35, " +
     "marcas high/low del día. En 1m no entras al toque — necesitas ruptura del nivel " +

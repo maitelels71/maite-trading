@@ -30,8 +30,8 @@ _YAHOO_FUTURES_ALIASES: dict[str, str] = {
     "GBP": "6B=F",
     "AUDUSD": "6A=F",
     "AUD": "6A=F",
-    "GOLD": "GC=F",
-    "XAUUSD": "GC=F",
+    "GOLD": "MGC=F",
+    "XAUUSD": "MGC=F",
 }
 
 # Longest roots first so MNQ does not collapse to NQ.

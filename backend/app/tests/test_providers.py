@@ -151,7 +151,8 @@ def test_yahoo_futures_symbol_maps_roots_and_contracts() -> None:
     assert yahoo_futures_symbol("GBPUSD") == "6B=F"
     assert yahoo_futures_symbol("AUDUSD") == "6A=F"
     assert yahoo_futures_symbol("GC") == "GC=F"
-    assert yahoo_futures_symbol("GOLD") == "GC=F"
+    assert yahoo_futures_symbol("MGC") == "MGC=F"
+    assert yahoo_futures_symbol("GOLD") == "MGC=F"
 
 
 def test_yahoo_equity_symbol_does_not_append_futures_suffix() -> None:

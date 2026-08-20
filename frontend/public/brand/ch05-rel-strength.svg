@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 540" role="img" aria-label="CH05 Relative Strength">
+  <rect width="960" height="540" fill="#f8faf9"/>
+  <text x="48" y="48" font-family="Segoe UI, system-ui, sans-serif" font-size="28" font-weight="700" fill="#0f172a">CH05  Relative Strength</text>
+  <text x="48" y="78" font-family="Segoe UI, system-ui, sans-serif" font-size="14" fill="#64748b">Retorno AM del ticker vs SPY (equity) o MES/ES (futuros)</text>
+
+  <rect x="48" y="110" width="560" height="340" rx="12" fill="#fff" stroke="#e2e8f0"/>
+  <text x="80" y="145" font-size="13" font-weight="700" fill="#0f766e" font-family="Segoe UI, system-ui, sans-serif">Ticker</text>
+  <path d="M90 300 L160 280 L230 240 L320 190 L400 150 L500 120" fill="none" stroke="#0f766e" stroke-width="3"/>
+  <text x="80" y="340" font-size="13" font-weight="700" fill="#64748b" font-family="Segoe UI, system-ui, sans-serif">Bench (SPY / MES)</text>
+  <path d="M90 320 L160 310 L230 300 L320 285 L400 275 L500 265" fill="none" stroke="#94a3b8" stroke-width="2.5" stroke-dasharray="6 4"/>
+  <rect x="200" y="160" width="200" height="70" rx="8" fill="#ecfdf5" stroke="#99f6e4"/>
+  <text x="220" y="190" font-size="14" font-weight="700" fill="#0f766e" font-family="Segoe UI, system-ui, sans-serif">Edge relativo</text>
+  <text x="220" y="215" font-size="12" fill="#134e4a" font-family="Segoe UI, system-ui, sans-serif">Ticker &gt; bench (AM)</text>
+
+  <rect x="640" y="110" width="272" height="340" rx="12" fill="#ecfdf5" stroke="#99f6e4"/>
+  <text x="660" y="150" font-size="15" font-weight="700" fill="#0f766e" font-family="Segoe UI, system-ui, sans-serif">Checklist</text>
+  <text x="660" y="190" font-size="13" fill="#134e4a" font-family="Segoe UI, system-ui, sans-serif">1. Retorno AM del ticker</text>
+  <text x="660" y="225" font-size="13" fill="#134e4a" font-family="Segoe UI, system-ui, sans-serif">2. Comparar vs SPY o MES/ES</text>
+  <text x="660" y="260" font-size="13" fill="#134e4a" font-family="Segoe UI, system-ui, sans-serif">3. Seguir al líder relativo</text>
+  <text x="660" y="310" font-size="13" font-weight="700" fill="#0f172a" font-family="Segoe UI, system-ui, sans-serif">TP</text>
+  <text x="690" y="310" font-size="13" fill="#334155" font-family="Segoe UI, system-ui, sans-serif">edge se agota</text>
+  <text x="660" y="345" font-size="13" font-weight="700" fill="#b91c1c" font-family="Segoe UI, system-ui, sans-serif">SL</text>
+  <text x="690" y="345" font-size="13" fill="#334155" font-family="Segoe UI, system-ui, sans-serif">bench gira en contra</text>
+  <text x="660" y="400" font-size="12" fill="#64748b" font-family="Segoe UI, system-ui, sans-serif">MNQ”MES en futuros</text>
+</svg>

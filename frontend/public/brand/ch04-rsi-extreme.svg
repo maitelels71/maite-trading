@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 540" role="img" aria-label="CH04 RSI Extreme">
+  <rect width="960" height="540" fill="#f8faf9"/>
+  <text x="48" y="48" font-family="Segoe UI, system-ui, sans-serif" font-size="28" font-weight="700" fill="#0f172a">CH04  RSI Extreme</text>
+  <text x="48" y="78" font-family="Segoe UI, system-ui, sans-serif" font-size="14" fill="#64748b">RSI extremo + volumen decreciente · fade hacia zona media</text>
+
+  <rect x="48" y="110" width="560" height="200" rx="12" fill="#fff" stroke="#e2e8f0"/>
+  <text x="68" y="140" font-size="13" font-weight="700" fill="#64748b" font-family="Segoe UI, system-ui, sans-serif">Precio</text>
+  <path d="M90 260 L150 240 L210 200 L280 160 L350 140 L420 155 L500 200" fill="none" stroke="#0f766e" stroke-width="3"/>
+  <circle cx="350" cy="140" r="9" fill="#b91c1c"/>
+
+  <rect x="48" y="330" width="560" height="120" rx="12" fill="#fff" stroke="#e2e8f0"/>
+  <text x="68" y="358" font-size="13" font-weight="700" fill="#64748b" font-family="Segoe UI, system-ui, sans-serif">RSI</text>
+  <line x1="90" y1="370" x2="560" y2="370" stroke="#fca5a5" stroke-dasharray="5 4"/>
+  <text x="500" y="365" font-size="11" fill="#b91c1c" font-family="Segoe UI, system-ui, sans-serif">sobrecompra</text>
+  <line x1="90" y1="420" x2="560" y2="420" stroke="#86efac" stroke-dasharray="5 4"/>
+  <text x="510" y="435" font-size="11" fill="#0f766e" font-family="Segoe UI, system-ui, sans-serif">sobreventa</text>
+  <path d="M90 400 L180 390 L260 360 L350 345 L420 360 L500 390" fill="none" stroke="#7c3aed" stroke-width="2.5"/>
+  <circle cx="350" cy="345" r="8" fill="#7c3aed"/>
+  <text x="365" y="340" font-size="12" font-weight="700" fill="#7c3aed" font-family="Segoe UI, system-ui, sans-serif">Extremo ’ fade</text>
+
+  <rect x="640" y="110" width="272" height="340" rx="12" fill="#f5f3ff" stroke="#ddd6fe"/>
+  <text x="660" y="150" font-size="15" font-weight="700" fill="#6d28d9" font-family="Segoe UI, system-ui, sans-serif">Checklist</text>
+  <text x="660" y="190" font-size="13" fill="#4c1d95" font-family="Segoe UI, system-ui, sans-serif">1. RSI en zona extrema</text>
+  <text x="660" y="225" font-size="13" fill="#4c1d95" font-family="Segoe UI, system-ui, sans-serif">2. Volumen RTH decreciente</text>
+  <text x="660" y="260" font-size="13" fill="#4c1d95" font-family="Segoe UI, system-ui, sans-serif">3. Entrada contra el extremo</text>
+  <text x="660" y="310" font-size="13" font-weight="700" fill="#0f172a" font-family="Segoe UI, system-ui, sans-serif">TP</text>
+  <text x="690" y="310" font-size="13" fill="#334155" font-family="Segoe UI, system-ui, sans-serif">RSI vuelve a media</text>
+  <text x="660" y="345" font-size="13" font-weight="700" fill="#b91c1c" font-family="Segoe UI, system-ui, sans-serif">SL</text>
+  <text x="690" y="345" font-size="13" fill="#334155" font-family="Segoe UI, system-ui, sans-serif">nuevo extremo + vol</text>
+</svg>

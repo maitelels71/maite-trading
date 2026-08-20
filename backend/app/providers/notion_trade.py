@@ -66,7 +66,7 @@ def _number(value: float | int | None) -> dict[str, Any] | None:
     return {"number": float(value)}
 
 
-ACTIVO_OPTS = {"MNQ", "MES", "6E", "6A", "6B", "GC", "NQ", "ES", "Other"}
+ACTIVO_OPTS = {"MNQ", "MES", "6E", "6A", "6B", "MGC", "NQ", "ES", "Other"}
 SIDE_OPTS = {"Compra", "Venta"}
 SESSION_OPTS = {"Asia", "London", "NY AM", "NY PM", "Overnight"}
 PLAYBOOK_OPTS = {"SBC", "ORB", "ORB FUT", "Other"}

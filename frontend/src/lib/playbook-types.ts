@@ -31,8 +31,8 @@ export type StrategyPlaybook = {
   /** Calendar days before session_date to sync for indicator warm-up. */
   syncLookbackDays?: number;
   /**
-   * When false, playbook stays in Focus/Analyzer but is skipped by Desk TOP 5
-   * (lab strategies while you compare before promoting winners).
+   * When false, playbook stays in Focus/Analyzer but is skipped by Desk TOP 5.
+   * Default true when omitted — TOP 5 scans every playbook for confluence.
    */
   deskTop5?: boolean;
   name: string;

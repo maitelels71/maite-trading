@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 540" role="img" aria-label="CH01 Gap and Go">
+  <rect width="960" height="540" fill="#f8faf9"/>
+  <text x="48" y="48" font-family="Segoe UI, system-ui, sans-serif" font-size="28" font-weight="700" fill="#0f172a">CH01  Gap &amp; Go</text>
+  <text x="48" y="78" font-family="Segoe UI, system-ui, sans-serif" font-size="14" fill="#64748b">RTH 9:30 ET · gap e2% vs prior RTH close · vol apertura e2× avg</text>
+
+  <!-- Chart frame -->
+  <rect x="48" y="110" width="560" height="340" rx="12" fill="#fff" stroke="#e2e8f0"/>
+  <line x1="80" y1="380" x2="580" y2="380" stroke="#94a3b8" stroke-width="2" stroke-dasharray="6 4"/>
+  <text x="90" y="372" font-size="12" fill="#64748b" font-family="Segoe UI, system-ui, sans-serif">Prior RTH close</text>
+
+  <!-- Overnight gap -->
+  <path d="M120 300 L180 300 L180 220 L240 220" fill="none" stroke="#94a3b8" stroke-width="3"/>
+  <path d="M240 220 L300 200 L300 240 L340 180 L340 230 L400 150 L400 210" fill="none" stroke="#0f766e" stroke-width="3.5"/>
+  <line x1="240" y1="300" x2="240" y2="220" stroke="#f59e0b" stroke-width="3" stroke-dasharray="5 4"/>
+  <text x="248" y="265" font-size="13" font-weight="700" fill="#b45309" font-family="Segoe UI, system-ui, sans-serif">GAP e2%</text>
+  <circle cx="260" cy="200" r="14" fill="#0f766e"/>
+  <text x="254" y="205" font-size="12" font-weight="700" fill="#fff" font-family="Segoe UI, system-ui, sans-serif">‘</text>
+  <text x="280" y="195" font-size="13" font-weight="700" fill="#0f766e" font-family="Segoe UI, system-ui, sans-serif">LONG (gap up)</text>
+  <text x="90" y="430" font-size="12" fill="#64748b" font-family="Segoe UI, system-ui, sans-serif">9:30 ET open · primeras barras 5m</text>
+
+  <!-- Side panel -->
+  <rect x="640" y="110" width="272" height="340" rx="12" fill="#ecfdf5" stroke="#99f6e4"/>
+  <text x="660" y="150" font-size="15" font-weight="700" fill="#0f766e" font-family="Segoe UI, system-ui, sans-serif">Checklist</text>
+  <text x="660" y="190" font-size="13" fill="#134e4a" font-family="Segoe UI, system-ui, sans-serif">1. Gap vs prior RTH e 2%</text>
+  <text x="660" y="225" font-size="13" fill="#134e4a" font-family="Segoe UI, system-ui, sans-serif">2. Vol apertura e 2× avg RTH</text>
+  <text x="660" y="260" font-size="13" fill="#134e4a" font-family="Segoe UI, system-ui, sans-serif">3. Dirección = lado del gap</text>
+  <text x="660" y="310" font-size="13" font-weight="700" fill="#0f172a" font-family="Segoe UI, system-ui, sans-serif">TP</text>
+  <text x="690" y="310" font-size="13" fill="#334155" font-family="Segoe UI, system-ui, sans-serif">extensión 1ª hora</text>
+  <text x="660" y="345" font-size="13" font-weight="700" fill="#b91c1c" font-family="Segoe UI, system-ui, sans-serif">SL</text>
+  <text x="690" y="345" font-size="13" fill="#334155" font-family="Segoe UI, system-ui, sans-serif">si el gap se llena</text>
+  <text x="660" y="400" font-size="12" fill="#64748b" font-family="Segoe UI, system-ui, sans-serif">Yahoo delay ~15m · lab Focus</text>
+</svg>

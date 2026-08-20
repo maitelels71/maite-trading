@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 540" role="img" aria-label="CH03 EMA Cross">
+  <rect width="960" height="540" fill="#f8faf9"/>
+  <text x="48" y="48" font-family="Segoe UI, system-ui, sans-serif" font-size="28" font-weight="700" fill="#0f172a">CH03  EMA 9 / 20 Cross</text>
+  <text x="48" y="78" font-family="Segoe UI, system-ui, sans-serif" font-size="14" fill="#64748b">Cruce EMA9 × EMA20 + volumen creciente · 5m RTH</text>
+
+  <rect x="48" y="110" width="560" height="340" rx="12" fill="#fff" stroke="#e2e8f0"/>
+  <path d="M100 320 Q200 300 280 280 T480 200" fill="none" stroke="#c9893a" stroke-width="2.5"/>
+  <text x="490" y="195" font-size="12" fill="#8a5420" font-family="Segoe UI, system-ui, sans-serif">EMA20</text>
+  <path d="M100 300 Q200 290 280 250 T420 160 T520 140" fill="none" stroke="#0f766e" stroke-width="2.5"/>
+  <text x="530" y="138" font-size="12" fill="#0f766e" font-family="Segoe UI, system-ui, sans-serif">EMA9</text>
+  <!-- candles hint -->
+  <rect x="200" y="270" width="14" height="40" fill="#94a3b8"/>
+  <rect x="250" y="250" width="14" height="50" fill="#94a3b8"/>
+  <rect x="320" y="210" width="14" height="55" fill="#0f766e"/>
+  <rect x="370" y="180" width="14" height="50" fill="#0f766e"/>
+  <circle cx="300" cy="265" r="12" fill="#0f766e"/>
+  <text x="320" y="270" font-size="13" font-weight="700" fill="#0f766e" font-family="Segoe UI, system-ui, sans-serif">Cruce alcista ’ LONG</text>
+  <text x="90" y="430" font-size="12" fill="#64748b" font-family="Segoe UI, system-ui, sans-serif">Volumen creciente en el cruce</text>
+
+  <rect x="640" y="110" width="272" height="340" rx="12" fill="#f5e6d0" stroke="#e7c9a0"/>
+  <text x="660" y="150" font-size="15" font-weight="700" fill="#8a5420" font-family="Segoe UI, system-ui, sans-serif">Checklist</text>
+  <text x="660" y="190" font-size="13" fill="#5c3512" font-family="Segoe UI, system-ui, sans-serif">1. EMA9 cruza EMA20</text>
+  <text x="660" y="225" font-size="13" fill="#5c3512" font-family="Segoe UI, system-ui, sans-serif">2. Volumen confirma</text>
+  <text x="660" y="260" font-size="13" fill="#5c3512" font-family="Segoe UI, system-ui, sans-serif">3. LONG / SHORT según cruce</text>
+  <text x="660" y="310" font-size="13" font-weight="700" fill="#0f172a" font-family="Segoe UI, system-ui, sans-serif">TP</text>
+  <text x="690" y="310" font-size="13" fill="#334155" font-family="Segoe UI, system-ui, sans-serif">estructura 5m/15m</text>
+  <text x="660" y="345" font-size="13" font-weight="700" fill="#b91c1c" font-family="Segoe UI, system-ui, sans-serif">SL</text>
+  <text x="690" y="345" font-size="13" fill="#334155" font-family="Segoe UI, system-ui, sans-serif">re-cruce en contra</text>
+</svg>
