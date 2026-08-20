@@ -148,7 +148,8 @@ const en: Dict = {
   "strategies.title": "Trading Session",
   "strategies.titleEtf": "Trading Session — ETFs / Options",
   "strategies.titleFutures": "Trading Session — Futures",
-  "strategies.dataViaSchwab": "Candles: Yahoo · Orders: TOS (Schwab API experimental)",
+  "strategies.dataViaSchwab":
+    "Candles: Yahoo · Capital/positions: Schwab GET · Orders: TOS (Open/Close API off)",
   "strategies.dataViaTa": "Data: Yahoo Finance",
   "strategies.emptyList": "No playbooks in this session yet — add them in playbooks.ts.",
   "strategies.subtitle":
@@ -287,7 +288,7 @@ const en: Dict = {
     "Choose one strategy to deep-scan — or check a TOP 5 row above.",
   "session.deskTop5": "Desk TOP 5",
   "session.deskTop5Hint":
-    "Ranks core names by confluence (Yahoo). Copy the plan into TOS (BUY_TO_OPEN). Schwab Open in-app is off.",
+    "Load capital first (live equity). Sync & TOP 5 (Yahoo). Copy the plan into TOS (BUY_TO_OPEN). Schwab Open in-app is off.",
   "session.deskTop5HintFutures":
     "Ranks MNQ/MES/FX/GC whenever Globex is open. Live matches first; if none, shows watching candidates. ML03 only in NY RTH.",
   "session.liveScan": "Sync & Scan",
@@ -366,14 +367,16 @@ const en: Dict = {
   "strategies.capitalTitle": "Capital · flag 10% · open ≤50%",
   "strategies.capitalHint":
     "Green flag = 1ct ≤ 10% equity (consider). Open allowed up to 50% of equity if cash covers. Sort stays confluence.",
+  "strategies.capitalHintTos":
+    "Load capital (Schwab GET) so Copy for TOS sizes contracts from live equity/cash. Orders still go in TOS — not the app.",
   "strategies.capitalLoad": "Load capital",
   "strategies.capitalLoading": "Loading capital…",
   "strategies.capitalEquity": "Equity {eq} · 10% {risk} · cash {cash}",
-  "strategies.capitalNeed": "Load capital to size opens (10% flag · 50% max).",
+  "strategies.capitalNeed": "Load capital to size Copy for TOS (10% flag · 50% max).",
   "strategies.capitalCacheOnly":
-    "Equity from last snapshot only — Load capital is off (that GET starved Open/Close).",
+    "Equity from last snapshot only — Load capital is off.",
   "strategies.opensPausedNote":
-    "Hybrid desk: copy the Options plan into TOS (BUY_TO_OPEN). In-app Schwab Open is off (API 429). After fill, Positions → Copy SELL_TO_CLOSE for TOS.",
+    "Hybrid: Load capital → Sync & TOP 5 → Copy for TOS (BUY_TO_OPEN). Schwab Open in-app is off. After fill: Positions → Refresh → Copy SELL_TO_CLOSE for TOS.",
   "strategies.armOpens": "Trigger opens (experimental)",
   "strategies.armOpensBody":
     "Experimental Schwab BUY_TO_OPEN. Prefer Copy for TOS. If you arm this: Auto off → Open once → check TOS → Orders.",
@@ -436,11 +439,11 @@ const en: Dict = {
 
   "positions.title": "Positions (TOS)",
   "positions.hint":
-    "Snapshot only. Primary path: Copy SELL_TO_CLOSE into TOS. Schwab Close in-app is off (API 429).",
+    "Refresh (Schwab GET) for a live snapshot. Close path: Copy SELL_TO_CLOSE → TOS. Schwab Close POST is off.",
   "positions.readsOff":
-    "Positions list is the last snapshot — Refresh is off (Schwab quota).",
+    "Positions list is the last snapshot — Refresh is off.",
   "positions.tosClosePrimary":
-    "Close in Thinkorswim: Copy SELL_TO_CLOSE on a row → paste / place in TOS → Orders. Do not use the desk for live closes while Schwab API rate-limits.",
+    "Refresh so the list matches Schwab, then Copy SELL_TO_CLOSE → place in TOS → Orders. Do not Open/Close from the app.",
   "positions.tosCopyClose": "Copy for TOS",
   "positions.tosCopied": "Copied close for {symbol} — paste in TOS",
   "positions.tosCopyPrompt": "Copy this close into TOS:",
@@ -450,7 +453,7 @@ const en: Dict = {
   "positions.ordersReadsOff":
     "Order list is off. Check TOS → Orders after you place the close.",
   "positions.snapshotHint":
-    "Snapshot {n} position(s) — not a live Refresh. Copy SELL_TO_CLOSE → TOS. Refresh only if this list is wrong.",
+    "Snapshot {n} position(s). Refresh for live Schwab data, then Copy SELL_TO_CLOSE → TOS.",
   "positions.closedCheckTos":
     "Check TOS → Orders.",
   "positions.refresh": "Refresh",
@@ -741,7 +744,8 @@ const es: Dict = {
   "strategies.title": "Trading Session",
   "strategies.titleEtf": "Trading Session — ETFs / Options",
   "strategies.titleFutures": "Trading Session — Futuros",
-  "strategies.dataViaSchwab": "Velas: Yahoo · Órdenes: TOS (Schwab API experimental)",
+  "strategies.dataViaSchwab":
+    "Velas: Yahoo · Capital/posiciones: Schwab GET · Órdenes: TOS (Open/Close API off)",
   "strategies.dataViaTa": "Datos: Yahoo Finance",
   "strategies.emptyList": "Aún no hay playbooks en esta sesión — agrégalos en playbooks.ts.",
   "strategies.subtitle":
@@ -880,7 +884,7 @@ const es: Dict = {
     "Elige una estrategia para deep-scan — o marca una fila del TOP 5 de arriba.",
   "session.deskTop5": "Desk TOP 5",
   "session.deskTop5Hint":
-    "Rankea nombres core por confluencia (Yahoo). Copia el plan a TOS (BUY_TO_OPEN). Open Schwab en el app está off.",
+    "Primero Cargar capital (equity live). Sync & TOP 5 (Yahoo). Copia el plan a TOS (BUY_TO_OPEN). Open Schwab en el app está off.",
   "session.deskTop5HintFutures":
     "Rankea MNQ/MES/FX/GC con Globex abierto. Primero matches live; si no hay, candidatos watching. ML03 solo en NY RTH.",
   "session.liveScan": "Sync & Scan",
@@ -959,14 +963,16 @@ const es: Dict = {
   "strategies.capitalTitle": "Capital · flag 10% · open ≤50%",
   "strategies.capitalHint":
     "Bandera verde = 1ct ≤ 10% del equity (considerar). Abrir permitido hasta 50% si hay cash. El sort sigue por confluencia.",
+  "strategies.capitalHintTos":
+    "Carga capital (GET Schwab) para que Copiar para TOS dimensione con equity/cash real. Las órdenes van en TOS — no en el app.",
   "strategies.capitalLoad": "Cargar capital",
   "strategies.capitalLoading": "Cargando capital…",
   "strategies.capitalEquity": "Equity {eq} · 10% {risk} · cash {cash}",
-  "strategies.capitalNeed": "Carga capital para dimensionar (flag 10% · máx 50%).",
+  "strategies.capitalNeed": "Carga capital para dimensionar Copiar para TOS (flag 10% · máx 50%).",
   "strategies.capitalCacheOnly":
-    "Equity del último snapshot — Load capital está off (ese GET saturaba Open/Close).",
+    "Equity del último snapshot — Load capital está off.",
   "strategies.opensPausedNote":
-    "Desk híbrido: copia el plan de Options a TOS (BUY_TO_OPEN). Open Schwab en el app está off (API 429). Tras FILL: Positions → Copiar SELL_TO_CLOSE para TOS.",
+    "Híbrido: Cargar capital → Sync & TOP 5 → Copiar para TOS (BUY_TO_OPEN). Open Schwab en el app está off. Tras FILL: Positions → Refresh → Copiar SELL_TO_CLOSE para TOS.",
   "strategies.armOpens": "Trigger opens (experimental)",
   "strategies.armOpensBody":
     "BUY_TO_OPEN Schwab experimental. Prefiere Copiar para TOS. Si armas esto: Auto off → Open una vez → mira TOS → Orders.",
@@ -1029,11 +1035,11 @@ const es: Dict = {
 
   "positions.title": "Posiciones (TOS)",
   "positions.hint":
-    "Solo snapshot. Camino principal: Copiar SELL_TO_CLOSE a TOS. Close Schwab en el app está off (API 429).",
+    "Refresh (GET Schwab) para snapshot live. Cierre: Copiar SELL_TO_CLOSE → TOS. Close POST Schwab está off.",
   "positions.readsOff":
-    "La lista es el último snapshot — Refresh está off (cupo Schwab).",
+    "La lista es el último snapshot — Refresh está off.",
   "positions.tosClosePrimary":
-    "Cierra en Thinkorswim: Copiar SELL_TO_CLOSE en una fila → pega / coloca en TOS → Orders. No uses el desk para closes live mientras Schwab rate-limita.",
+    "Haz Refresh para alinear con Schwab, luego Copiar SELL_TO_CLOSE → coloca en TOS → Orders. No abras/cierres desde el app.",
   "positions.tosCopyClose": "Copiar para TOS",
   "positions.tosCopied": "Close de {symbol} copiado — pega en TOS",
   "positions.tosCopyPrompt": "Copia este close en TOS:",
@@ -1043,7 +1049,7 @@ const es: Dict = {
   "positions.ordersReadsOff":
     "La lista de órdenes está off. Mira TOS → Orders tras colocar el close.",
   "positions.snapshotHint":
-    "Snapshot {n} posición(es) — no es un Refresh live. Copiar SELL_TO_CLOSE → TOS. Refresh solo si esta lista está mal.",
+    "Snapshot {n} posición(es). Refresh para datos live de Schwab, luego Copiar SELL_TO_CLOSE → TOS.",
   "positions.closedCheckTos":
     "Mira TOS → Orders.",
   "positions.refresh": "Actualizar",

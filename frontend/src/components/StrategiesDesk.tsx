@@ -78,8 +78,11 @@ const DESK_TOP_N = 5;
  * this flag (experimental — same OAuth bucket that 429s live orders).
  */
 const DESK_OPENS_ENABLED = false;
-/** GET accounts/positions/quotes/orders — off so experimental Open keeps quota. */
-const SCHWAB_TRADER_READS = false;
+/**
+ * GET accounts/positions for Load capital + TOS sizing. Keep true so Copy for TOS
+ * can use live equity/cash. Order POSTs stay off (DESK_OPENS_ENABLED).
+ */
+const SCHWAB_TRADER_READS = true;
 const DESK_SYNC_TFS = ["1h", "1d", "15m"] as const;
 const DESK_LOOKBACK_DAYS = 25;
 const DESK_15M_LOOKBACK_DAYS = 14;
@@ -831,30 +834,32 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
 
   const loadCapital = useCallback(async (force = false) => {
     if (venue !== "schwab") return;
-    const cached = readCapitalCache();
-    if (cached) {
-      capitalFetchedAt.current = cached.at;
-      setBrokerAccounts(cached.accounts);
-      setTradingEnabled(cached.tradingEnabled);
-      setTosPositions(cached.positions ?? []);
-      const best = [...cached.accounts].sort(
-        (a, b) => (b.equity ?? 0) - (a.equity ?? 0),
-      )[0];
-      if (best) {
-        setCapitalNote(
-          t("strategies.capitalEquity")
-            .replace("{eq}", moneyUsd(best.equity))
-            .replace("{risk}", moneyUsd(best.risk_budget))
-            .replace(
-              "{cash}",
-              moneyUsd(best.available_funds ?? best.cash_balance),
-            ),
-        );
+    if (!force) {
+      const cached = readCapitalCache();
+      if (cached) {
+        capitalFetchedAt.current = cached.at;
+        setBrokerAccounts(cached.accounts);
+        setTradingEnabled(cached.tradingEnabled);
+        setTosPositions(cached.positions ?? []);
+        const best = [...cached.accounts].sort(
+          (a, b) => (b.equity ?? 0) - (a.equity ?? 0),
+        )[0];
+        if (best) {
+          setCapitalNote(
+            t("strategies.capitalEquity")
+              .replace("{eq}", moneyUsd(best.equity))
+              .replace("{risk}", moneyUsd(best.risk_budget))
+              .replace(
+                "{cash}",
+                moneyUsd(best.available_funds ?? best.cash_balance),
+              ),
+          );
+        }
+        setCapitalError(null);
+        return;
       }
-      setCapitalError(null);
-      return;
     }
-    if (!SCHWAB_TRADER_READS || !force) {
+    if (!SCHWAB_TRADER_READS) {
       setCapitalNote(t("strategies.capitalCacheOnly"));
       return;
     }
@@ -907,7 +912,6 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
 
   useEffect(() => {
     if (venue !== "schwab") return;
-    if (!DESK_OPENS_ENABLED) return;
     void loadCapital();
   }, [venue, loadCapital]);
 
@@ -1659,9 +1663,27 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
                 {t("strategies.capitalTitle")}
               </p>
               <p className="mt-0.5 text-[11px] text-[var(--muted)]">
-                {t("strategies.capitalCacheOnly")}
+                {t("strategies.capitalHintTos")}
               </p>
             </div>
+            <button
+              type="button"
+              disabled={capitalPending || quietRemainSec > 0}
+              onClick={() => void loadCapital(true)}
+              title={
+                quietRemainSec > 0
+                  ? t("strategies.openWaitQuiet").replace(
+                      "{n}",
+                      String(quietRemainSec),
+                    )
+                  : undefined
+              }
+              className="rounded-md border border-[var(--border)] px-2.5 py-1 text-[11px] font-medium hover:bg-[var(--hover)] disabled:opacity-50"
+            >
+              {capitalPending
+                ? t("strategies.capitalLoading")
+                : t("strategies.capitalLoad")}
+            </button>
           </div>
           {capitalNote ? (
             <p className="mt-1.5 text-[12px] font-medium text-[var(--foreground)]">

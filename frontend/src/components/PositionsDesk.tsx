@@ -31,8 +31,11 @@ const CLOSE_RETRY_WAIT_SEC = 60;
 const CLOSE_GIVE_UP_MS = 180_000;
 const LADDER_RETRY_WAIT_SEC = 150;
 const DEFAULT_TP_PCT = 35;
-/** Snapshot + TOS close checklist. Schwab SELL_TO_CLOSE POST is experimental. */
-const SCHWAB_TRADER_READS = false;
+/**
+ * GET accounts/positions for Refresh + snapshot (needed for Copy for TOS closes).
+ * Schwab SELL_TO_CLOSE POST stays behind SCHWAB_CLOSE_EXPERIMENTAL.
+ */
+const SCHWAB_TRADER_READS = true;
 const SCHWAB_CLOSE_EXPERIMENTAL = false;
 
 function isRateLimitText(msg: string | null | undefined): boolean {
@@ -816,6 +819,24 @@ export function PositionsDesk() {
         hint={t("positions.hint")}
         actions={
           <div className="flex shrink-0 items-center gap-1.5">
+            <button
+              type="button"
+              disabled={pending || schwabCooling || holdTrader}
+              onClick={() => refresh()}
+              title={
+                holdTrader
+                  ? t("positions.holdOpen")
+                  : schwabCooling
+                    ? t("positions.closeWaitQuiet").replace(
+                        "{n}",
+                        String(quietRemainSec),
+                      )
+                    : undefined
+              }
+              className="rounded-md border border-[var(--border)] px-3 py-1.5 text-xs font-medium hover:bg-[var(--hover)] disabled:opacity-50"
+            >
+              {pending ? t("positions.refreshing") : t("positions.refresh")}
+            </button>
             {SCHWAB_CLOSE_EXPERIMENTAL && positions.length > 0 ? (
               <button
                 type="button"

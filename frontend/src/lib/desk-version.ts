@@ -1,2 +1,2 @@
 /** Bump with each ship so staging vs cached CloudFront is obvious. */
-export const DESK_VERSION = "v61";
+export const DESK_VERSION = "v62";
