@@ -306,17 +306,17 @@ const en: Dict = {
     "Sync downloads {tfs} from Schwab for this session’s symbols — then runs the scan.",
   "strategies.syncHintFutures":
     "Sync downloads {tfs} from Yahoo Finance (delayed ~15 min) — then runs the scan.",
-  "strategies.autoStart": "Auto 2.5m",
+  "strategies.autoStart": "Auto 10m",
   "strategies.autoStop": "Auto ON — stop",
   "strategies.autoOn": "Live auto",
   "strategies.autoHint":
-    "Every 2.5 minutes: sync candles + rescan this playbook. Turns off Desk TOP 5 auto (only one auto at a time). Before 9:30 ET the session is still yesterday’s cash day.",
+    "Every 10 minutes: sync candles + rescan this playbook. Turns off Desk TOP 5 auto (only one auto at a time). Before 9:30 ET the session is still yesterday’s cash day.",
   "strategies.deskAutoHint":
-    "Every 2.5 minutes: sync desk candles + re-rank TOP 5. Turns off Focus auto (only one auto at a time).",
+    "Every 10 minutes: sync desk candles + re-rank TOP 5. Turns off Focus auto (only one auto at a time).",
   "strategies.deskAutoHintFutures":
-    "Every 2.5 minutes while Globex is open: re-scan TOP 5 (skips re-downloading all candles). Click Desk scan once to sync Yahoo bars for the day.",
+    "Every 10 minutes while Globex is open: re-scan TOP 5 (skips re-downloading all candles). Click Desk scan once to sync Yahoo bars for the day.",
   "strategies.autoOffSession":
-    "Auto is off before 9:30 ET (premarket / weekend). After the cash open, Auto 2.5m is available. Trigger opens still pauses it.",
+    "Auto is off before 9:30 ET (premarket / weekend). After the cash open, Auto 10m is available. Trigger opens still pauses it.",
   "strategies.scanSummary":
     "Session {session} · scanned {when} ET · {matches} matches · {checked} checked",
   "strategies.deskTopSummary":
@@ -1006,17 +1006,17 @@ const es: Dict = {
     "Sync descarga {tfs} desde Schwab para los símbolos de esta sesión — luego corre el scan.",
   "strategies.syncHintFutures":
     "Sync descarga {tfs} desde Yahoo Finance (retraso ~15 min) — luego corre el scan.",
-  "strategies.autoStart": "Auto 2.5m",
+  "strategies.autoStart": "Auto 10m",
   "strategies.autoStop": "Auto ON — parar",
   "strategies.autoOn": "Live auto",
   "strategies.autoHint":
-    "Cada 2.5 min: sync de velas + rescan de este playbook. Apaga el auto de Desk TOP 5 (solo un auto a la vez). Antes de 9:30 ET la sesión sigue siendo el día cash de ayer.",
+    "Cada 10 min: sync de velas + rescan de este playbook. Apaga el auto de Desk TOP 5 (solo un auto a la vez). Antes de 9:30 ET la sesión sigue siendo el día cash de ayer.",
   "strategies.deskAutoHint":
-    "Cada 2.5 min: sync de velas del desk + re-rank TOP 5. Apaga el auto de Focus (solo un auto a la vez).",
+    "Cada 10 min: sync de velas del desk + re-rank TOP 5. Apaga el auto de Focus (solo un auto a la vez).",
   "strategies.deskAutoHintFutures":
-    "Cada 2.5 min con Globex abierto: re-escanea TOP 5 (no vuelve a bajar todas las velas). Pulsa Desk scan una vez al día para sincronizar Yahoo.",
+    "Cada 10 min con Globex abierto: re-escanea TOP 5 (no vuelve a bajar todas las velas). Pulsa Desk scan una vez al día para sincronizar Yahoo.",
   "strategies.autoOffSession":
-    "Auto está apagado antes de las 9:30 ET (premarket / fin de semana). Tras la apertura cash, Auto 2.5m está disponible. Trigger opens sigue pausándolo.",
+    "Auto está apagado antes de las 9:30 ET (premarket / fin de semana). Tras la apertura cash, Auto 10m está disponible. Trigger opens sigue pausándolo.",
   "strategies.scanSummary":
     "Sesión {session} · escaneado {when} ET · {matches} matches · {checked} checked",
   "strategies.deskTopSummary":

@@ -54,7 +54,7 @@ import {
   type Venue,
 } from "@/lib/types";
 
-const AUTO_LIVE_MS = 150_000; // 2.5 minutes
+const AUTO_LIVE_MS = 600_000; // 10 minutes
 const AUTO_LIVE_KEY = "maite.strategies.autoLive";
 const AUTO_DESK_KEY = "maite.strategies.autoDesk";
 const ARM_OPENS_KEY = "maite.strategies.armOpens";
