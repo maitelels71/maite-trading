@@ -148,7 +148,7 @@ const en: Dict = {
   "strategies.title": "Trading Session",
   "strategies.titleEtf": "Trading Session — ETFs / Options",
   "strategies.titleFutures": "Trading Session — Futures",
-  "strategies.dataViaSchwab": "Candles: Yahoo · Orders: Schwab Open/Close only",
+  "strategies.dataViaSchwab": "Candles: Yahoo · Orders: TOS (Schwab API experimental)",
   "strategies.dataViaTa": "Data: Yahoo Finance",
   "strategies.emptyList": "No playbooks in this session yet — add them in playbooks.ts.",
   "strategies.subtitle":
@@ -227,7 +227,14 @@ const en: Dict = {
   "strategies.deskTopSummaryOvernight":
     "TOP {n} Globex/Asia (ML01/ML02 structure) · {hits} hits · session {session} · {when} ET",
   "strategies.deskTopEmptyOvernight":
-    "Globex is open · 0 live matches ({checked} checks at {when} ET). ML03 waits for NY 9:30–16:00. ML01/ML02 need 1H bias + LTF ChoCh/BOS on the current tape — empty is valid when structure is ranging. Use Focus · Sync & Scan to see watching vs no_data per symbol.",
+    "Globex is open · 0 live matches ({checked} checks at {when} ET). ML03 waits for NY 9:30–16:00. ML01/ML02 need structure on the tape — empty is valid when ranging. Use Focus · Sync & Scan for watching vs no_data.",
+  "strategies.deskTopWatchingOnly":
+    "No live matches yet · showing {n} watching candidate(s) ({checked} checks at {when} ET). Not entry signals — wait for confluence / RTH (ML03) or Focus Sync & Scan.",
+  "strategies.confluenceWatching": "watching",
+  "strategies.tosCopyOpen": "Copy for TOS",
+  "strategies.tosCopied": "Copied ✓",
+  "strategies.tosCopyPrompt": "Copy this BUY_TO_OPEN into TOS:",
+  "strategies.openSchwabExperimental": "Experimental Schwab Open (often 429)",
   "strategies.deskTopEmptyGlobexClosed":
     "CME Globex is closed (Fri 17:00 ET → Sun 18:00 ET, or the 17:00–18:00 halt). No live futures matches until it reopens.",
   "strategies.deskTopEmptyNoData":
@@ -280,9 +287,9 @@ const en: Dict = {
     "Choose one strategy to deep-scan — or check a TOP 5 row above.",
   "session.deskTop5": "Desk TOP 5",
   "session.deskTop5Hint":
-    "Ranks core names by confluence (Yahoo candles). Then Trigger opens and Open once on Schwab. Auto off. Do not Refresh Positions until the order is in TOS.",
+    "Ranks core names by confluence (Yahoo). Copy the plan into TOS (BUY_TO_OPEN). Schwab Open in-app is off.",
   "session.deskTop5HintFutures":
-    "Ranks MNQ/MES/FX/GC by confluence whenever Globex is open. Syncs HTF+LTF through now (not a truncated last-hours window). Auto 2.5m re-syncs the same TFs.",
+    "Ranks MNQ/MES/FX/GC whenever Globex is open. Live matches first; if none, shows watching candidates. ML03 only in NY RTH.",
   "session.liveScan": "Sync & Scan",
   "session.liveScanHint": "Sync candles for this playbook, then scan its universe.",
   "session.scanDesk": "Scan",
@@ -366,10 +373,10 @@ const en: Dict = {
   "strategies.capitalCacheOnly":
     "Equity from last snapshot only — Load capital is off (that GET starved Open/Close).",
   "strategies.opensPausedNote":
-    "In-app Open is paused. Use TOP 5 here, place entries in TOS, then Positions → Trigger closes → Close now.",
-  "strategies.armOpens": "Trigger opens",
+    "Hybrid desk: copy the Options plan into TOS (BUY_TO_OPEN). In-app Schwab Open is off (API 429). After fill, Positions → Copy SELL_TO_CLOSE for TOS.",
+  "strategies.armOpens": "Trigger opens (experimental)",
   "strategies.armOpensBody":
-    "1) Auto off. Sync & TOP 5 (Yahoo candles). 2) Check Trigger. 3) Open once (Schwab BUY_TO_OPEN). 4) After FILL: Positions → Trigger closes. Do not Refresh until TOS shows the order.",
+    "Experimental Schwab BUY_TO_OPEN. Prefer Copy for TOS. If you arm this: Auto off → Open once → check TOS → Orders.",
   "strategies.openSchwab": "Open {n}× @ {px}",
   "strategies.openTooRich":
     "1ct {cost} = {pct}% of equity. Consider ≤10% ({risk}). Open ≤50% needs {need50} equity.",
@@ -427,26 +434,33 @@ const en: Dict = {
     "Schwab Trader rate limit. Wait the countdown, then Open once. Do not Refresh Positions until then.",
   "strategies.tradingDisabledShort": "Trading off",
 
-  "positions.title": "Schwab positions",
+  "positions.title": "Positions (TOS)",
   "positions.hint":
-    "Snapshot only. Schwab is Close now (and Close all). Check TOS → Orders. No Refresh, Park, or Auto.",
+    "Snapshot only. Primary path: Copy SELL_TO_CLOSE into TOS. Schwab Close in-app is off (API 429).",
   "positions.readsOff":
-    "Positions list is the last snapshot — Refresh is off so Schwab quota stays for Close.",
-  "positions.parkOff": "Park LIMIT is off. Use Close now or TOS.",
+    "Positions list is the last snapshot — Refresh is off (Schwab quota).",
+  "positions.tosClosePrimary":
+    "Close in Thinkorswim: Copy SELL_TO_CLOSE on a row → paste / place in TOS → Orders. Do not use the desk for live closes while Schwab API rate-limits.",
+  "positions.tosCopyClose": "Copy for TOS",
+  "positions.tosCopied": "Copied close for {symbol} — paste in TOS",
+  "positions.tosCopyPrompt": "Copy this close into TOS:",
+  "positions.schwabCloseOff":
+    "Schwab Close is off in this hybrid desk. Use Copy for TOS (SELL_TO_CLOSE).",
+  "positions.parkOff": "Park LIMIT is off. Use Copy for TOS.",
   "positions.ordersReadsOff":
-    "Order list is off. Check TOS → Orders after Close.",
+    "Order list is off. Check TOS → Orders after you place the close.",
   "positions.snapshotHint":
-    "Snapshot {n} position(s) — not a live Refresh. Trigger closes + Close now. Check TOS → Orders. Refresh only if this list is wrong.",
+    "Snapshot {n} position(s) — not a live Refresh. Copy SELL_TO_CLOSE → TOS. Refresh only if this list is wrong.",
   "positions.closedCheckTos":
-    "Check TOS → Orders. This desk does not Refresh after Close (that 429s Schwab).",
+    "Check TOS → Orders.",
   "positions.refresh": "Refresh",
   "positions.refreshing": "Loading…",
   "positions.holdOpen":
-    "Trigger opens is on in Session — Positions refresh/TP poll is paused so Open can reach Schwab.",
+    "Trigger opens is on in Session — Positions refresh/TP poll is paused.",
   "positions.holdOpenClose":
-    "Close now can still send. If you already saw 429, do not click Close — SELL_TO_CLOSE in TOS.",
+    "Prefer Copy for TOS. If you already saw 429, do not use Schwab Close.",
   "positions.closeWaitQuiet":
-    "Schwab cooling. Close / Park LIMIT / Refresh in {n}s. Or SELL_TO_CLOSE in TOS now.",
+    "Schwab cooling. Wait {n}s — or SELL_TO_CLOSE in TOS now.",
   "positions.closeNotSent429":
     "Close was NOT sent — Schwab returned 429 on the SELL_TO_CLOSE POST.",
   "positions.closeNotSent429Next":
@@ -456,13 +470,13 @@ const en: Dict = {
   "positions.accountsLabel": "Account #",
   "positions.colAccount": "Account",
   "positions.emptyHint":
-    "If this list is empty, the snapshot is missing — Close needs a cached row (or TOS).",
+    "If this list is empty, the snapshot is missing — use TOS or a prior capital cache.",
   "positions.noPositions": "No open positions yet.",
-  "positions.noPositionsHint":
-    "Close now sale en cada fila del snapshot. Un LIMIT de compra no es posición hasta el FILL — mira TOS → Orders.",
-  "positions.armTitle": "Trigger closes",
+  "positions.armTitle": "Trigger closes (experimental)",
   "positions.armBody":
-    "Arm to send Close now / Close all (Schwab POST only). Park LIMIT and Auto are off.",
+    "Experimental Schwab Close POST. Prefer Copy for TOS.",
+  "positions.noPositionsHint":
+    "Copy for TOS appears on each snapshot row after you have a cached fill. A LIMIT buy is not a position until FILL — check TOS → Orders.",
   "positions.tradingDisabled":
     "Trading disabled on API (SCHWAB_TRADING_ENABLED). Alerts still work.",
   "positions.needArm": "Turn on Trigger closes first.",
@@ -727,7 +741,7 @@ const es: Dict = {
   "strategies.title": "Trading Session",
   "strategies.titleEtf": "Trading Session — ETFs / Options",
   "strategies.titleFutures": "Trading Session — Futuros",
-  "strategies.dataViaSchwab": "Velas: Yahoo · Órdenes: solo Open/Close Schwab",
+  "strategies.dataViaSchwab": "Velas: Yahoo · Órdenes: TOS (Schwab API experimental)",
   "strategies.dataViaTa": "Datos: Yahoo Finance",
   "strategies.emptyList": "Aún no hay playbooks en esta sesión — agrégalos en playbooks.ts.",
   "strategies.subtitle":
@@ -806,7 +820,14 @@ const es: Dict = {
   "strategies.deskTopSummaryOvernight":
     "TOP {n} Globex/Asia (estructura ML01/ML02) · {hits} hits · sesión {session} · {when} ET",
   "strategies.deskTopEmptyOvernight":
-    "Globex abierto · 0 matches en vivo ({checked} checks a las {when} ET). ML03 espera NY 9:30–16:00. ML01/ML02 piden sesgo 1H + ChoCh/BOS LTF en la cinta actual — vacío es válido si está en rango. Focus · Sync & Scan muestra watching vs no_data por símbolo.",
+    "Globex abierto · 0 matches en vivo ({checked} checks a las {when} ET). ML03 espera NY 9:30–16:00. ML01/ML02 piden estructura en la cinta — vacío es válido si está en rango. Focus · Sync & Scan muestra watching vs no_data.",
+  "strategies.deskTopWatchingOnly":
+    "Sin matches live · mostrando {n} candidato(s) watching ({checked} checks a las {when} ET). No son señales de entrada — espera confluencia / RTH (ML03) o Focus Sync & Scan.",
+  "strategies.confluenceWatching": "watching",
+  "strategies.tosCopyOpen": "Copiar para TOS",
+  "strategies.tosCopied": "Copiado ✓",
+  "strategies.tosCopyPrompt": "Copia este BUY_TO_OPEN en TOS:",
+  "strategies.openSchwabExperimental": "Open Schwab experimental (suele 429)",
   "strategies.deskTopEmptyGlobexClosed":
     "CME Globex está cerrado (vie 17:00 ET → dom 18:00 ET, o el halt 17:00–18:00). No hay matches de futuros hasta que reabra.",
   "strategies.deskTopEmptyNoData":
@@ -859,9 +880,9 @@ const es: Dict = {
     "Elige una estrategia para deep-scan — o marca una fila del TOP 5 de arriba.",
   "session.deskTop5": "Desk TOP 5",
   "session.deskTop5Hint":
-    "Rankea nombres core por confluencia (velas Yahoo). Luego Trigger opens y Open una vez en Schwab. Auto off. No Refresh en Positions hasta que la orden esté en TOS.",
+    "Rankea nombres core por confluencia (Yahoo). Copia el plan a TOS (BUY_TO_OPEN). Open Schwab en el app está off.",
   "session.deskTop5HintFutures":
-    "Rankea MNQ/MES/FX/GC por confluencia cuando Globex está abierto. Sync HTF+LTF hasta ahora (no una ventana recortada de las últimas horas). Auto 2.5m re-sync los mismos TFs.",
+    "Rankea MNQ/MES/FX/GC con Globex abierto. Primero matches live; si no hay, candidatos watching. ML03 solo en NY RTH.",
   "session.liveScan": "Sync & Scan",
   "session.liveScanHint": "Baja velas de este playbook y escanea su universo.",
   "session.scanDesk": "Scan",
@@ -945,10 +966,10 @@ const es: Dict = {
   "strategies.capitalCacheOnly":
     "Equity del último snapshot — Load capital está off (ese GET saturaba Open/Close).",
   "strategies.opensPausedNote":
-    "Open en el app está pausado. TOP 5 aquí, entradas en TOS, luego Positions → Trigger cierres → Close now.",
-  "strategies.armOpens": "Trigger opens",
+    "Desk híbrido: copia el plan de Options a TOS (BUY_TO_OPEN). Open Schwab en el app está off (API 429). Tras FILL: Positions → Copiar SELL_TO_CLOSE para TOS.",
+  "strategies.armOpens": "Trigger opens (experimental)",
   "strategies.armOpensBody":
-    "1) Auto off. Sync & TOP 5 (velas Yahoo). 2) Activa Trigger. 3) Open una vez (BUY_TO_OPEN Schwab). 4) Tras FILL: Positions → Trigger cierres. No Refresh hasta que TOS muestre la orden.",
+    "BUY_TO_OPEN Schwab experimental. Prefiere Copiar para TOS. Si armas esto: Auto off → Open una vez → mira TOS → Orders.",
   "strategies.openSchwab": "Abrir {n}× @ {px}",
   "strategies.openTooRich":
     "1ct {cost} = {pct}% del equity. Considerar ≤10% ({risk}). Open ≤50% pide {need50} de equity.",
@@ -1006,26 +1027,33 @@ const es: Dict = {
     "Schwab Trader saturado (429). Espera la cuenta atrás y pulsa Open una vez. No hagas Refresh en Positions hasta entonces.",
   "strategies.tradingDisabledShort": "Trading off",
 
-  "positions.title": "Posiciones Schwab",
+  "positions.title": "Posiciones (TOS)",
   "positions.hint":
-    "Solo snapshot. Schwab es Close now (y Close all). Mira TOS → Orders. Sin Refresh, Park ni Auto.",
+    "Solo snapshot. Camino principal: Copiar SELL_TO_CLOSE a TOS. Close Schwab en el app está off (API 429).",
   "positions.readsOff":
-    "La lista es el último snapshot — Refresh está off para dejar cupo a Close.",
-  "positions.parkOff": "Dejar LIMIT está off. Usa Close now o TOS.",
+    "La lista es el último snapshot — Refresh está off (cupo Schwab).",
+  "positions.tosClosePrimary":
+    "Cierra en Thinkorswim: Copiar SELL_TO_CLOSE en una fila → pega / coloca en TOS → Orders. No uses el desk para closes live mientras Schwab rate-limita.",
+  "positions.tosCopyClose": "Copiar para TOS",
+  "positions.tosCopied": "Close de {symbol} copiado — pega en TOS",
+  "positions.tosCopyPrompt": "Copia este close en TOS:",
+  "positions.schwabCloseOff":
+    "Close Schwab está off en este desk híbrido. Usa Copiar para TOS (SELL_TO_CLOSE).",
+  "positions.parkOff": "Dejar LIMIT está off. Usa Copiar para TOS.",
   "positions.ordersReadsOff":
-    "La lista de órdenes está off. Mira TOS → Orders tras Close.",
+    "La lista de órdenes está off. Mira TOS → Orders tras colocar el close.",
   "positions.snapshotHint":
-    "Snapshot {n} posición(es) — no es un Refresh live. Trigger cierres + Close now. Mira TOS → Orders. Refresh solo si esta lista está mal.",
+    "Snapshot {n} posición(es) — no es un Refresh live. Copiar SELL_TO_CLOSE → TOS. Refresh solo si esta lista está mal.",
   "positions.closedCheckTos":
-    "Mira TOS → Orders. Este desk no hace Refresh tras Close (eso 429a Schwab).",
+    "Mira TOS → Orders.",
   "positions.refresh": "Actualizar",
   "positions.refreshing": "Cargando…",
   "positions.holdOpen":
-    "Trigger opens está activo en Session — Positions no refresca ni hace poll de TP para dejar Schwab libre para Open.",
+    "Trigger opens está activo en Session — Positions no refresca ni hace poll de TP.",
   "positions.holdOpenClose":
-    "Close now sí puede enviar. Si ya viste 429, no pulses Close — SELL_TO_CLOSE en TOS.",
+    "Prefiere Copiar para TOS. Si ya viste 429, no uses Close Schwab.",
   "positions.closeWaitQuiet":
-    "Schwab se enfría. Close / Dejar LIMIT / Refresh en {n}s. O SELL_TO_CLOSE en TOS ahora.",
+    "Schwab se enfría. Espera {n}s — o SELL_TO_CLOSE en TOS ahora.",
   "positions.closeNotSent429":
     "El close NO se envió — Schwab devolvió 429 en el POST SELL_TO_CLOSE.",
   "positions.closeNotSent429Next":
@@ -1034,13 +1062,13 @@ const es: Dict = {
   "positions.accountsLabel": "Cuenta #",
   "positions.colAccount": "Cuenta",
   "positions.emptyHint":
-    "Si la lista está vacía, falta el snapshot — Close necesita una fila en caché (o TOS).",
+    "Si la lista está vacía, falta el snapshot — usa TOS o un capital cache previo.",
   "positions.noPositions": "Aún no hay posiciones abiertas.",
   "positions.noPositionsHint":
-    "Close now sale en cada fila del snapshot. Un LIMIT de compra no es posición hasta el FILL — mira TOS → Orders.",
-  "positions.armTitle": "Trigger cierres",
+    "Copiar para TOS sale en cada fila del snapshot tras un FILL en caché. Un LIMIT de compra no es posición hasta el FILL — mira TOS → Orders.",
+  "positions.armTitle": "Trigger cierres (experimental)",
   "positions.armBody":
-    "Ármalo para Close now / Close all (solo POST Schwab). Park LIMIT y Auto están off.",
+    "Close POST Schwab experimental. Prefiere Copiar para TOS.",
   "positions.tradingDisabled":
     "Trading desactivado en API (SCHWAB_TRADING_ENABLED). Las alertas sí funcionan.",
   "positions.needArm": "Activa Trigger cierres primero.",

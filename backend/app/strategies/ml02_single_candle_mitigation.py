@@ -586,12 +586,12 @@ class Ml02SingleCandleMitigationStrategy(BaseStrategy):
             "swing_right": 2,
             # None = walk full LTF window (backtest). Set an int for live-only tail scan.
             "scm_lookback": None,
-            "require_inducement": True,
+            "require_inducement": False,
             "min_impulse_bars": 3,
             "min_bars_after_bos": 4,
-            # Clear liquidity: wick must dominate the candle + meaningful sweep.
-            "min_wick_frac": "0.55",
-            "min_sweep_frac": "0.20",
+            # Live desk: slightly softer than textbook so Globex TOP 5 is usable.
+            "min_wick_frac": "0.45",
+            "min_sweep_frac": "0.15",
             # SCM must take highs/lows of the previous N LTF bars (not only last bar).
             "liq_lookback": 3,
             "allow_fvg_mitigation": True,
@@ -651,8 +651,8 @@ class Ml02SingleCandleMitigationStrategy(BaseStrategy):
 
         search_start = 1
         if lookback is None and start_d == end_d:
-            # Live desk: last ~30 min of LTF, not a 3h replay (API Gateway ~29s).
-            lookback = 30
+            # Live desk: ~90 LTF bars (~1.5h on 1m / ~7.5h on 5m), not 30-only.
+            lookback = 90
         if lookback is not None:
             search_start = max(1, len(series) - lookback)
 

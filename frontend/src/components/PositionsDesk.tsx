@@ -31,8 +31,9 @@ const CLOSE_RETRY_WAIT_SEC = 60;
 const CLOSE_GIVE_UP_MS = 180_000;
 const LADDER_RETRY_WAIT_SEC = 150;
 const DEFAULT_TP_PCT = 35;
-/** GET accounts/quotes/orders off — only POST Close. */
+/** Snapshot + TOS close checklist. Schwab SELL_TO_CLOSE POST is experimental. */
 const SCHWAB_TRADER_READS = false;
+const SCHWAB_CLOSE_EXPERIMENTAL = false;
 
 function isRateLimitText(msg: string | null | undefined): boolean {
   return /(?:\b429\b|rate limit)/i.test(msg || "");
@@ -488,7 +489,33 @@ export function PositionsDesk() {
     return null;
   }
 
+  function copyTosClose(pos: BrokerPosition) {
+    const qty = Math.abs(pos.quantity);
+    const instr = pos.close_instruction || "SELL_TO_CLOSE";
+    const line = [
+      `${instr} ${qty} ${pos.symbol}`,
+      "MARKET DAY",
+      pos.description || pos.underlying || "",
+      `avg ${pos.average_price}`,
+    ]
+      .filter(Boolean)
+      .join(" · ");
+    void (async () => {
+      try {
+        await navigator.clipboard.writeText(line);
+        setNote(t("positions.tosCopied").replace("{symbol}", pos.symbol));
+        setError(null);
+      } catch {
+        window.prompt(t("positions.tosCopyPrompt"), line);
+      }
+    })();
+  }
+
   function closeNow(pos: BrokerPosition) {
+    if (!SCHWAB_CLOSE_EXPERIMENTAL) {
+      setError(t("positions.schwabCloseOff"));
+      return;
+    }
     if (!armedConfirm) {
       setError(t("positions.needArm"));
       return;
@@ -553,6 +580,10 @@ export function PositionsDesk() {
   }
 
   function closeAll() {
+    if (!SCHWAB_CLOSE_EXPERIMENTAL) {
+      setError(t("positions.schwabCloseOff"));
+      return;
+    }
     if (!armedConfirm) {
       setError(t("positions.needArm"));
       return;
@@ -785,7 +816,7 @@ export function PositionsDesk() {
         hint={t("positions.hint")}
         actions={
           <div className="flex shrink-0 items-center gap-1.5">
-            {positions.length > 0 ? (
+            {SCHWAB_CLOSE_EXPERIMENTAL && positions.length > 0 ? (
               <button
                 type="button"
                 disabled={
@@ -849,22 +880,28 @@ export function PositionsDesk() {
           </div>
         ) : null}
 
-        <label className="mt-2 flex cursor-pointer items-start gap-2 rounded-md border border-[var(--border)] bg-[var(--surface-muted)] px-3 py-2 text-[11px] leading-snug">
-          <input
-            type="checkbox"
-            className="mt-0.5 accent-[var(--accent)]"
-            checked={armedConfirm}
-            onChange={(e) => setArmedConfirm(e.target.checked)}
-          />
-          <span>
-            <span className="font-semibold text-[var(--foreground)]">
-              {t("positions.armTitle")}
+        {SCHWAB_CLOSE_EXPERIMENTAL ? (
+          <label className="mt-2 flex cursor-pointer items-start gap-2 rounded-md border border-[var(--border)] bg-[var(--surface-muted)] px-3 py-2 text-[11px] leading-snug">
+            <input
+              type="checkbox"
+              className="mt-0.5 accent-[var(--accent)]"
+              checked={armedConfirm}
+              onChange={(e) => setArmedConfirm(e.target.checked)}
+            />
+            <span>
+              <span className="font-semibold text-[var(--foreground)]">
+                {t("positions.armTitle")}
+              </span>
+              <span className="mt-0.5 block text-[var(--muted)]">
+                {t("positions.armBody")}
+              </span>
             </span>
-            <span className="mt-0.5 block text-[var(--muted)]">
-              {t("positions.armBody")}
-            </span>
-          </span>
-        </label>
+          </label>
+        ) : (
+          <p className="mt-2 rounded-md border border-[var(--border)] bg-[var(--surface-muted)] px-3 py-2 text-[11px] leading-snug text-[var(--muted)]">
+            {t("positions.tosClosePrimary")}
+          </p>
+        )}
 
         {positions.length > 0 ? (
           <div className="mt-2 overflow-auto rounded-lg border border-[var(--border)]">
@@ -921,20 +958,29 @@ export function PositionsDesk() {
                         <div className="flex flex-col gap-1">
                           <button
                             type="button"
-                            disabled={
-                              pending ||
-                              closingKey != null ||
-                              retryLeft != null ||
-                              schwabCooling ||
-                              !tradingEnabled ||
-                              !cashRth
-                            }
-                            onClick={() => closeNow(pos)}
-                            className="rounded border border-[var(--border)] px-2 py-1 text-[10px] font-medium hover:bg-[var(--hover)] disabled:opacity-40"
-                            title={!cashRth ? t("positions.needRth") : undefined}
+                            onClick={() => copyTosClose(pos)}
+                            className="rounded border border-[var(--ok)]/40 bg-[var(--ok-soft)] px-2 py-1 text-[10px] font-medium text-[var(--ok)] hover:bg-[var(--hover)]"
                           >
-                            {t("positions.closeNow")}
+                            {t("positions.tosCopyClose")}
                           </button>
+                          {SCHWAB_CLOSE_EXPERIMENTAL ? (
+                            <button
+                              type="button"
+                              disabled={
+                                pending ||
+                                closingKey != null ||
+                                retryLeft != null ||
+                                schwabCooling ||
+                                !tradingEnabled ||
+                                !cashRth
+                              }
+                              onClick={() => closeNow(pos)}
+                              className="rounded border border-[var(--border)] px-2 py-1 text-[10px] font-medium text-[var(--muted)] hover:bg-[var(--hover)] disabled:opacity-40"
+                              title={!cashRth ? t("positions.needRth") : undefined}
+                            >
+                              {t("positions.closeNow")}
+                            </button>
+                          ) : null}
                         </div>
                         {tpHit ? (
                           <div className="mt-1 max-w-[10rem] text-[9px] font-medium leading-snug text-[var(--ok)]">

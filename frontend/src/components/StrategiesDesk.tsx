@@ -74,11 +74,11 @@ const OPEN_GIVE_UP_QUIET_MS = 180_000;
 const OPEN_RETRY_WAIT_SEC = 60;
 const DESK_TOP_N = 5;
 /**
- * Trigger opens + Open buttons. Candles for Options TOP 5 come from Yahoo;
- * Schwab Trader is POST Open/Close only (no account/quote/order GETs).
+ * Hybrid desk: Options path is plan → TOS. Schwab BUY_TO_OPEN stays behind
+ * this flag (experimental — same OAuth bucket that 429s live orders).
  */
-const DESK_OPENS_ENABLED = true;
-/** GET accounts/positions/quotes/orders — off so Open/Close keep quota. */
+const DESK_OPENS_ENABLED = false;
+/** GET accounts/positions/quotes/orders — off so experimental Open keeps quota. */
 const SCHWAB_TRADER_READS = false;
 const DESK_SYNC_TFS = ["1h", "1d", "15m"] as const;
 const DESK_LOOKBACK_DAYS = 25;
@@ -118,6 +118,8 @@ type DeskConfluenceGroup = {
   confluence: number;
   /** Matching setups on the opposite side (hidden from rank, shown as note). */
   opposedCount: number;
+  /** Watching / near-setup rows used to fill Futures TOP 5 when matches are empty. */
+  candidate?: boolean;
 };
 
 /** Split /strategy/scan so each request stays under API Gateway's ~29s cap. */
@@ -258,6 +260,60 @@ function rankByConfluence(hits: ScanHit[], topN: number): DeskConfluenceGroup[] 
   });
 
   return groups.slice(0, topN);
+}
+
+/** Futures: if live matches are thin, pad TOP 5 with watching rows (not no_data / RTH-gated). */
+function padWithWatchingCandidates(
+  matched: DeskConfluenceGroup[],
+  allHits: ScanHit[],
+  topN: number,
+): DeskConfluenceGroup[] {
+  if (matched.length >= topN) return matched;
+  const taken = new Set(matched.map((g) => g.symbol.toUpperCase()));
+  const bySymbol = new Map<string, ScanHit[]>();
+  for (const hit of allHits) {
+    if (hit.matched) continue;
+    if (hit.status === "no_data") continue;
+    const st = String(hit.status || "").toLowerCase();
+    if (st !== "watching" && st !== "flat_after_trades") continue;
+    const detail = String(hit.detail || "");
+    if (/NY RTH|not live in Globex|Globex closed/i.test(detail)) continue;
+    const sym = hit.symbol.toUpperCase();
+    if (taken.has(sym)) continue;
+    const list = bySymbol.get(sym) ?? [];
+    if (list.some((h) => h.strategy === hit.strategy)) continue;
+    list.push(hit);
+    bySymbol.set(sym, list);
+  }
+  const extras: DeskConfluenceGroup[] = [];
+  for (const [symbol, symbolHits] of bySymbol.entries()) {
+    const withSide = symbolHits.filter((h) => hitSide(h) != null);
+    const keep = withSide.length > 0 ? withSide : symbolHits;
+    const side = hitSide(keep[0]) ?? "long";
+    const sided = keep.filter((h) => (hitSide(h) ?? side) === side);
+    const sortedHits = [...(sided.length ? sided : keep)].sort((a, b) => {
+      const ta = a.last_signal?.timestamp ?? "";
+      const tb = b.last_signal?.timestamp ?? "";
+      return tb.localeCompare(ta);
+    });
+    extras.push({
+      symbol,
+      name: symbolHits[0]?.name ?? symbol,
+      side,
+      hits: sortedHits,
+      confluence: 0,
+      opposedCount: 0,
+      candidate: true,
+    });
+  }
+  extras.sort((a, b) => {
+    if (b.hits.length !== a.hits.length) return b.hits.length - a.hits.length;
+    const tb = b.hits[0]?.last_signal?.timestamp ?? "";
+    const ta = a.hits[0]?.last_signal?.timestamp ?? "";
+    if (tb !== ta) return tb.localeCompare(ta);
+    return a.symbol.localeCompare(b.symbol);
+  });
+  return [...matched, ...extras].slice(0, topN);
 }
 
 function nyParts(d = new Date()): { y: number; m: number; day: number; hh: number; mm: number; weekday: string } {
@@ -1339,9 +1395,16 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
         const now = new Date();
         const overnight = venue === "tradeadvocate" && isFuturesOvernightNy(now);
         const globexClosed = venue === "tradeadvocate" && !isGlobexOpenNy(now);
-        const ranked = rankByConfluence(allMatches, DESK_TOP_N);
+        let ranked = rankByConfluence(allMatches, DESK_TOP_N);
+        if (venue === "tradeadvocate") {
+          ranked = padWithWatchingCandidates(ranked, allHits, DESK_TOP_N);
+        }
         setDeskGroups(ranked);
-        const strategyHits = ranked.reduce((n, g) => n + g.confluence, 0);
+        const strategyHits = ranked.reduce(
+          (n, g) => n + (g.candidate ? 0 : g.confluence),
+          0,
+        );
+        const watchPad = ranked.filter((g) => g.candidate).length;
         const noData = allHits.filter((h) => h.status === "no_data").length;
         const checked = allHits.length || allMatches.length;
         if (globexClosed) {
@@ -1356,6 +1419,13 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
         } else if (overnight && ranked.length === 0) {
           setDeskNote(
             t("strategies.deskTopEmptyOvernight")
+              .replace("{checked}", String(checked))
+              .replace("{when}", formatNyDateTime(now, locale)),
+          );
+        } else if (ranked.length > 0 && strategyHits === 0 && watchPad > 0) {
+          setDeskNote(
+            t("strategies.deskTopWatchingOnly")
+              .replace("{n}", String(watchPad))
               .replace("{checked}", String(checked))
               .replace("{when}", formatNyDateTime(now, locale)),
           );
@@ -1842,14 +1912,20 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
                         <td className="px-2 py-1.5">
                           {isFirst ? (
                             <span className="inline-flex flex-col gap-0.5">
-                              <span className="inline-flex rounded px-1.5 py-0.5 text-[10px] font-semibold tabular-nums bg-[var(--accent-soft)] text-[var(--accent-fg)]">
-                                {t("strategies.confluenceCount")
-                                  .replace("{n}", String(group.confluence))
-                                  .replace(
-                                    "{side}",
-                                    group.side === "long" ? "CALL" : "PUT",
-                                  )}
-                              </span>
+                              {group.candidate ? (
+                                <span className="inline-flex rounded px-1.5 py-0.5 text-[10px] font-semibold tabular-nums bg-[var(--warn-soft)] text-[var(--warn)]">
+                                  {t("strategies.confluenceWatching")}
+                                </span>
+                              ) : (
+                                <span className="inline-flex rounded px-1.5 py-0.5 text-[10px] font-semibold tabular-nums bg-[var(--accent-soft)] text-[var(--accent-fg)]">
+                                  {t("strategies.confluenceCount")
+                                    .replace("{n}", String(group.confluence))
+                                    .replace(
+                                      "{side}",
+                                      group.side === "long" ? "CALL" : "PUT",
+                                    )}
+                                </span>
+                              )}
                               {group.opposedCount > 0 ? (
                                 <span className="text-[9px] text-[var(--muted)]">
                                   {t("strategies.confluenceOpposed").replace(
@@ -1898,7 +1974,6 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
                                         ? ` · óptimo ${plan.rangeLabel} · TP 10/20/35/50/100: $${plan.tp10}/$${plan.tp20}/$${plan.tp35}/$${plan.tp50}/$${plan.tp100}`
                                         : ""}
                                     </div>
-                                    {DESK_OPENS_ENABLED ? (
                                     <OpenPlanButton
                                       plan={plan}
                                       rowKey={rowOpenKey}
@@ -1915,9 +1990,12 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
                                           : t("strategies.openWaitSync")
                                       }
                                       opening={openingKey === rowOpenKey}
-                                      onOpen={openFromPlan}
+                                      onOpen={
+                                        DESK_OPENS_ENABLED
+                                          ? openFromPlan
+                                          : undefined
+                                      }
                                     />
-                                    ) : null}
                                   </div>
                                 );
                               })()
@@ -2540,7 +2618,7 @@ function OpenPlanButton({
   brokerBusy?: boolean;
   busyTitle?: string;
   opening: boolean;
-  onOpen: (
+  onOpen?: (
     plan: NonNullable<ReturnType<typeof buildOptionsEntryPlan>>,
     rowKey: string,
   ) => void;
@@ -2550,6 +2628,7 @@ function OpenPlanButton({
   const [manualPrem, setManualPrem] = useState(
     String(plan.entryPremium > 0 ? plan.entryPremium : DEFAULT_OTM_PREMIUM),
   );
+  const [copied, setCopied] = useState(false);
   useEffect(() => {
     setManualPrem(
       String(plan.entryPremium > 0 ? plan.entryPremium : DEFAULT_OTM_PREMIUM),
@@ -2559,16 +2638,39 @@ function OpenPlanButton({
   const livePlan =
     Number.isFinite(typed) && typed > 0 ? planWithDebit(plan, typed) : plan;
   const entryPremium = livePlan.entryPremium;
-  if (!account) {
-    return (
-      <p className="text-[10px] text-[var(--muted)]">{t("strategies.capitalNeed")}</p>
-    );
-  }
+  const equity = account?.equity ?? 0;
+  const cash =
+    account?.available_funds ?? account?.cash_balance ?? 0;
   const sizing = sizeLongOption({
     entryPremium,
-    equity: account.equity ?? 0,
-    cashAvailable: account.available_funds ?? account.cash_balance ?? 0,
+    equity,
+    cashAvailable: cash,
   });
+  const qty = Math.max(1, sizing.contracts || 1);
+  const occ =
+    buildOccOptionSymbol(
+      livePlan.symbol,
+      livePlan.expIso,
+      livePlan.optionType,
+      livePlan.strike,
+    ) || livePlan.symbol;
+
+  async function copyTosPlan() {
+    const line = [
+      `BUY_TO_OPEN ${qty} ${occ}`,
+      `LIMIT ${entryPremium.toFixed(2)} DAY`,
+      `${livePlan.symbol} ${livePlan.optionType} ${livePlan.strike} exp ${livePlan.expLabel}`,
+      `cost≈$${(entryPremium * 100 * qty).toFixed(2)}`,
+    ].join(" · ");
+    try {
+      await navigator.clipboard.writeText(line);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 2500);
+    } catch {
+      window.prompt(t("strategies.tosCopyPrompt"), line);
+    }
+  }
+
   return (
     <div className="flex flex-wrap items-center gap-1.5">
       <label className="inline-flex items-center gap-1 text-[10px] text-[var(--muted)]">
@@ -2586,47 +2688,54 @@ function OpenPlanButton({
       <span className="text-[10px] tabular-nums text-[var(--muted)]">
         {t("strategies.optionsStrike")} {moneyUsd(livePlan.strike)}
       </span>
-      {!sizing.canOpen ? (
+      <button
+        type="button"
+        onClick={() => void copyTosPlan()}
+        className="rounded border border-[var(--ok)]/40 bg-[var(--ok-soft)] px-2 py-0.5 text-[10px] font-medium text-[var(--ok)] hover:bg-[var(--hover)]"
+        title={occ}
+      >
+        {copied ? t("strategies.tosCopied") : t("strategies.tosCopyOpen")}
+      </button>
+      {!sizing.canOpen && account ? (
         <p className="text-[10px] leading-snug text-[var(--warn)]">
           {tooRichCopy(t, sizing)}
         </p>
-      ) : !tradingEnabled ? (
-        <p className="text-[10px] text-[var(--muted)]">
-          {t("strategies.tradingDisabledShort")}
-        </p>
-      ) : !rthOpen ? (
-        <p className="text-[10px] leading-snug text-[var(--warn)]">
-          {t("strategies.openNeedRth")}
-        </p>
-      ) : (
-        <button
-          type="button"
-          disabled={opening || !armOpens || brokerBusy}
-          title={
-            brokerBusy
-              ? busyTitle || t("strategies.openWaitSync")
-              : !armOpens
-                ? t("strategies.openNeedArm")
-                : undefined
-          }
-          onClick={() => onOpen(livePlan, rowKey)}
-          className={`rounded px-2 py-0.5 text-[10px] font-medium hover:bg-[var(--hover)] disabled:opacity-40 ${
-            sizing.consider
-              ? "border border-[var(--ok)]/40 bg-[var(--ok-soft)] text-[var(--ok)]"
-              : "border border-[var(--warn)]/40 bg-[var(--warn-soft)] text-[var(--warn)]"
-          }`}
-        >
-          {opening
-            ? "…"
-            : sizing.consider
-              ? t("strategies.openSchwab")
-                  .replace("{n}", String(sizing.contracts))
-                  .replace("{px}", moneyUsd(entryPremium))
-              : t("strategies.openOverRisk")
-                  .replace("{px}", moneyUsd(entryPremium))
-                  .replace("{pct}", formatPct(sizing.actualRiskPct))}
-        </button>
-      )}
+      ) : null}
+      {onOpen && DESK_OPENS_ENABLED ? (
+        !account ? (
+          <p className="text-[10px] text-[var(--muted)]">
+            {t("strategies.capitalNeed")}
+          </p>
+        ) : !tradingEnabled ? (
+          <p className="text-[10px] text-[var(--muted)]">
+            {t("strategies.tradingDisabledShort")}
+          </p>
+        ) : !rthOpen ? (
+          <p className="text-[10px] leading-snug text-[var(--warn)]">
+            {t("strategies.openNeedRth")}
+          </p>
+        ) : (
+          <button
+            type="button"
+            disabled={opening || !armOpens || brokerBusy || !sizing.canOpen}
+            title={
+              brokerBusy
+                ? busyTitle || t("strategies.openWaitSync")
+                : !armOpens
+                  ? t("strategies.openNeedArm")
+                  : t("strategies.openSchwabExperimental")
+            }
+            onClick={() => onOpen(livePlan, rowKey)}
+            className="rounded border border-[var(--border)] px-2 py-0.5 text-[10px] font-medium text-[var(--muted)] hover:bg-[var(--hover)] disabled:opacity-40"
+          >
+            {opening
+              ? "…"
+              : t("strategies.openSchwab")
+                  .replace("{n}", String(qty))
+                  .replace("{px}", moneyUsd(entryPremium))}
+          </button>
+        )
+      ) : null}
     </div>
   );
 }
@@ -2727,21 +2836,19 @@ function OptionsPlanBlock({
           </span>
         </p>
       ) : null}
-      {onOpen && rowKey ? (
-        <div className="mt-1.5">
-          <OpenPlanButton
-            plan={plan}
-            rowKey={rowKey}
-            account={account}
-            tradingEnabled={tradingEnabled}
-            armOpens={armOpens}
-            brokerBusy={brokerBusy}
-            busyTitle={busyTitle}
-            opening={opening}
-            onOpen={onOpen}
-          />
-        </div>
-      ) : null}
+      <div className="mt-1.5">
+        <OpenPlanButton
+          plan={plan}
+          rowKey={rowKey || `${plan.symbol}::plan`}
+          account={account}
+          tradingEnabled={tradingEnabled}
+          armOpens={armOpens}
+          brokerBusy={brokerBusy}
+          busyTitle={busyTitle}
+          opening={opening}
+          onOpen={DESK_OPENS_ENABLED ? onOpen : undefined}
+        />
+      </div>
     </div>
   );
 }
