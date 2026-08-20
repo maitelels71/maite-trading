@@ -307,7 +307,7 @@ Resources:
       Name: !Sub "${ProjectName}-${EnvironmentName}-options-auth"
       AutoPublish: true
       FunctionConfig:
-        Comment: HTTP Basic Auth gate for Options UI
+        Comment: Basic Auth + SPA path rewrite (desk/coinbase → index.html)
         Runtime: cloudfront-js-2.0
       FunctionCode: !Sub
         - |
@@ -326,6 +326,15 @@ Resources:
                   'www-authenticate': { value: 'Basic realm="Trading Like a Boss Options"' }
                 }
               };
+            }
+            var uri = request.uri;
+            if (uri === '/') {
+              return request;
+            }
+            if (uri.endsWith('/')) {
+              request.uri = uri + 'index.html';
+            } else if (uri.indexOf('.') === -1) {
+              request.uri = uri + '/index.html';
             }
             return request;
           }
@@ -417,7 +426,7 @@ Resources:
       Name: !Sub "${ProjectName}-${EnvironmentName}-futures-auth"
       AutoPublish: true
       FunctionConfig:
-        Comment: HTTP Basic Auth gate for Futures UI
+        Comment: Basic Auth + SPA path rewrite (desk/coinbase → index.html)
         Runtime: cloudfront-js-2.0
       FunctionCode: !Sub
         - |
@@ -436,6 +445,15 @@ Resources:
                   'www-authenticate': { value: 'Basic realm="Trading Like a Boss Futures"' }
                 }
               };
+            }
+            var uri = request.uri;
+            if (uri === '/') {
+              return request;
+            }
+            if (uri.endsWith('/')) {
+              request.uri = uri + 'index.html';
+            } else if (uri.indexOf('.') === -1) {
+              request.uri = uri + '/index.html';
             }
             return request;
           }

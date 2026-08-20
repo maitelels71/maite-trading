@@ -17,7 +17,7 @@ import { PositionsDesk } from "@/components/PositionsDesk";
 import { SettingsMenu } from "@/components/SettingsMenu";
 import { StickyNotesDesk } from "@/components/StickyNotesDesk";
 import { StrategiesDesk } from "@/components/StrategiesDesk";
-import { APP_DOCUMENT_TITLE, APP_ICON_PNG, type AppMode } from "@/lib/app-mode";
+import { APP_DOCUMENT_TITLE, APP_ICON_PNG, deskViewHref, type AppMode } from "@/lib/app-mode";
 import { DESK_VERSION } from "@/lib/desk-version";
 
 type AppView =
@@ -50,7 +50,7 @@ function isAppView(value: string | null | undefined): value is AppView {
 }
 
 function viewHref(view: AppView, mode: AppMode): string {
-  return `/desk/?view=${view}&mode=${mode}`;
+  return deskViewHref(view, mode);
 }
 
 /** Same-tab SPA nav; Ctrl/Cmd/middle-click keep native new-tab behavior. */

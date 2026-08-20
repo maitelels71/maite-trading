@@ -36,10 +36,36 @@ export const APP_ICON_PNG = "/brand/charging-bull.png";
 export const APP_ICON_SVG = "/brand/charging-bull.png";
 
 export function optionsDeskHref(): string {
-  // Do not auto TOP 5 on Options landing — sync+scan exceeds the ~29s API.
-  return "/desk/?mode=options";
+  // Explicit index.html — CloudFront/S3 OAC returns hub index for /desk/ (403→/index.html).
+  return "/desk/index.html?mode=options";
 }
 
 export function futuresDeskHref(): string {
-  return "/desk/?mode=futures&scan=1";
+  return "/desk/index.html?mode=futures&scan=1";
+}
+
+export function coinbaseDeskHref(): string {
+  return "/coinbase/index.html";
+}
+
+export function deskViewHref(view: string, mode: AppMode): string {
+  return `/desk/index.html?view=${encodeURIComponent(view)}&mode=${mode}`;
+}
+
+/** Map /desk/ and /coinbase/ to …/index.html so static hosting serves the right page. */
+export function toStaticHtmlPath(pathWithSearch: string): string {
+  const raw = (pathWithSearch || "").trim();
+  if (!raw.startsWith("/") || raw.startsWith("//")) return raw;
+  try {
+    const u = new URL(raw, "https://desk.local");
+    const p = u.pathname;
+    if (p === "/desk" || p === "/desk/") u.pathname = "/desk/index.html";
+    else if (p === "/coinbase" || p === "/coinbase/") u.pathname = "/coinbase/index.html";
+    else if (p.endsWith("/") && p !== "/" && !p.endsWith("/index.html")) {
+      u.pathname = `${p}index.html`;
+    }
+    return `${u.pathname}${u.search}`;
+  } catch {
+    return raw;
+  }
 }

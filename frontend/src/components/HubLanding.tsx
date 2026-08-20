@@ -4,11 +4,16 @@ import { FormEvent, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 
 import { BrandMark } from "@/components/BrandMark";
+import {
+  BitcoinMark,
+  CandlesMark,
+  FuturesMark,
+} from "@/components/HubDeskIcons";
 import { LanguageToggle } from "@/components/LanguageToggle";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { useLocale } from "@/components/LocaleProvider";
 import { deskLogin } from "@/lib/api";
-import { futuresDeskHref, optionsDeskHref } from "@/lib/app-mode";
+import { coinbaseDeskHref, futuresDeskHref, optionsDeskHref, toStaticHtmlPath } from "@/lib/app-mode";
 import { DESK_VERSION } from "@/lib/desk-version";
 import {
   absorbDeskTokenFromLocation,
@@ -25,9 +30,9 @@ function safeNextPath(raw: string | null): string {
   try {
     const u = new URL(path, "https://desk.local");
     u.searchParams.delete("ds");
-    return `${u.pathname}${u.search}` || path;
+    return toStaticHtmlPath(`${u.pathname}${u.search}`) || path;
   } catch {
-    return path;
+    return toStaticHtmlPath(path);
   }
 }
 
@@ -181,6 +186,7 @@ export function HubLanding() {
                 body={t("hub.optionsBody")}
                 cta={t("hub.optionsCta")}
                 tint="teal"
+                icon="candles"
               />
               <DeskCard
                 href={withDeskSessionHash(futuresDeskHref(), token)}
@@ -189,15 +195,16 @@ export function HubLanding() {
                 body={t("hub.futuresBody")}
                 cta={t("hub.futuresCta")}
                 tint="bronze"
+                icon="futures"
               />
               <DeskCard
-                href={withDeskSessionHash("/coinbase/", token)}
+                href={withDeskSessionHash(coinbaseDeskHref(), token)}
                 eyebrow={t("hub.coinbaseEyebrow")}
                 title={t("hub.coinbaseTitle")}
                 body={t("hub.coinbaseBody")}
                 cta={t("hub.coinbaseCta")}
                 tint="blue"
-                showBull
+                icon="bitcoin"
               />
             </div>
             <figure className="hub-quote mt-8 w-full overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--surface)]/90 shadow-sm backdrop-blur">
@@ -246,7 +253,7 @@ function DeskCard({
   body,
   cta,
   tint,
-  showBull = false,
+  icon,
 }: {
   href: string;
   eyebrow: string;
@@ -254,7 +261,7 @@ function DeskCard({
   body: string;
   cta: string;
   tint: "teal" | "bronze" | "blue";
-  showBull?: boolean;
+  icon: "candles" | "futures" | "bitcoin";
 }) {
   const ring =
     tint === "teal"
@@ -268,6 +275,12 @@ function DeskCard({
       : tint === "bronze"
         ? "bg-[#f5e6d0] text-[#8a5420]"
         : "bg-[var(--info-soft)] text-[var(--info)]";
+  const Mark =
+    icon === "candles"
+      ? CandlesMark
+      : icon === "futures"
+        ? FuturesMark
+        : BitcoinMark;
   return (
     <a
       href={href}
@@ -289,9 +302,7 @@ function DeskCard({
         >
           {eyebrow}
         </span>
-        {showBull ? (
-          <BrandMark className="h-10 w-10 shrink-0 opacity-95" />
-        ) : null}
+        <Mark className="h-10 w-10 shrink-0" />
       </div>
       <h2 className="mt-4 text-xl font-bold">{title}</h2>
       <p className="mt-2 flex-1 text-sm leading-relaxed text-[var(--muted)]">
