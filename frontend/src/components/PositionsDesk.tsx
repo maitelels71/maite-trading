@@ -30,13 +30,16 @@ const POLL_MS = 120_000;
 const CLOSE_RETRY_WAIT_SEC = 60;
 const CLOSE_GIVE_UP_MS = 180_000;
 const LADDER_RETRY_WAIT_SEC = 150;
+/** After a positions GET, keep POST Close/Park off so Schwab bucket can recover. */
+const POST_GUARD_AFTER_GET_MS = 45_000;
 const DEFAULT_TP_PCT = 35;
 /**
- * GET accounts/positions for Refresh + snapshot (needed for Copy for TOS closes).
- * Schwab SELL_TO_CLOSE POST stays behind SCHWAB_CLOSE_EXPERIMENTAL.
+ * GET accounts/positions for Refresh + snapshot.
+ * CLOSE / Park LIMIT POSTs to Schwab (SELL_TO_CLOSE) — Open BUY stays off.
  */
 const SCHWAB_TRADER_READS = true;
-const SCHWAB_CLOSE_EXPERIMENTAL = false;
+const SCHWAB_CLOSE_EXPERIMENTAL = true;
+const TP_PCT_CHOICES = [10, 20, 35, 50, 100] as const;
 
 function isRateLimitText(msg: string | null | undefined): boolean {
   return /(?:\b429\b|rate limit)/i.test(msg || "");
@@ -195,7 +198,6 @@ export function PositionsDesk() {
   const [closingKey, setClosingKey] = useState<string | null>(null);
   const [retryLeft, setRetryLeft] = useState<number | null>(null);
   const [watches, setWatches] = useState<TpWatch[]>(() => loadWatches());
-  const [armedConfirm, setArmedConfirm] = useState(false);
   const [holdTrader, setHoldTrader] = useState(() => readHoldTrader());
   const [cashRth, setCashRth] = useState(() => isCashRthNy());
   const [quietUntil, setQuietUntil] = useState(() =>
@@ -317,6 +319,8 @@ export function PositionsDesk() {
               labels.length > 0 ? labels.join(", ") : "—",
             ) + equityBit,
         );
+        // GETs and POSTs share one Schwab bucket — cool before Close/Park.
+        startSchwabQuiet(POST_GUARD_AFTER_GET_MS);
       } catch (err) {
         const raw = err instanceof Error ? err.message : "Failed to load positions";
         setError(raw);
@@ -369,7 +373,8 @@ export function PositionsDesk() {
 
   const tickWatches = useCallback(async () => {
     if (!SCHWAB_TRADER_READS) return;
-    if (!armedConfirm || readHoldTrader() || pending || ladderBusy) return;
+    // Auto market-close poll stays off (429). Manual Park LIMIT / Close now only.
+    if (readHoldTrader() || pending || ladderBusy) return;
     if (readSchwabQuietUntil() > Date.now()) return;
     const active = watches.filter((w) => w.autoClose);
     if (active.length === 0) return;
@@ -387,8 +392,8 @@ export function PositionsDesk() {
           instruction: w.instruction,
           average_price: w.averagePrice,
           target_pct: w.targetPct,
-          auto_close: w.autoClose && armedConfirm && tradingEnabled && isCashRthNy(),
-          confirm_live: w.autoClose && armedConfirm && tradingEnabled && isCashRthNy(),
+          auto_close: false,
+          confirm_live: false,
         });
         setWatches((prev) =>
           prev.map((row) =>
@@ -435,7 +440,7 @@ export function PositionsDesk() {
         inFlight.current.delete(w.id);
       }
     }
-  }, [watches, armedConfirm, tradingEnabled, pending, ladderBusy, t, refresh, startSchwabQuiet]);
+  }, [watches, tradingEnabled, pending, ladderBusy, t, refresh, startSchwabQuiet]);
 
   useEffect(() => {
     const id = window.setInterval(() => {
@@ -519,8 +524,10 @@ export function PositionsDesk() {
       setError(t("positions.schwabCloseOff"));
       return;
     }
-    if (!armedConfirm) {
-      setError(t("positions.needArm"));
+    if (schwabCooling) {
+      setError(
+        t("positions.closeWaitQuiet").replace("{n}", String(quietRemainSec)),
+      );
       return;
     }
     if (!isCashRthNy()) {
@@ -585,10 +592,6 @@ export function PositionsDesk() {
   function closeAll() {
     if (!SCHWAB_CLOSE_EXPERIMENTAL) {
       setError(t("positions.schwabCloseOff"));
-      return;
-    }
-    if (!armedConfirm) {
-      setError(t("positions.needArm"));
       return;
     }
     if (!isCashRthNy()) {
@@ -665,10 +668,8 @@ export function PositionsDesk() {
   }
 
   function placeTpLadder(pos: BrokerPosition) {
-    setError(t("positions.parkOff"));
-    return;
-    if (!armedConfirm) {
-      setError(t("positions.needArm"));
+    if (!SCHWAB_CLOSE_EXPERIMENTAL) {
+      setError(t("positions.parkOff"));
       return;
     }
     if (!isCashRthNy()) {
@@ -902,22 +903,9 @@ export function PositionsDesk() {
         ) : null}
 
         {SCHWAB_CLOSE_EXPERIMENTAL ? (
-          <label className="mt-2 flex cursor-pointer items-start gap-2 rounded-md border border-[var(--border)] bg-[var(--surface-muted)] px-3 py-2 text-[11px] leading-snug">
-            <input
-              type="checkbox"
-              className="mt-0.5 accent-[var(--accent)]"
-              checked={armedConfirm}
-              onChange={(e) => setArmedConfirm(e.target.checked)}
-            />
-            <span>
-              <span className="font-semibold text-[var(--foreground)]">
-                {t("positions.armTitle")}
-              </span>
-              <span className="mt-0.5 block text-[var(--muted)]">
-                {t("positions.armBody")}
-              </span>
-            </span>
-          </label>
+          <p className="mt-2 rounded-md border border-[var(--border)] bg-[var(--surface-muted)] px-3 py-2 text-[11px] leading-snug text-[var(--muted)]">
+            {t("positions.closeReadyHint")}
+          </p>
         ) : (
           <p className="mt-2 rounded-md border border-[var(--border)] bg-[var(--surface-muted)] px-3 py-2 text-[11px] leading-snug text-[var(--muted)]">
             {t("positions.tosClosePrimary")}
@@ -985,22 +973,68 @@ export function PositionsDesk() {
                             {t("positions.tosCopyClose")}
                           </button>
                           {SCHWAB_CLOSE_EXPERIMENTAL ? (
-                            <button
-                              type="button"
-                              disabled={
-                                pending ||
-                                closingKey != null ||
-                                retryLeft != null ||
-                                schwabCooling ||
-                                !tradingEnabled ||
-                                !cashRth
-                              }
-                              onClick={() => closeNow(pos)}
-                              className="rounded border border-[var(--border)] px-2 py-1 text-[10px] font-medium text-[var(--muted)] hover:bg-[var(--hover)] disabled:opacity-40"
-                              title={!cashRth ? t("positions.needRth") : undefined}
-                            >
-                              {t("positions.closeNow")}
-                            </button>
+                            <>
+                              <label className="flex items-center gap-1 text-[10px] text-[var(--muted)]">
+                                <span className="shrink-0">{t("positions.colTp")}</span>
+                                <select
+                                  className="min-w-0 flex-1 rounded border border-[var(--border)] bg-[var(--surface)] px-1 py-0.5 text-[10px] font-medium text-[var(--foreground)]"
+                                  value={tpPct}
+                                  onChange={(e) =>
+                                    upsertWatch(pos, {
+                                      targetPct: Number(e.target.value),
+                                      autoClose: false,
+                                    })
+                                  }
+                                >
+                                  {TP_PCT_CHOICES.map((pctChoice) => (
+                                    <option key={pctChoice} value={pctChoice}>
+                                      {pctChoice}%
+                                    </option>
+                                  ))}
+                                </select>
+                              </label>
+                              <button
+                                type="button"
+                                disabled={
+                                  pending ||
+                                  ladderBusy ||
+                                  closingKey != null ||
+                                  retryLeft != null ||
+                                  schwabCooling ||
+                                  !tradingEnabled ||
+                                  !cashRth ||
+                                  pos.average_price <= 0
+                                }
+                                onClick={() => placeTpLadder(pos)}
+                                className="rounded border border-[var(--accent)]/40 bg-[var(--accent-soft)] px-2 py-1 text-[10px] font-medium text-[var(--accent-fg)] hover:bg-[var(--hover)] disabled:opacity-40"
+                                title={
+                                  !cashRth
+                                    ? t("positions.needRth")
+                                    : t("positions.ladderHint")
+                                }
+                              >
+                                {t("positions.tpLadder").replace(
+                                  "{pct}",
+                                  String(tpPct),
+                                )}
+                              </button>
+                              <button
+                                type="button"
+                                disabled={
+                                  pending ||
+                                  closingKey != null ||
+                                  retryLeft != null ||
+                                  schwabCooling ||
+                                  !tradingEnabled ||
+                                  !cashRth
+                                }
+                                onClick={() => closeNow(pos)}
+                                className="rounded border border-[var(--danger)]/40 bg-[var(--danger-soft)] px-2 py-1 text-[10px] font-medium text-[var(--danger)] hover:bg-[var(--hover)] disabled:opacity-40"
+                                title={!cashRth ? t("positions.needRth") : undefined}
+                              >
+                                {t("positions.closeNow")}
+                              </button>
+                            </>
                           ) : null}
                         </div>
                         {tpHit ? (

@@ -64,7 +64,7 @@ const CAPITAL_CACHE_MS = 24 * 60 * 60 * 1000;
 const EXP_CHAIN_KEY = "maite.strategies.expChain";
 const EXP_CHAIN_MS = 12 * 60 * 60 * 1000;
 /** After capital load only — a couple of trader GETs. */
-const OPEN_QUIET_MS = 10_000;
+const OPEN_QUIET_MS = 45_000;
 /** After Options TOP 5 / Focus sync — Schwab pricehistory needs a real cool-down. */
 const POST_SYNC_QUIET_MS = 90_000;
 /** Cool-down after a real Open 429 (honor Schwab Retry-After). */

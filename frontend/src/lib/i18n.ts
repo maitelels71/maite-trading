@@ -514,7 +514,7 @@ const en: Dict = {
     "No listed expiration from Schwab for this ticker. Wait ~30s and Open again — do not send a made-up date.",
   "strategies.openOk": "Submitted {sym} · #{id}",
   "strategies.openOkGoPositions":
-    "Submitted {sym} · #{id}. Check TOS → Orders. After FILL: Positions → Trigger closes → TP / close. Do not Open again.",
+    "Submitted {sym} · #{id}. Check TOS → Orders. After FILL: Positions → TP % / Park LIMIT or Close now. Do not Open again.",
   "strategies.openOkTpWait":
     "Submitted {sym} · waiting for FILL, then auto TP {tp} (one Schwab check every 20s).",
   "strategies.openOkTpPlaced": "Auto TP placed {sym}: {legs}",
@@ -529,11 +529,13 @@ const en: Dict = {
 
   "positions.title": "Positions (TOS)",
   "positions.hint":
-    "Refresh (Schwab GET) for a live snapshot. Close path: Copy SELL_TO_CLOSE → TOS. Schwab Close POST is off.",
+    "Refresh (Schwab GET) then wait ~45s before Park LIMIT / Close now — GETs and POSTs share one rate bucket (429). Each button asks for confirm. Cash RTH 9:30–4:00 ET.",
   "positions.readsOff":
     "Positions list is the last snapshot — Refresh is off.",
   "positions.tosClosePrimary":
     "Refresh so the list matches Schwab, then Copy SELL_TO_CLOSE → place in TOS → Orders. Do not Open/Close from the app.",
+  "positions.closeReadyHint":
+    "Park LIMIT or Close now: each click asks for confirmation, then sends SELL_TO_CLOSE to Schwab (shows in TOS → Orders). Wait ~45s after Refresh.",
   "positions.tosCopyClose": "Copy for TOS",
   "positions.tosCopied": "Copied close for {symbol} — paste in TOS",
   "positions.tosCopyPrompt": "Copy this close into TOS:",
@@ -543,7 +545,7 @@ const en: Dict = {
   "positions.ordersReadsOff":
     "Order list is off. Check TOS → Orders after you place the close.",
   "positions.snapshotHint":
-    "Snapshot {n} position(s). Refresh for live Schwab data, then Copy SELL_TO_CLOSE → TOS.",
+    "Snapshot {n} position(s). Refresh for live Schwab data, then Park LIMIT or Close now (cash RTH).",
   "positions.closedCheckTos":
     "Check TOS → Orders.",
   "positions.refresh": "Refresh",
@@ -565,20 +567,19 @@ const en: Dict = {
   "positions.emptyHint":
     "If this list is empty, the snapshot is missing — use TOS or a prior capital cache.",
   "positions.noPositions": "No open positions yet.",
-  "positions.armTitle": "Trigger closes (experimental)",
-  "positions.armBody":
-    "Experimental Schwab Close POST. Prefer Copy for TOS.",
+  "positions.armTitle": "Trigger closes (unused)",
+  "positions.armBody": "Unused.",
   "positions.noPositionsHint":
     "Copy for TOS appears on each snapshot row after you have a cached fill. A LIMIT buy is not a position until FILL — check TOS → Orders.",
   "positions.tradingDisabled":
     "Trading disabled on API (SCHWAB_TRADING_ENABLED). Alerts still work.",
-  "positions.needArm": "Turn on Trigger closes first.",
+  "positions.needArm": "Unused.",
   "positions.needRth":
     "Cash session is closed (9:30–4:00 ET). Do not send Park LIMIT / Close after hours — Schwab will throttle. Try after tomorrow's open.",
   "positions.needAvg": "Average price missing — cannot build TP limits.",
   "positions.confirmClose": "Place live close order for {symbol}?",
   "positions.confirmLadder":
-    "Park GTC LIMIT sell for {symbol}: {qty} @ {limit} (+{pct}% of avg {avg})? Auto market-close will turn off.",
+    "Park GTC LIMIT sell for {symbol}: {qty} @ {limit} (+{pct}% of avg {avg})?",
   "positions.closeNow": "Close now",
   "positions.closeAll": "Close all",
   "positions.confirmCloseAll":
@@ -599,7 +600,7 @@ const en: Dict = {
   "positions.ladderRateLimit":
     "Schwab still busy — LIMIT not in TOS. Wait a minute, then Park LIMIT once.",
   "positions.ladderHint":
-    "Park one GTC LIMIT at the TP % in the dropdown. Turns Auto off. Needs Trigger.",
+    "Park one GTC LIMIT at the TP % in the dropdown. Confirms before send.",
   "positions.ladderNote": "TP ladder for {symbol}",
   "positions.ordersTitle": "Working / recent orders (Schwab)",
   "positions.ordersEmpty":
@@ -620,7 +621,7 @@ const en: Dict = {
   "positions.colActions": "Actions",
   "positions.tpHit": "TP {pct}% reached",
   "positions.autoHint":
-    "Market SELL_TO_CLOSE when TP % hits. Needs Trigger. Disables Park LIMIT.",
+    "Market SELL_TO_CLOSE when TP % hits (poll). Off by default to protect rate limits.",
   "positions.notifyClosed": "Close order submitted to Schwab",
   "positions.closedNote": "{symbol} close order submitted",
 
@@ -1201,7 +1202,7 @@ const es: Dict = {
     "Schwab no devolvió un vencimiento listado para este ticker. Espera ~30s y vuelve a Abrir — no envíes una fecha inventada.",
   "strategies.openOk": "Enviado {sym} · #{id}",
   "strategies.openOkGoPositions":
-    "Enviado {sym} · #{id}. Mira TOS → Orders. Tras FILL: Positions → Trigger cierres → TP / close. No pulses Open otra vez.",
+    "Enviado {sym} · #{id}. Mira TOS → Orders. Tras FILL: Positions → TP % / Park LIMIT o Close now. No pulses Open otra vez.",
   "strategies.openOkTpWait":
     "Enviado {sym} · esperando FILL, luego TP auto {tp} (un check a Schwab cada 20s).",
   "strategies.openOkTpPlaced": "TP auto enviado {sym}: {legs}",
@@ -1216,11 +1217,13 @@ const es: Dict = {
 
   "positions.title": "Posiciones (TOS)",
   "positions.hint":
-    "Refresh (GET Schwab) para snapshot live. Cierre: Copiar SELL_TO_CLOSE → TOS. Close POST Schwab está off.",
+    "Refresh (GET Schwab) y espera ~45s antes de Park LIMIT / Close now — GETs y POSTs comparten el mismo cupo (429). Cada botón pide confirmación. Solo cash RTH 9:30–4:00 ET.",
   "positions.readsOff":
     "La lista es el último snapshot — Refresh está off.",
   "positions.tosClosePrimary":
     "Haz Refresh para alinear con Schwab, luego Copiar SELL_TO_CLOSE → coloca en TOS → Orders. No abras/cierres desde el app.",
+  "positions.closeReadyHint":
+    "Park LIMIT o Close now: cada click pide confirmación y envía SELL_TO_CLOSE a Schwab (TOS → Orders). Espera ~45s tras Refresh.",
   "positions.tosCopyClose": "Copiar para TOS",
   "positions.tosCopied": "Close de {symbol} copiado — pega en TOS",
   "positions.tosCopyPrompt": "Copia este close en TOS:",
@@ -1230,7 +1233,7 @@ const es: Dict = {
   "positions.ordersReadsOff":
     "La lista de órdenes está off. Mira TOS → Orders tras colocar el close.",
   "positions.snapshotHint":
-    "Snapshot {n} posición(es). Refresh para datos live de Schwab, luego Copiar SELL_TO_CLOSE → TOS.",
+    "Snapshot {n} posición(es). Refresh para datos live, luego Park LIMIT o Close now (cash RTH).",
   "positions.closedCheckTos":
     "Mira TOS → Orders.",
   "positions.refresh": "Actualizar",
@@ -1253,18 +1256,17 @@ const es: Dict = {
   "positions.noPositions": "Aún no hay posiciones abiertas.",
   "positions.noPositionsHint":
     "Copiar para TOS sale en cada fila del snapshot tras un FILL en caché. Un LIMIT de compra no es posición hasta el FILL — mira TOS → Orders.",
-  "positions.armTitle": "Trigger cierres (experimental)",
-  "positions.armBody":
-    "Close POST Schwab experimental. Prefiere Copiar para TOS.",
+  "positions.armTitle": "Trigger cierres (unused)",
+  "positions.armBody": "Unused.",
   "positions.tradingDisabled":
     "Trading desactivado en API (SCHWAB_TRADING_ENABLED). Las alertas sí funcionan.",
-  "positions.needArm": "Activa Trigger cierres primero.",
+  "positions.needArm": "Unused.",
   "positions.needRth":
     "La sesión cash está cerrada (9:30–4:00 ET). No envíes Dejar LIMIT / Cerrar ahora fuera de horario — Schwab se satura. Prueba mañana tras la apertura.",
   "positions.needAvg": "Falta avg price — no se pueden crear límites TP.",
   "positions.confirmClose": "¿Enviar orden de cierre live para {symbol}?",
   "positions.confirmLadder":
-    "¿Dejar LIMIT GTC de venta para {symbol}: {qty} @ {limit} (+{pct}% del avg {avg})? Auto (cierre a mercado) se apaga.",
+    "¿Dejar LIMIT GTC de venta para {symbol}: {qty} @ {limit} (+{pct}% del avg {avg})?",
   "positions.closeNow": "Cerrar ahora",
   "positions.closeAll": "Cerrar todo",
   "positions.confirmCloseAll":
@@ -1285,7 +1287,7 @@ const es: Dict = {
   "positions.ladderRateLimit":
     "Schwab sigue ocupado — la LIMIT no está en TOS. Espera un minuto y pulsa Dejar LIMIT una vez.",
   "positions.ladderHint":
-    "Deja un LIMIT GTC al TP % del desplegable. Apaga Auto. Necesita Trigger.",
+    "Deja un LIMIT GTC al TP % del desplegable. Pide confirmación antes de enviar.",
   "positions.ladderNote": "TP ladder para {symbol}",
   "positions.ordersTitle": "Órdenes working / recientes (Schwab)",
   "positions.ordersEmpty":
