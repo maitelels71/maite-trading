@@ -28,12 +28,27 @@ def get_database_url() -> str:
 def get_engine(*, echo: bool | None = None) -> Engine:
     global _engine, _SessionLocal
     if _engine is None:
+        url = get_database_url()
+        connect_args: dict = {}
+        if url.startswith("postgresql"):
+            connect_args["connect_timeout"] = 5
+        elif "sqlite" in url:
+            connect_args["check_same_thread"] = False
         _engine = create_engine(
-            get_database_url(),
+            url,
             pool_pre_ping=True,
             future=True,
             echo=False if echo is None else echo,
+            connect_args=connect_args,
         )
+        if "sqlite" in url:
+            from sqlalchemy import event
+
+            @event.listens_for(_engine, "connect")
+            def _fk_pragma(dbapi_connection, _connection_record):  # type: ignore[no-untyped-def]
+                cursor = dbapi_connection.cursor()
+                cursor.execute("PRAGMA foreign_keys=ON")
+                cursor.close()
         _SessionLocal = sessionmaker(
             bind=_engine,
             autoflush=False,

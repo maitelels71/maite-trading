@@ -14,15 +14,18 @@ import type {
   TpCheckResponse,
   TpLadderResponse,
 } from "./types";
+import { clearDeskToken, getDeskToken } from "./desk-session";
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const token = getDeskToken();
   const res = await fetch(`${API_BASE}${path}`, {
     ...init,
     headers: {
       "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(init?.headers ?? {}),
     },
     cache: "no-store",
@@ -36,9 +39,15 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     } catch {
       // ignore parse errors
     }
+    if (res.status === 401 && path !== "/auth/login") {
+      clearDeskToken();
+    }
     if (res.status === 503) {
+      const scan = /\/strateg|\/scan/i.test(path);
       throw new Error(
-        "Scan timed out (API ~29s). Sync & Scan now runs in smaller batches — retry.",
+        scan
+          ? "Scan timed out (API ~29s). Sync & Scan now runs in smaller batches — retry."
+          : "Request timed out (API ~29s). Retry.",
       );
     }
     if (res.status === 429) {
@@ -415,6 +424,108 @@ export async function brokerTpLadder(payload: {
   target_pct?: number;
 }): Promise<TpLadderResponse> {
   return request("/broker/orders/tp-ladder", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export type DeskLoginResponse = { token: string; user: string };
+
+export type CoinbaseStatus = {
+  configured: boolean;
+  trading_enabled: boolean;
+  dry_run_default: boolean;
+  quote: string;
+  assets: string;
+  max_trade_usd: number;
+  min_trade_usd: number;
+  cash_pct: number;
+  rebalance_threshold_pct: number;
+  lookback_days: number;
+  key_file_present: boolean;
+};
+
+export type CoinbasePlanSettings = {
+  max_trade_usd: number;
+  min_trade_usd: number;
+  cash_pct: number;
+  rebalance_threshold_pct: number;
+  lookback_days: number;
+};
+
+export type CoinbaseOrder = {
+  product_id: string;
+  asset: string;
+  side: string;
+  quote_size: string | null;
+  base_size: string | null;
+  notional: string;
+  reason: string;
+};
+
+export type CoinbaseRun = {
+  id: string;
+  ts: string;
+  dry_run: boolean;
+  quote: string;
+  weights: Record<string, number>;
+  holdings: Record<string, string>;
+  prices: Record<string, string>;
+  orders: CoinbaseOrder[];
+  submissions: Record<string, unknown>[];
+  error: string | null;
+  portfolio_value: string;
+};
+
+export type CoinbaseStats = {
+  total_runs: number;
+  dry_runs: number;
+  live_runs: number;
+  last_run_at: string | null;
+  last_dry_run: boolean | null;
+  last_portfolio_value: string | null;
+  live_orders_ok: number;
+  live_orders_failed: number;
+  planned_notional_total: string;
+};
+
+export async function deskLogin(
+  username: string,
+  password: string,
+): Promise<DeskLoginResponse> {
+  return request("/auth/login", {
+    method: "POST",
+    body: JSON.stringify({ username, password }),
+  });
+}
+
+export async function fetchCoinbaseStatus(): Promise<CoinbaseStatus> {
+  return request("/coinbase/status");
+}
+
+export async function fetchCoinbaseRuns(): Promise<CoinbaseRun[]> {
+  const data = await request<{ items: CoinbaseRun[] }>("/coinbase/runs");
+  return data.items;
+}
+
+export async function fetchCoinbaseStats(): Promise<CoinbaseStats> {
+  return request("/coinbase/stats");
+}
+
+export async function saveCoinbaseSettings(
+  payload: CoinbasePlanSettings,
+): Promise<CoinbasePlanSettings> {
+  return request("/coinbase/settings", {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function runCoinbaseBot(payload: {
+  live: boolean;
+  confirm_live: boolean;
+} & Partial<CoinbasePlanSettings>): Promise<CoinbaseRun> {
+  return request("/coinbase/run", {
     method: "POST",
     body: JSON.stringify(payload),
   });

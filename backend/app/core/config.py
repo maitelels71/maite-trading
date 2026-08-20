@@ -26,7 +26,7 @@ class Settings(BaseSettings):
 
     # Comma-separated origins; parsed below
     cors_origins_raw: str = Field(
-        default="http://localhost:3000",
+        default="http://localhost:3000,http://127.0.0.1:3000",
         alias="CORS_ORIGINS",
     )
 
@@ -36,7 +36,8 @@ class Settings(BaseSettings):
         default="postgresql+psycopg://maite:maite@localhost:5432/maite_trading",
         alias="DATABASE_URL",
     )
-    # Discrete RDS-style vars (App Runner / Secrets Manager wiring)
+    # Discrete RDS-style vars (App Runner / Secrets Manager wiring).
+    # Local Windows without Postgres can set DATABASE_URL to sqlite+pysqlite:///...
     database_host: str = Field(default="", alias="DATABASE_HOST")
     database_port: str = Field(default="5432", alias="DATABASE_PORT")
     database_name: str = Field(default="maite_trading", alias="DATABASE_NAME")
@@ -83,6 +84,19 @@ class Settings(BaseSettings):
         default=False,
         alias="COINBASE_TRADING_ENABLED",
     )
+    coinbase_runs_path: str = Field(
+        default=".secrets/coinbase_bot_runs.json",
+        alias="COINBASE_RUNS_PATH",
+    )
+    coinbase_settings_path: str = Field(
+        default=".secrets/coinbase_bot_settings.json",
+        alias="COINBASE_SETTINGS_PATH",
+    )
+
+    # Hub login (Trading Like a Boss landing). Empty password disables login API.
+    desk_login_user: str = Field(default="maite", alias="DESK_LOGIN_USER")
+    desk_login_password: str = Field(default="", alias="DESK_LOGIN_PASSWORD")
+    desk_session_secret: str = Field(default="", alias="DESK_SESSION_SECRET")
 
     # TradeAdvocate (futures)
     tradeadvocate_api_key: str = Field(default="", alias="TRADEADVOCATE_API_KEY")

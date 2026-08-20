@@ -9,7 +9,7 @@ import type { Venue } from "@/lib/types";
 
 export type StickyBoardKind = "playbooks" | "notes";
 
-export type PlaybookFamily = "e" | "cr" | "ml";
+export type PlaybookFamily = "e" | "cr" | "ml" | "ch";
 
 /** Free-form study / cheat-sheet card (not tied to a playbook). */
 export type StickyNoteCard = {
@@ -60,6 +60,24 @@ export const STICKY_BOARDS: StickyBoardDef[] = [
     defaultOpen: false,
   },
   {
+    id: "ch",
+    titleKey: "sticky.boardCh",
+    hintKey: "sticky.boardChHint",
+    kind: "playbooks",
+    venue: "schwab",
+    family: "ch",
+    defaultOpen: false,
+  },
+  {
+    id: "chFutures",
+    titleKey: "sticky.boardCh",
+    hintKey: "sticky.boardChHintFutures",
+    kind: "playbooks",
+    venue: "tradeadvocate",
+    family: "ch",
+    defaultOpen: false,
+  },
+  {
     id: "ml",
     titleKey: "sticky.boardMl",
     hintKey: "sticky.boardMlHint",
@@ -95,6 +113,7 @@ export const STICKY_BOARDS: StickyBoardDef[] = [
 export function playbookFamily(p: StrategyPlaybook): PlaybookFamily | null {
   if (p.id.startsWith("ml") || p.group === "Maylels") return "ml";
   if (p.id.startsWith("cr") || p.group?.startsWith("Creando")) return "cr";
+  if (p.id.startsWith("ch") || p.group?.startsWith("Channel")) return "ch";
   if (p.id.startsWith("e") || p.group?.startsWith("BB")) return "e";
   return null;
 }

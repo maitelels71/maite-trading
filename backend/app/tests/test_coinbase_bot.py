@@ -141,6 +141,8 @@ class _FakeCoinbaseClient:
 
 
 def _bot_settings(**kwargs) -> Settings:
+    from app.core.config import settings as live
+
     payload = {
         "coinbase_api_key": "",
         "coinbase_api_secret": "",
@@ -156,7 +158,7 @@ def _bot_settings(**kwargs) -> Settings:
         "coinbase_trading_enabled": False,
     }
     payload.update(kwargs)
-    return Settings(**payload)
+    return live.model_copy(update=payload)
 
 
 def test_run_rebalance_dry_run_does_not_place_orders() -> None:

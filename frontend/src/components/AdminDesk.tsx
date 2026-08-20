@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState, useTransition } from "react";
 
 import {
   fetchAdminOverview,
+  getApiBase,
   publishSchwabToken,
   refreshSchwabToken,
   upsertSchwabToken,
@@ -66,10 +67,20 @@ export function AdminDesk() {
   void tick;
 
   const login = overview?.schwab_login ?? null;
+  const redirectUri = login?.redirect_uri ?? "";
+  const localCallback8182 = /127\.0\.0\.1:8182|localhost:8182/i.test(redirectUri);
+  const refreshLikelyDead =
+    Boolean(schwab?.expired) && (remaining ?? 0) < -24 * 3600;
 
   function onLoginWithSchwab() {
     setError(null);
     setMessage(null);
+    if (localCallback8182) {
+      setError(
+        "This machine’s Schwab callback is https://127.0.0.1:8182 — the Admin tab cannot receive the login. From backend run: python -m scripts.schwab_login  Then Approve in the browser that opens.",
+      );
+      return;
+    }
     if (!login?.authorize_url) {
       setError("Schwab login link not available — check CLIENT_ID on the API.");
       return;
@@ -173,7 +184,11 @@ export function AdminDesk() {
           env <code>{overview.environment}</code>
           {" · "}
           storage <code>{overview.storage_backend}</code>
+          {" · "}
+          API <code>{getApiBase()}</code>
         </p>
+      ) : !pending && !error ? (
+        <p className="text-xs text-[var(--muted)]">Loading Schwab status…</p>
       ) : null}
 
       {error ? (
@@ -216,6 +231,25 @@ export function AdminDesk() {
           </ul>
         </div>
 
+        {schwab?.expired || refreshLikelyDead ? (
+          <p className="rounded-md border border-[var(--warn)]/40 bg-[var(--warn-soft)] px-3 py-2 text-sm text-[var(--warn)]">
+            Schwab access token expired
+            {schwab?.expires_at_iso ? ` (${schwab.expires_at_iso} UTC)` : ""}.
+            Refresh will not work after ~7 days. Re-login from{" "}
+            <code>backend</code>:{" "}
+            <code>python -m scripts.schwab_login</code>
+            {localCallback8182
+              ? " — that script listens on https://127.0.0.1:8182 (Admin Login cannot)."
+              : "."}
+          </p>
+        ) : null}
+        {localCallback8182 && !schwab?.expired ? (
+          <p className="rounded-md border border-[var(--border)] bg-[var(--surface-muted)] px-3 py-2 text-sm text-[var(--muted)]">
+            Local OAuth callback is <code>https://127.0.0.1:8182</code>. To get a
+            new token: <code>cd backend</code> then{" "}
+            <code>python -m scripts.schwab_login</code>.
+          </p>
+        ) : null}
         <div className="grid gap-4 sm:grid-cols-3">
           <div className="space-y-1">
             <p className="text-xs uppercase tracking-wide text-[var(--muted)]">Status</p>
@@ -229,8 +263,12 @@ export function AdminDesk() {
                     : "Connected"}
             </p>
             <p className="text-xs text-[var(--muted)]">
-              source: {schwab?.source ?? "—"}
-              {schwab?.configured ? " · client OK" : " · client missing"}
+              source: {schwab?.source ?? (pending ? "loading…" : "—")}
+              {schwab
+                ? schwab.configured
+                  ? " · client OK"
+                  : " · client missing"
+                : ""}
             </p>
           </div>
           <div className="space-y-1">
@@ -254,7 +292,11 @@ export function AdminDesk() {
                 : "Local only"}
             </p>
             <p className="text-xs text-[var(--muted)]">
-              {schwab?.has_refresh_token ? "refresh_token present" : "no refresh_token"}
+              {schwab?.has_refresh_token
+                ? refreshLikelyDead
+                  ? "refresh_token on file — likely stale; Login again"
+                  : "refresh_token present"
+                : "no refresh_token"}
             </p>
           </div>
         </div>
@@ -262,16 +304,21 @@ export function AdminDesk() {
         <div className="flex flex-wrap gap-2">
           <button
             type="button"
-            disabled={pending || !login?.authorize_url}
+            disabled={pending}
             onClick={onLoginWithSchwab}
             className="rounded-md bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--accent-hover)] disabled:opacity-60"
           >
-            Login with Schwab
+            {localCallback8182 ? "How to re-login" : "Login with Schwab"}
           </button>
           <button
             type="button"
-            disabled={pending || !schwab?.has_refresh_token}
+            disabled={pending || !schwab?.has_refresh_token || refreshLikelyDead}
             onClick={onRefresh}
+            title={
+              refreshLikelyDead
+                ? "Access token died days ago — Schwab refresh usually fails. Re-login."
+                : undefined
+            }
             className="rounded-md border border-[var(--border-strong)] bg-[var(--surface)] px-4 py-2 text-sm font-medium hover:bg-[var(--hover)] disabled:opacity-60"
           >
             Refresh token
@@ -356,9 +403,23 @@ export function AdminDesk() {
         <h3 className="text-lg font-semibold">What each action does</h3>
         <ol className="list-decimal space-y-2 pl-5 text-sm text-[var(--muted)]">
           <li>
-            <span className="font-medium text-[var(--foreground)]">Login with Schwab</span> —
-            opens Charles Schwab OAuth when you need a new auth (first time or refresh
-            failed). After Approve, the API callback stores the token.
+            <span className="font-medium text-[var(--foreground)]">
+              {localCallback8182 ? "How to re-login" : "Login with Schwab"}
+            </span>{" "}
+            —
+            {localCallback8182 ? (
+              <>
+                on this PC the callback is port 8182, so run{" "}
+                <code>python -m scripts.schwab_login</code> from{" "}
+                <code>backend</code> instead of expecting the Admin tab to catch
+                the redirect. After Approve, Reload status.
+              </>
+            ) : (
+              <>
+                opens Charles Schwab OAuth when you need a new auth (first time or
+                refresh failed). After Approve, the API callback stores the token.
+              </>
+            )}
           </li>
           <li>
             <span className="font-medium text-[var(--foreground)]">Save token</span> —

@@ -17,13 +17,13 @@ def test_futures_blocked_when_globex_closed(monkeypatch) -> None:
 
 def test_ml03_blocked_outside_cash_rth(monkeypatch) -> None:
     monkeypatch.setattr("app.api.strategy.is_globex_open", lambda: True)
-    monkeypatch.setattr("app.api.strategy.is_cash_rth", lambda: False)
+    monkeypatch.setattr("app.api.strategy.is_ny_open_drive", lambda: False)
     ok, detail = _live_desk_allows_match(
         Ml03FirstNy5mStrategy(),
         data_provider="tradeadvocate",
     )
     assert ok is False
-    assert "NY RTH" in detail
+    assert "opening play" in detail
     ok_ml01, _ = _live_desk_allows_match(
         Ml01StructureChochBosStrategy(),
         data_provider="tradeadvocate",
@@ -31,9 +31,22 @@ def test_ml03_blocked_outside_cash_rth(monkeypatch) -> None:
     assert ok_ml01 is True
 
 
-def test_ml03_live_during_cash_rth(monkeypatch) -> None:
+def test_ml03_blocked_afternoon_rth(monkeypatch) -> None:
+    """2:30pm ET is still cash RTH, but ML03 opening drive is over."""
     monkeypatch.setattr("app.api.strategy.is_globex_open", lambda: True)
     monkeypatch.setattr("app.api.strategy.is_cash_rth", lambda: True)
+    monkeypatch.setattr("app.api.strategy.is_ny_open_drive", lambda: False)
+    ok, detail = _live_desk_allows_match(
+        Ml03FirstNy5mStrategy(),
+        data_provider="tradeadvocate",
+    )
+    assert ok is False
+    assert "afternoon" in detail.lower()
+
+
+def test_ml03_live_during_open_drive(monkeypatch) -> None:
+    monkeypatch.setattr("app.api.strategy.is_globex_open", lambda: True)
+    monkeypatch.setattr("app.api.strategy.is_ny_open_drive", lambda: True)
     ok, _ = _live_desk_allows_match(
         Ml03FirstNy5mStrategy(),
         data_provider="tradeadvocate",

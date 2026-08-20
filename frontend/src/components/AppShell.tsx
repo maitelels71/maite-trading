@@ -7,8 +7,9 @@ import { AboutDialog } from "@/components/AboutDialog";
 import { AdminDesk } from "@/components/AdminDesk";
 import { DailyReview } from "@/components/DailyReview";
 import { Dashboard } from "@/components/Dashboard";
+import { DeskModeProvider, useDeskMode } from "@/components/DeskModeProvider";
 import { JournalDesk } from "@/components/JournalDesk";
-import { LocaleProvider, useLocale } from "@/components/LocaleProvider";
+import { useLocale } from "@/components/LocaleProvider";
 import { MindDesk } from "@/components/MindDesk";
 import { NewsDesk } from "@/components/NewsDesk";
 import { OptionsChecklistDesk } from "@/components/OptionsChecklistDesk";
@@ -16,14 +17,7 @@ import { PositionsDesk } from "@/components/PositionsDesk";
 import { SettingsMenu } from "@/components/SettingsMenu";
 import { StickyNotesDesk } from "@/components/StickyNotesDesk";
 import { StrategiesDesk } from "@/components/StrategiesDesk";
-import { ThemeProvider } from "@/components/ThemeProvider";
-import {
-  APP_DOCUMENT_TITLE,
-  APP_ICON_SVG,
-  APP_MODE,
-  APP_MODE_LABEL,
-  APP_VENUE,
-} from "@/lib/app-mode";
+import { APP_DOCUMENT_TITLE, APP_ICON_PNG, type AppMode } from "@/lib/app-mode";
 import { DESK_VERSION } from "@/lib/desk-version";
 
 type AppView =
@@ -55,8 +49,8 @@ function isAppView(value: string | null | undefined): value is AppView {
   return Boolean(value && APP_VIEWS.has(value));
 }
 
-function viewHref(view: AppView): string {
-  return `/?view=${view}`;
+function viewHref(view: AppView, mode: AppMode): string {
+  return `/desk/?view=${view}&mode=${mode}`;
 }
 
 /** Same-tab SPA nav; Ctrl/Cmd/middle-click keep native new-tab behavior. */
@@ -81,47 +75,53 @@ type ExtraItem = {
   labelKey: string;
 };
 
-/** Live trading flow — primary header (action path during the session). */
-const FLOW: StepItem[] = [
-  { kind: "step", step: 1, id: "strategies", labelKey: "nav.strategies" },
-  ...(APP_MODE === "options"
-    ? ([{ kind: "step", step: 2, id: "positions", labelKey: "nav.positions" }] as StepItem[])
-    : []),
-  {
-    kind: "step",
-    step: APP_MODE === "options" ? 3 : 2,
-    id: "analyzer",
-    labelKey: "nav.analyzer",
-  },
-  {
-    kind: "step",
-    step: APP_MODE === "options" ? 4 : 3,
-    id: "journal",
-    labelKey: "nav.journal",
-  },
-];
+function flowForMode(mode: AppMode): StepItem[] {
+  const options = mode === "options";
+  return [
+    { kind: "step", step: 1, id: "strategies", labelKey: "nav.strategies" },
+    ...(options
+      ? ([{ kind: "step", step: 2, id: "positions", labelKey: "nav.positions" }] as StepItem[])
+      : []),
+    {
+      kind: "step",
+      step: options ? 3 : 2,
+      id: "analyzer",
+      labelKey: "nav.analyzer",
+    },
+    {
+      kind: "step",
+      step: options ? 4 : 3,
+      id: "journal",
+      labelKey: "nav.journal",
+    },
+  ];
+}
 
-/** Prep / reference — quieter second row (not in the live click path). */
-const DESK_TOOLS: ExtraItem[] = [
-  { kind: "extra", id: "daily", labelKey: "nav.daily" },
-  { kind: "extra", id: "news", labelKey: "nav.news" },
-  { kind: "extra", id: "stickyNotes", labelKey: "nav.stickyNotes" },
-  ...(APP_MODE === "options"
-    ? ([
-        {
-          kind: "extra",
-          id: "optionsChecklist",
-          labelKey: "nav.optionsChecklist",
-        },
-      ] as ExtraItem[])
-    : []),
-  { kind: "extra", id: "mind", labelKey: "nav.mind" },
-];
+function toolsForMode(mode: AppMode): ExtraItem[] {
+  return [
+    { kind: "extra", id: "daily", labelKey: "nav.daily" },
+    { kind: "extra", id: "news", labelKey: "nav.news" },
+    { kind: "extra", id: "stickyNotes", labelKey: "nav.stickyNotes" },
+    ...(mode === "options"
+      ? ([
+          {
+            kind: "extra",
+            id: "optionsChecklist",
+            labelKey: "nav.optionsChecklist",
+          },
+        ] as ExtraItem[])
+      : []),
+    { kind: "extra", id: "mind", labelKey: "nav.mind" },
+  ];
+}
 
 function AppShellInner() {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const { mode, venue, label } = useDeskMode();
+  const FLOW = flowForMode(mode);
+  const DESK_TOOLS = toolsForMode(mode);
   const paramView = searchParams.get("view");
   const [view, setViewState] = useState<AppView>(() =>
     isAppView(paramView) ? paramView : "strategies",
@@ -135,15 +135,22 @@ function AppShellInner() {
     }
   }, [paramView, view]);
 
+  useEffect(() => {
+    if (mode === "futures" && (view === "positions" || view === "optionsChecklist")) {
+      setViewState("strategies");
+    }
+  }, [mode, view]);
+
   const setView = useCallback(
     (next: AppView) => {
       setViewState(next);
       const params = new URLSearchParams(searchParams.toString());
       params.set("view", next);
+      params.set("mode", mode);
       const qs = params.toString();
       router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
     },
-    [pathname, router, searchParams],
+    [mode, pathname, router, searchParams],
   );
 
   const toolActive = DESK_TOOLS.some((item) => item.id === view);
@@ -151,59 +158,62 @@ function AppShellInner() {
   return (
     <div className="min-h-screen text-[var(--foreground)]">
       <header className="sticky top-0 z-40 border-b border-[var(--border-strong)] bg-[var(--surface)] shadow-[0_1px_0_rgba(0,0,0,0.06)]">
-        <div className="mx-auto flex max-w-7xl flex-col gap-2 px-4 py-2.5 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-3 sm:px-6">
+        <div className="mx-auto flex max-w-7xl items-center gap-2 px-4 py-2 sm:gap-3 sm:px-6">
           <a
-            href={viewHref("strategies")}
+            href={viewHref("strategies", mode)}
             onClick={(e) => sameTabNav(e, () => setView("strategies"))}
-            className="group mr-1 flex min-w-0 items-center gap-3 rounded-lg py-1 pr-2 text-left transition hover:bg-[var(--hover)]"
+            className="flex shrink-0 items-center gap-2 rounded-lg py-0.5 pr-1 text-left transition hover:bg-[var(--hover)]"
             aria-label={APP_DOCUMENT_TITLE}
           >
-            <span className="flex h-11 w-11 shrink-0 overflow-hidden rounded-lg ring-1 ring-[var(--border)] shadow-sm bg-[#1c1917]">
+            <span className="flex h-9 w-9 shrink-0 overflow-hidden rounded-md ring-1 ring-[var(--border)] bg-[#1c1917]">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
-                src={APP_ICON_SVG}
+                src={APP_ICON_PNG}
                 alt=""
-                className="h-full w-full object-contain"
+                className="h-full w-full object-cover"
               />
             </span>
             <span className="min-w-0">
-              <span className="block text-[13px] font-bold uppercase tracking-[0.14em] text-[var(--foreground)] sm:text-[14px]">
-                Trading Like a Boss
+              <span className="block truncate text-sm font-bold leading-tight sm:text-base">
+                {APP_DOCUMENT_TITLE}
               </span>
-              <span className="mt-0.5 inline-flex h-5 min-w-[4.75rem] items-center justify-center rounded bg-[var(--accent)] px-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--on-accent)]">
-                {APP_MODE_LABEL}
+              <span className="mt-0.5 inline-flex h-5 items-center rounded bg-[var(--accent)] px-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--on-accent)]">
+                {label}
               </span>
             </span>
           </a>
 
           <nav
-            className="flex min-w-0 w-full flex-wrap items-center gap-1 sm:w-auto sm:flex-1"
+            className="flex min-w-0 flex-1 flex-wrap items-center gap-0.5"
             aria-label="Trading flow"
           >
-            {FLOW.map((item, index) => {
+            {FLOW.map((item) => {
               const active = view === item.id;
-              const showArrow = index < FLOW.length - 1;
               return (
-                <div key={item.id} className="flex items-center gap-1">
-                  <StepLink
-                    step={item.step}
-                    label={t(item.labelKey)}
-                    active={active}
-                    href={viewHref(item.id)}
-                    onNavigate={() => setView(item.id)}
-                  />
-                  {showArrow ? (
-                    <span
-                      className="hidden text-[var(--muted)] sm:inline"
-                      aria-hidden
-                    >
-                      →
-                    </span>
-                  ) : null}
-                </div>
+                <StepLink
+                  key={item.id}
+                  step={item.step}
+                  label={t(item.labelKey)}
+                  active={active}
+                  href={viewHref(item.id, mode)}
+                  onNavigate={() => setView(item.id)}
+                />
               );
             })}
           </nav>
+
+          <a
+            href="/"
+            className="inline-flex shrink-0 items-center rounded-lg border border-[var(--border)] bg-[var(--surface)] px-2.5 py-1.5 text-xs font-bold text-[var(--foreground)] transition hover:bg-[var(--accent)] hover:text-[var(--on-accent)] hover:border-[var(--accent)]"
+          >
+            ← {t("hub.homeBack")}
+          </a>
+          <SettingsMenu
+            adminActive={view === "admin"}
+            adminHref={viewHref("admin", mode)}
+            onAdmin={() => setView("admin")}
+            onAbout={() => setAboutOpen(true)}
+          />
         </div>
 
         <div
@@ -212,9 +222,7 @@ function AppShellInner() {
           }`}
         >
           <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-2 px-4 py-1.5 sm:px-6">
-            <span className="mr-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--muted)]">
-              {t("nav.deskTools")}
-            </span>
+            <span className="sr-only">{t("nav.deskTools")}</span>
             <nav
               className="flex min-w-0 flex-1 flex-wrap items-center gap-1"
               aria-label={t("nav.deskTools")}
@@ -224,7 +232,7 @@ function AppShellInner() {
                 return (
                   <a
                     key={item.id}
-                    href={viewHref(item.id)}
+                    href={viewHref(item.id, mode)}
                     onClick={(e) => sameTabNav(e, () => setView(item.id))}
                     className={`rounded-md px-2.5 py-1 text-xs font-semibold transition ${
                       active
@@ -243,12 +251,6 @@ function AppShellInner() {
             >
               {DESK_VERSION}
             </span>
-            <SettingsMenu
-              adminActive={view === "admin"}
-              adminHref={viewHref("admin")}
-              onAdmin={() => setView("admin")}
-              onAbout={() => setAboutOpen(true)}
-            />
           </div>
         </div>
       </header>
@@ -268,7 +270,10 @@ function AppShellInner() {
       ) : view === "positions" ? (
         <PositionsDesk />
       ) : view === "strategies" ? (
-        <StrategiesDesk venue={APP_VENUE} />
+        <StrategiesDesk
+          venue={venue}
+          autoScan={mode !== "options" && searchParams.get("scan") === "1"}
+        />
       ) : view === "analyzer" ? (
         <Dashboard />
       ) : view === "news" ? (
@@ -297,7 +302,7 @@ function StepLink({
     <a
       href={href}
       onClick={(e) => sameTabNav(e, onNavigate)}
-      className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-2 text-sm font-semibold transition ${
+      className={`inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-sm font-semibold transition ${
         active
           ? "bg-[var(--accent)] text-[var(--on-accent)] shadow-sm"
           : "text-[var(--foreground)] hover:bg-[var(--hover)] hover:text-[var(--accent-fg)]"
@@ -319,12 +324,10 @@ function StepLink({
 
 export function AppShell() {
   return (
-    <ThemeProvider>
-      <LocaleProvider>
-        <Suspense fallback={null}>
-          <AppShellInner />
-        </Suspense>
-      </LocaleProvider>
-    </ThemeProvider>
+    <Suspense fallback={null}>
+      <DeskModeProvider>
+        <AppShellInner />
+      </DeskModeProvider>
+    </Suspense>
   );
 }

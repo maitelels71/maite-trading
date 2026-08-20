@@ -368,6 +368,180 @@ export const PLAYBOOK_EN: Record<string, PlaybookEnOverlay> = {
     ],
   },
 
+  ch01: {
+    name: "Gap & Go",
+    markets: "CALL/PUT options · open gap ≥2% + 2× volume",
+    summary:
+      "Opens with gap >2% vs prior close and opening volume >2× average. Momentum filter vs open noise.",
+    sessionWindow: "RTH · first 5–15m after 9:30 ET",
+    riskNotes: [
+      "Gap without volume = noise — needs 2× average",
+      "Yahoo delay ~15 min — analysis, not blind execution",
+      "Options plan ≤35%",
+    ],
+    invalidation: [
+      "Gap < 2%",
+      "Opening volume < 2× average",
+      "Gap fills immediately with no follow-through",
+    ],
+    entrySteps: [
+      {
+        id: "ch01-e1",
+        label: "Measure gap vs prior close",
+        detail: "Abs(open − prior close) / prior close ≥ 2%.",
+      },
+      {
+        id: "ch01-e2",
+        label: "Confirm opening volume 2×",
+        detail: "First RTH bars vs recent 5m average.",
+      },
+      {
+        id: "ch01-e3",
+        label: "Direction = gap side",
+        detail: "Gap up → CALL/LONG · Gap down → PUT/SHORT.",
+      },
+    ],
+    exitSteps: [
+      { id: "ch01-x1", label: "TP1: first-hour extension" },
+      { id: "ch01-x2", label: "Exit if gap fills against thesis" },
+      { id: "ch01-x3", label: "Flat RTH close if still open" },
+    ],
+  },
+
+  ch02: {
+    name: "VWAP Reversion",
+    markets: "CALL/PUT options · mean-reversion to session VWAP",
+    summary:
+      "Price moves ≥1.5σ from session VWAP and starts reverting toward it. Classic scalp / mean-reversion setup.",
+    sessionWindow: "RTH · after ≥12× 5m bars",
+    riskNotes: [
+      "Strong trends may not revert — do not force",
+      "Needs a real move toward VWAP (distance shrinking)",
+      "Options plan ≤35%",
+    ],
+    invalidation: [
+      "|z| < 1.5σ",
+      "Distance to VWAP still expanding",
+      "Too few bars in the session",
+    ],
+  },
+
+  ch03: {
+    name: "EMA 9/20 cross",
+    markets: "CALL/PUT options · EMA9/EMA20 cross on 5m + volume",
+    summary:
+      "EMA 9 crosses EMA 20 up or down on 5m, confirmed with rising volume.",
+    sessionWindow: "RTH · 5m",
+    riskNotes: [
+      "Cross without volume = fake — needs rising vol",
+      "Whipsaws in sideways ranges",
+      "Options plan ≤35%",
+    ],
+    invalidation: [
+      "No clean EMA9/20 cross",
+      "Volume does not rise on the cross bar",
+    ],
+  },
+
+  ch04: {
+    name: "RSI extreme + fade",
+    markets: "CALL/PUT options · RSI(14) extreme + fading volume",
+    summary:
+      "RSI(14) on 5m ≤30 or ≥70, with decreasing volume on the extension (exhaustion).",
+    sessionWindow: "RTH · 5m",
+    riskNotes: [
+      "Extreme RSI can stay extreme in strong trends",
+      "Volume must be fading — if rising, not exhaustion",
+      "Options plan ≤35%",
+    ],
+    invalidation: [
+      "RSI between 30 and 70",
+      "Volume still accelerating on the extension",
+    ],
+  },
+
+  ch05: {
+    name: "Relative Strength",
+    markets: "CALL/PUT options · relative strength vs SPY / own average",
+    summary:
+      "Ticker that moves harder than SPY (if bench available) or than its own 5-session average in the same morning window.",
+    sessionWindow: "RTH · ~first hour",
+    riskNotes: [
+      "Without SPY in cache uses proxy vs own 5d average",
+      "Relative momentum does not guarantee continuation",
+      "Options plan ≤35%",
+    ],
+    invalidation: [
+      "Edge < 1pp vs benchmark / average",
+      "Not enough bars in the morning window",
+    ],
+  },
+
+  ch06: {
+    name: "ORB 15–30m",
+    markets: "CALL/PUT options · opening-range break + volume",
+    summary:
+      "Breaks the high or low of the first 15–30 minutes of the session, with confirmation volume.",
+    sessionWindow: "RTH · after OR 9:30–9:45/10:00",
+    riskNotes: [
+      "Default scan = 15m OR; set 30m in params if you prefer",
+      "No confirmation volume = false breakout",
+      "Options plan ≤35%",
+    ],
+    invalidation: [
+      "No break of OR high/low",
+      "Break volume < 1.2× OR average",
+    ],
+  },
+
+  ch01f: {
+    name: "Gap & Go",
+    markets: "Futures LONG/SHORT · MNQ · MES · Yahoo NQ=F · Gap & Go",
+    summary:
+      "Opens with gap >2% vs prior RTH close and opening volume >2× active-session average. Anchored to 9:30 ET — not Globex day.",
+    sessionWindow: "RTH 9:30 ET · first 5–15m (not Globex day)",
+    riskNotes: [
+      "Gap without volume = noise — needs 2× RTH session average",
+      "Yahoo delay ~15 min (NQ=F) — analysis, not blind execution",
+      "Futures: gap vs prior RTH close, not a lone Globex overnight bar",
+    ],
+  },
+  ch02f: {
+    name: "VWAP Reversion",
+    markets: "Futures LONG/SHORT · MNQ · MES · Yahoo · VWAP RTH",
+    summary:
+      "Price ≥1.5σ from RTH session VWAP and reverting. VWAP resets at 9:30 ET — not full Globex day.",
+    sessionWindow: "RTH · after ≥12× 5m bars from 9:30 ET",
+  },
+  ch03f: {
+    name: "EMA 9/20 cross",
+    markets: "Futures LONG/SHORT · MNQ · MES · EMA9/20 on 5m",
+    summary:
+      "EMA 9 crosses EMA 20 on 5m with rising volume. Same rules as equity Channel.",
+    sessionWindow: "RTH · 5m (Yahoo)",
+  },
+  ch04f: {
+    name: "RSI extreme + fade",
+    markets: "Futures LONG/SHORT · RSI(14) extreme + fading RTH volume",
+    summary:
+      "RSI(14) on 5m ≤30 or ≥70 with decreasing volume on the extension. Volume fade uses RTH session only.",
+    sessionWindow: "RTH · 5m",
+  },
+  ch05f: {
+    name: "Relative Strength",
+    markets: "Futures LONG/SHORT · RS MNQ↔MES (or own 5d avg)",
+    summary:
+      "Morning RTH relative strength: MNQ/NQ vs MES/ES when bench exists; else vs own 5-session average.",
+    sessionWindow: "RTH · ~first hour from 9:30 ET",
+  },
+  ch06f: {
+    name: "ORB 15–30m",
+    markets: "Futures LONG/SHORT · ORB from 9:30 ET RTH",
+    summary:
+      "Breaks high/low of first 15–30m of regular NQ/ES session (9:30 ET) with volume confirmation. Do not use Globex open.",
+    sessionWindow: "RTH · after OR 9:30–9:45/10:00 ET",
+  },
+
   cr01: {
     name: "Moving average 40 (CALL)",
     markets: "CALL options · Hora · MA20/MA40 + trendline",

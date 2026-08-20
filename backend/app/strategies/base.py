@@ -46,7 +46,7 @@ class BaseStrategy(ABC):
 
     @property
     def scan_live_when(self) -> str:
-        """When the live desk may treat hits as matches: always | cash_rth | globex."""
+        """When the live desk may treat hits as matches: always | cash_rth | ny_open | globex."""
         return "always"
 
     @abstractmethod

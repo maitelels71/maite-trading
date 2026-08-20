@@ -2,8 +2,9 @@
 
 import { useEffect, useId, useRef, type ReactNode } from "react";
 
+import { useDeskMode } from "@/components/DeskModeProvider";
 import { useLocale } from "@/components/LocaleProvider";
-import { APP_ICON_SVG, APP_MODE } from "@/lib/app-mode";
+import { APP_ICON_PNG } from "@/lib/app-mode";
 import { ABOUT } from "@/lib/about";
 
 type AboutDialogProps = {
@@ -13,6 +14,7 @@ type AboutDialogProps = {
 
 export function AboutDialog({ open, onClose }: AboutDialogProps) {
   const { t } = useLocale();
+  const { mode } = useDeskMode();
   const titleId = useId();
   const closeRef = useRef<HTMLButtonElement>(null);
 
@@ -29,7 +31,7 @@ export function AboutDialog({ open, onClose }: AboutDialogProps) {
   if (!open) return null;
 
   const modeLabel =
-    APP_MODE === "futures" ? t("about.modeFutures") : t("about.modeOptions");
+    mode === "futures" ? t("about.modeFutures") : t("about.modeOptions");
 
   const contactBits: { key: string; node: ReactNode }[] = [];
   if (ABOUT.phone) {
@@ -116,7 +118,7 @@ export function AboutDialog({ open, onClose }: AboutDialogProps) {
             <span className="flex h-12 w-12 shrink-0 overflow-hidden rounded-lg bg-[#1c1917] shadow-sm ring-1 ring-[var(--border)]">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
-                src={APP_ICON_SVG}
+                src={APP_ICON_PNG}
                 alt={ABOUT.productName}
                 className="h-full w-full object-contain"
               />

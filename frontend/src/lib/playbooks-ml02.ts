@@ -20,6 +20,7 @@ function ml02Playbook(venue: Venue, id: string): StrategyPlaybook {
     syncLookbackDays: 30,
     name: "H4 → 15M → 1M",
     shortName: "ML02",
+    setupImage: "/brand/ml02-h4-15m-1m-setup.png",
     markets: isFutures
       ? "Futuros LONG/SHORT · MNQ · MES · 6E · 6A · 6B · GC · H4 bias + 15M/1M + PD"
       : "Opciones CALL/PUT · H4 bias + 15M/1M + PD · plan ≤35%",

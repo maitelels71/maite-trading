@@ -1,6 +1,7 @@
-/** Futures playbooks — Maylels desk (Schwab candles). */
+/** Futures playbooks — Maylels desk + Channel lab (Yahoo candles). */
 
 import type { StrategyPlaybook } from "@/lib/playbook-types";
+import { CHANNEL_FUTURES, CH_FUTURES_ORDER } from "@/lib/playbooks-channel";
 import { ML02_FUTURES } from "@/lib/playbooks-ml02";
 import { ML03_FUTURES } from "@/lib/playbooks-ml03";
 
@@ -95,6 +96,12 @@ export const FUTURES_PLAYBOOKS: StrategyPlaybook[] = [
   },
   ML02_FUTURES,
   ML03_FUTURES,
+  ...CHANNEL_FUTURES,
 ];
 
-export const ML_ORDER = ["ml01", "ml02", "ml03"] as const;
+export const ML_ORDER = [
+  "ml01",
+  "ml02",
+  "ml03",
+  ...CH_FUTURES_ORDER,
+] as const;

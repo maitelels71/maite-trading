@@ -217,7 +217,7 @@ class Ml03FirstNy5mStrategy(BaseStrategy):
 
     @property
     def scan_live_when(self) -> str:
-        return "cash_rth"
+        return "ny_open"
 
     @property
     def default_parameters(self) -> dict[str, Any]:

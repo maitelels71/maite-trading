@@ -17,6 +17,7 @@ from app.domain.enums import DataProviderName, Side
 from app.domain.session_calendar import (
     is_cash_rth,
     is_globex_open,
+    is_ny_open_drive,
     live_candle_range_end,
 )
 from app.domain.strategy_types import StrategyResult
@@ -515,7 +516,7 @@ def _live_desk_allows_match(
     *,
     data_provider: str,
 ) -> tuple[bool, str]:
-    """Futures live matches only while Globex is open; ML03 only in NY RTH."""
+    """Futures live matches only while Globex is open; ML03 only NY open drive."""
     if data_provider == DataProviderName.TRADEADVOCATE.value:
         if not is_globex_open():
             return (
@@ -524,6 +525,12 @@ def _live_desk_allows_match(
                 "Not a live futures match.",
             )
         when = str(getattr(strategy, "scan_live_when", "always") or "always")
+        if when == "ny_open" and not is_ny_open_drive():
+            return (
+                False,
+                "ML03 is an NY opening play (first 5m 9:30–9:35, live until 11:30 ET). "
+                "Morning FVG/engulfing is not a live match in the afternoon.",
+            )
         if when == "cash_rth" and not is_cash_rth():
             return (
                 False,

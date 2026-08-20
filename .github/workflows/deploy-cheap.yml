@@ -118,6 +118,8 @@ jobs:
         env:
           NEXT_PUBLIC_API_BASE_URL: ${{ steps.out.outputs.api_url }}
           NEXT_PUBLIC_APP_MODE: options
+          NEXT_PUBLIC_OPTIONS_APP_URL: ${{ steps.out.outputs.cf_url }}
+          NEXT_PUBLIC_FUTURES_APP_URL: ${{ steps.out.outputs.futures_cf_url }}
         run: |
           npm run build
           aws s3 sync out/ "s3://${{ steps.out.outputs.bucket }}/" --delete \
@@ -131,6 +133,8 @@ jobs:
         env:
           NEXT_PUBLIC_API_BASE_URL: ${{ steps.out.outputs.api_url }}
           NEXT_PUBLIC_APP_MODE: futures
+          NEXT_PUBLIC_OPTIONS_APP_URL: ${{ steps.out.outputs.cf_url }}
+          NEXT_PUBLIC_FUTURES_APP_URL: ${{ steps.out.outputs.futures_cf_url }}
         run: |
           rm -rf out .next
           npm run build

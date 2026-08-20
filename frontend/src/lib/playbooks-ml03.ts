@@ -22,7 +22,7 @@ export const ML03_FUTURES: StrategyPlaybook = {
     "Regla de la primera vela: a las 9:30 ET en 5m esperas el cierre 9:30–9:35, " +
     "marcas high/low del día. En 1m no entras al toque — necesitas ruptura del nivel " +
     "con FVG (gap entre mechas), retest del FVG y vela envolvente. RR ≈ 1:3 a 1:5.",
-  sessionWindow: "RTH · niveles 5m 9:30–9:35 · trigger 1m después de 9:35",
+    sessionWindow: "RTH opening · niveles 5m 9:30–9:35 · trigger 1m · live desk hasta 11:30 ET",
   riskNotes: [
     "Solo niveles de la primera vela 5m de NY (9:30–9:35 ET)",
     "No entrar al primer toque del high/low — esperar FVG de ruptura",

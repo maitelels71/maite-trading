@@ -3,8 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { DeskSession, DeskStack } from "@/components/DeskSession";
+import { useDeskMode } from "@/components/DeskModeProvider";
 import { useLocale } from "@/components/LocaleProvider";
-import { APP_VENUE } from "@/lib/app-mode";
 import type { Locale } from "@/lib/i18n";
 import {
   localizedPlaybookLabel,
@@ -54,11 +54,12 @@ type ZoomTarget =
 
 export function StickyNotesDesk() {
   const { t, locale } = useLocale();
+  const { venue } = useDeskMode();
   const books = useMemo(
-    () => playbooksForVenue(APP_VENUE).filter((p) => Boolean(p.setupImage)),
-    [],
+    () => playbooksForVenue(venue).filter((p) => Boolean(p.setupImage)),
+    [venue],
   );
-  const boardDefs = useMemo(() => boardsForVenue(APP_VENUE), []);
+  const boardDefs = useMemo(() => boardsForVenue(venue), [venue]);
 
   const boards = useMemo(() => {
     return boardDefs

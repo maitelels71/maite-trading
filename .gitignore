@@ -3,6 +3,8 @@
 .env.local
 .env*.local
 .secrets/
+*.sqlite
+*.sqlite3
 *.pem
 
 # CloudFormation / SAM build artifacts (generated — do not commit)

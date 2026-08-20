@@ -33,6 +33,7 @@ class BotRunResult:
     orders: list[dict[str, Any]]
     submissions: list[dict[str, Any]]
     error: str | None = None
+    portfolio_value: str = "0"
 
 
 def yahoo_crypto_symbol(asset: str) -> str:
@@ -91,10 +92,29 @@ def _order_dict(order: PlannedOrder) -> dict[str, Any]:
     return data
 
 
-def assert_live_allowed(config: Settings, *, confirm_live: bool) -> None:
+def _portfolio_value(
+    holdings: dict[str, Decimal],
+    prices: dict[str, Decimal],
+    quote: str,
+) -> str:
+    total = Decimal("0")
+    for asset, qty in holdings.items():
+        if asset in (quote, QUOTE_CASH):
+            total += qty
+        else:
+            total += qty * prices.get(asset, Decimal("0"))
+    return str(total.quantize(Decimal("0.01")))
+
+
+def assert_live_allowed(
+    config: Settings,
+    *,
+    confirm_live: bool,
+    respect_dry_run: bool = True,
+) -> None:
     if not confirm_live:
         raise ProviderError("live trading requires --confirm-live")
-    if config.coinbase_dry_run:
+    if respect_dry_run and config.coinbase_dry_run:
         raise ProviderError("COINBASE_DRY_RUN=true; set it to false for live orders")
     if not config.coinbase_trading_enabled:
         raise ProviderError("COINBASE_TRADING_ENABLED is false")
@@ -104,6 +124,7 @@ def run_rebalance(
     *,
     live: bool = False,
     confirm_live: bool = False,
+    respect_dry_run: bool = True,
     config: Settings | None = None,
     yahoo: YahooProvider | None = None,
     trader: CoinbaseTrader | None = None,
@@ -127,6 +148,7 @@ def run_rebalance(
             prices={},
             orders=[],
             submissions=[],
+            portfolio_value="0",
         )
 
     cb = trader or CoinbaseTrader(cfg)
@@ -161,7 +183,11 @@ def run_rebalance(
     submissions: list[dict[str, Any]] = []
     dry_run = not live
     if live:
-        assert_live_allowed(cfg, confirm_live=confirm_live)
+        assert_live_allowed(
+            cfg,
+            confirm_live=confirm_live,
+            respect_dry_run=respect_dry_run,
+        )
         dry_run = False
         for order in orders:
             submissions.append(cb.place_market(order))
@@ -174,4 +200,5 @@ def run_rebalance(
         prices={k: str(v) for k, v in prices.items()},
         orders=[_order_dict(o) for o in orders],
         submissions=submissions,
+        portfolio_value=_portfolio_value(holdings, prices, quote),
     )

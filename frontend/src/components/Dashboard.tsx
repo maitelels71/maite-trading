@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState, useTransition } from "react";
 
 import { DeskSession } from "@/components/DeskSession";
+import { useDeskMode } from "@/components/DeskModeProvider";
 import { TradeChart } from "@/components/TradeChart";
 import { useLocale } from "@/components/LocaleProvider";
 import {
@@ -23,7 +24,6 @@ import {
   localizePlaybook,
   localizedPlaybookLabel,
 } from "@/lib/playbook-localize";
-import { APP_MODE_LABEL, APP_VENUE } from "@/lib/app-mode";
 import {
   FALLBACK_INSTRUMENTS,
   TIMEFRAMES,
@@ -93,12 +93,12 @@ function holdLabel(entryIso: string, exitIso: string | null | undefined): string
 
 export function Dashboard() {
   const { t, locale } = useLocale();
-  const venue = APP_VENUE;
+  const { venue, label } = useDeskMode();
   const [instruments, setInstruments] = useState<Instrument[]>(FALLBACK_INSTRUMENTS);
   const [strategies, setStrategies] = useState<Strategy[]>([]);
-  const [symbol, setSymbol] = useState(VENUE_META[APP_VENUE].defaultSymbol);
+  const [symbol, setSymbol] = useState(VENUE_META[venue].defaultSymbol);
   const [strategy, setStrategy] = useState(
-    APP_VENUE === "tradeadvocate"
+    venue === "tradeadvocate"
       ? "ml01_structure_choch_bos"
       : "bb_trend_flip_h",
   );
@@ -238,7 +238,7 @@ export function Dashboard() {
             "API offline. Using fallback instruments. Start backend to run live.",
           );
           setStrategies(
-            APP_VENUE === "tradeadvocate"
+            venue === "tradeadvocate"
               ? [
                   {
                     name: "ml01_structure_choch_bos",
@@ -260,7 +260,7 @@ export function Dashboard() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [venue]);
 
   const syncTfs = useMemo(() => {
     if (playbook?.syncTimeframes?.length) return playbook.syncTimeframes;
@@ -474,7 +474,7 @@ export function Dashboard() {
             </p>
             <p className="mt-2 inline-flex items-center gap-2 text-xs font-semibold text-[var(--foreground)]">
               <span className="rounded bg-[var(--surface-muted)] px-2 py-0.5 ring-1 ring-[var(--border)]">
-                {APP_MODE_LABEL}
+                {label}
               </span>
               <span className="font-normal text-[var(--muted)]">
                 {VENUE_META[venue].label} · {VENUE_META[venue].shortLabel}

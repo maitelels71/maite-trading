@@ -92,6 +92,86 @@ const en: Dict = {
   "lang.en": "EN",
   "lang.es": "ES",
 
+  "hub.kicker": "Your trading home",
+  "hub.title": "Where do you want to work today?",
+  "hub.note1":
+    "Nobody talks about how hard it is to keep going when you're mentally exhausted. When you're not exactly sad, but you're not well either.",
+  "hub.note2":
+    "Some days your greatest achievement isn't moving forward: it's simply not giving up. That doesn't have to stop you. Life isn't always about big victories; sometimes it's the small celebrations.",
+  "hub.note3": "Maybe you're not shining today, but you're still holding on.",
+  "hub.noteClose": "And for now, that is enough.",
+  "hub.noteImageAlt": "A path at dawn — still walking.",
+  "hub.hello": "You're in. Pick a desk.",
+  "hub.loginTitle": "Hey — log in first",
+  "hub.loginHint": "Personal desk for you. Nothing ships until you choose a room.",
+  "hub.loginFailed": "That login didn't match.",
+  "hub.user": "User",
+  "hub.password": "Password",
+  "hub.submit": "Enter the house",
+  "hub.submitting": "Checking…",
+  "hub.logout": "Log out",
+  "hub.home": "Home",
+  "hub.homeBack": "Home dashboard",
+  "hub.optionsEyebrow": "Schwab",
+  "hub.optionsTitle": "Options",
+  "hub.optionsBody": "Session, positions, analyzer, and journal for ETFs and options.",
+  "hub.optionsCta": "Open Options",
+  "hub.futuresEyebrow": "Globex",
+  "hub.futuresTitle": "Futures",
+  "hub.futuresBody": "MNQ, ES, and the futures playbooks — Tradovate flow.",
+  "hub.futuresCta": "Open Futures",
+  "hub.coinbaseEyebrow": "Crypto",
+  "hub.coinbaseTitle": "Coinbase",
+  "hub.coinbaseBody": "BTC & ETH rebalance bot. See the plan, run a test, then live if you want.",
+  "hub.coinbaseCta": "Open Coinbase",
+
+  "coinbase.title": "Coinbase bot",
+  "coinbase.intro":
+    "This is what matters: what you hold, the mix the bot wants, the orders it would send, and a history of every test or live run.",
+  "coinbase.statPortfolio": "Portfolio",
+  "coinbase.statRuns": "Bot runs",
+  "coinbase.statLast": "Last run",
+  "coinbase.statLiveOrders": "Live fills",
+  "coinbase.statLiveOrdersHint": "ok / failed",
+  "coinbase.controls": "Run the bot",
+  "coinbase.controlsHint":
+    "Test talks to Coinbase but does not send orders. Live places real market orders.",
+  "coinbase.maxClip": "Max clip",
+  "coinbase.minClip": "Min clip",
+  "coinbase.cashPct": "Cash reserve",
+  "coinbase.threshold": "Drift to trade",
+  "coinbase.lookback": "Vol lookback",
+  "coinbase.planSettings": "Plan knobs",
+  "coinbase.planSettingsHint":
+    "These change the next test/live plan. Max/min are USD per order. Drift is % of the portfolio. Cash is the USD/USDC sleeve. Lookback is days of Yahoo vol.",
+  "coinbase.savePlan": "Save plan",
+  "coinbase.savedPlan": "Saved — Run test to see the new plan.",
+  "coinbase.days": "days",
+  "coinbase.notConfigured": "API key not found. Keep the JSON in .secrets/cdp_api_key.json.",
+  "coinbase.runTest": "Run test",
+  "coinbase.runLive": "Run live",
+  "coinbase.running": "Running…",
+  "coinbase.liveLocked":
+    "Live is locked. Set COINBASE_TRADING_ENABLED=true in .env if you really want real orders.",
+  "coinbase.liveConfirm":
+    "I understand this will place real Coinbase orders (small clips, sells first).",
+  "coinbase.holdings": "Holdings vs target",
+  "coinbase.asset": "Asset",
+  "coinbase.qty": "Quantity",
+  "coinbase.target": "Target",
+  "coinbase.plan": "What it would trade",
+  "coinbase.runToSee": "Hit Run test to pull your account and see the plan.",
+  "coinbase.noOrders": "Already close enough — no orders this pass.",
+  "coinbase.wasTest": "Test (no orders sent)",
+  "coinbase.wasLive": "Live run",
+  "coinbase.history": "Run history",
+  "coinbase.historyEmpty": "No runs yet. The first test shows up here.",
+  "coinbase.orders": "orders",
+  "coinbase.test": "test",
+  "coinbase.live": "live",
+  "coinbase.loadFailed": "Could not load Coinbase status.",
+  "coinbase.runFailed": "Bot run failed.",
+
   "analyzer.title": "Analyzer",
   "analyzer.subtitle":
     "Deep dive one symbol + playbook: sync candles, evaluate a day or backtest a range, then review the trade journey.",
@@ -202,11 +282,15 @@ const en: Dict = {
   "strategies.syncScanning": "Syncing & scanning…",
   "strategies.scanOnly": "Scan only",
   "strategies.syncing": "Syncing candles from broker…",
+  "strategies.syncProgress": "Syncing {done}/{total} · {label}",
+  "strategies.deskScanningOnly": "Scanning TOP 5 (candles already synced)…",
   "strategies.syncDone":
     "Synced {bars} bars across {symbols} symbols ({errors} sync errors). Scanning…",
   "strategies.syncSkipped":
     "Using candles already synced (1h/1d). Scanning…",
   "strategies.syncAborted": "Sync stopped. Click Sync & TOP 5 again.",
+  "strategies.syncAllFailed":
+    "Could not download candles ({error}). TOP 5 needs local Postgres running, then retry.",
   "strategies.syncHint":
     "Sync downloads {tfs} from Schwab for this session’s symbols — then runs the scan.",
   "strategies.syncHintFutures":
@@ -219,7 +303,7 @@ const en: Dict = {
   "strategies.deskAutoHint":
     "Every 2.5 minutes: sync desk candles + re-rank TOP 5. Turns off Focus auto (only one auto at a time).",
   "strategies.deskAutoHintFutures":
-    "Every 2.5 minutes while Globex is open: refresh 1h/15m/5m/1m through now and re-rank TOP 5. ML03 only in NY 9:30–16:00; ML01/ML02 use full 1H + LTF structure.",
+    "Every 2.5 minutes while Globex is open: re-scan TOP 5 (skips re-downloading all candles). Click Desk scan once to sync Yahoo bars for the day.",
   "strategies.autoOffSession":
     "Auto is off before 9:30 ET (premarket / weekend). After the cash open, Auto 2.5m is available. Trigger opens still pauses it.",
   "strategies.scanSummary":
@@ -291,7 +375,7 @@ const en: Dict = {
   "session.deskTop5Hint":
     "Load capital first (live equity). Sync & TOP 5 (Yahoo). Copy the plan into TOS (BUY_TO_OPEN). Schwab Open in-app is off.",
   "session.deskTop5HintFutures":
-    "Ranks MNQ/MES/FX/GC whenever Globex is open. Live matches first; if none, shows watching candidates. ML03 only in NY RTH.",
+    "Ranks MNQ/MES/FX/GC whenever Globex is open. Live matches first; if none, shows watching candidates. ML03 only 9:30–11:30 ET (not afternoon).",
   "session.liveScan": "Sync & Scan",
   "session.liveScanHint": "Sync candles for this playbook, then scan its universe.",
   "session.scanDesk": "Scan",
@@ -311,6 +395,11 @@ const en: Dict = {
   "sticky.boardCrHint": "Creando Riquezas CR01–CR11 setup diagrams.",
   "sticky.boardE": "Strategies · E",
   "sticky.boardEHint": "BB desk E01–E04 setup diagrams.",
+  "sticky.boardCh": "Strategies · Channel",
+  "sticky.boardChHint":
+    "Channel CH01–CH06 daily scan filters (Gap & Go · VWAP · EMA · RSI · RS · ORB).",
+  "sticky.boardChHintFutures":
+    "Channel on futures (Yahoo NQ=F) — RTH 9:30 ET for Gap/ORB/VWAP; RS MNQ↔MES.",
   "sticky.boardMl": "Strategies · Maylels",
   "sticky.boardMlHint": "Maylels setup diagrams (ML01 ChoCh+BOS · ML02 H4→15M→1M · ML03 First NY 5m).",
   "sticky.boardStudy": "Study",
@@ -689,6 +778,87 @@ const es: Dict = {
   "lang.en": "EN",
   "lang.es": "ES",
 
+  "hub.kicker": "Tu casa de trading",
+  "hub.title": "¿En qué desk quieres trabajar hoy?",
+  "hub.note1":
+    "Nadie habla de lo difícil que es seguir cuando estás mentalmente agotada. Cuando no estás exactamente triste, pero tampoco estás bien.",
+  "hub.note2":
+    "Hay días en los que tu mayor logro no es avanzar: es simplemente no rendirte. Eso no tiene por qué detenerte. La vida no siempre se trata de grandes victorias; a veces se trata de pequeñas celebraciones.",
+  "hub.note3": "Tal vez hoy no estás brillando, pero estás resistiendo.",
+  "hub.noteClose": "Y por ahora, eso ya es suficiente.",
+  "hub.noteImageAlt": "Un camino al amanecer — sigue caminando.",
+  "hub.hello": "Ya estás adentro. Elige un desk.",
+  "hub.loginTitle": "Hola — primero el login",
+  "hub.loginHint": "Desk personal. Nada se mueve hasta que elijas un cuarto.",
+  "hub.loginFailed": "Ese usuario o clave no coinciden.",
+  "hub.user": "Usuario",
+  "hub.password": "Contraseña",
+  "hub.submit": "Entrar",
+  "hub.submitting": "Revisando…",
+  "hub.logout": "Salir",
+  "hub.home": "Inicio",
+  "hub.homeBack": "Dashboard de inicio",
+  "hub.optionsEyebrow": "Schwab",
+  "hub.optionsTitle": "Options",
+  "hub.optionsBody": "Sesión, posiciones, analizador y journal de ETFs y opciones.",
+  "hub.optionsCta": "Abrir Options",
+  "hub.futuresEyebrow": "Globex",
+  "hub.futuresTitle": "Futures",
+  "hub.futuresBody": "MNQ, ES y los playbooks de futuros — flujo Tradovate.",
+  "hub.futuresCta": "Abrir Futures",
+  "hub.coinbaseEyebrow": "Crypto",
+  "hub.coinbaseTitle": "Coinbase",
+  "hub.coinbaseBody": "Bot BTC y ETH. Ves el plan, corres un test, y live si quieres.",
+  "hub.coinbaseCta": "Abrir Coinbase",
+
+  "coinbase.title": "Bot de Coinbase",
+  "coinbase.intro":
+    "Lo que importa: qué tienes, la mezcla que quiere el bot, las órdenes que mandaría, y el historial de cada test o live.",
+  "coinbase.statPortfolio": "Portafolio",
+  "coinbase.statRuns": "Corridas",
+  "coinbase.statLast": "Última corrida",
+  "coinbase.statLiveOrders": "Fills live",
+  "coinbase.statLiveOrdersHint": "ok / fallidas",
+  "coinbase.controls": "Correr el bot",
+  "coinbase.controlsHint":
+    "Test habla con Coinbase pero no envía órdenes. Live sí pone órdenes reales.",
+  "coinbase.maxClip": "Clip máx",
+  "coinbase.minClip": "Clip mín",
+  "coinbase.cashPct": "Reserva cash",
+  "coinbase.threshold": "Drift para tradear",
+  "coinbase.lookback": "Lookback vol",
+  "coinbase.planSettings": "Perillas del plan",
+  "coinbase.planSettingsHint":
+    "Esto cambia el próximo test/live. Máx/mín son USD por orden. Drift es % del portafolio. Cash es la manga USD/USDC. Lookback son días de vol en Yahoo.",
+  "coinbase.savePlan": "Guardar plan",
+  "coinbase.savedPlan": "Guardado — dale a Correr test para ver el plan nuevo.",
+  "coinbase.days": "días",
+  "coinbase.notConfigured":
+    "No encuentro la API key. Deja el JSON en .secrets/cdp_api_key.json.",
+  "coinbase.runTest": "Correr test",
+  "coinbase.runLive": "Correr live",
+  "coinbase.running": "Corriendo…",
+  "coinbase.liveLocked":
+    "Live está cerrado. Pon COINBASE_TRADING_ENABLED=true en .env si de verdad quieres órdenes reales.",
+  "coinbase.liveConfirm":
+    "Entiendo que esto va a poner órdenes reales en Coinbase (clips chicos, primero sells).",
+  "coinbase.holdings": "Holdings vs target",
+  "coinbase.asset": "Activo",
+  "coinbase.qty": "Cantidad",
+  "coinbase.target": "Target",
+  "coinbase.plan": "Qué tradearía",
+  "coinbase.runToSee": "Dale a Correr test para leer tu cuenta y ver el plan.",
+  "coinbase.noOrders": "Ya está cerca — esta pasada no manda órdenes.",
+  "coinbase.wasTest": "Test (no se enviaron órdenes)",
+  "coinbase.wasLive": "Corrida live",
+  "coinbase.history": "Historial",
+  "coinbase.historyEmpty": "Todavía no hay corridas. El primer test aparece aquí.",
+  "coinbase.orders": "órdenes",
+  "coinbase.test": "test",
+  "coinbase.live": "live",
+  "coinbase.loadFailed": "No pude cargar el status de Coinbase.",
+  "coinbase.runFailed": "Falló la corrida del bot.",
+
   "analyzer.title": "Analizador",
   "analyzer.subtitle":
     "Profundiza un símbolo + playbook: sync de velas, evalúa un día o backtest de rango, y revisa el viaje del trade.",
@@ -799,11 +969,15 @@ const es: Dict = {
   "strategies.syncScanning": "Sincronizando y escaneando…",
   "strategies.scanOnly": "Solo scan",
   "strategies.syncing": "Bajando velas del broker…",
+  "strategies.syncProgress": "Sync {done}/{total} · {label}",
+  "strategies.deskScanningOnly": "Escaneando TOP 5 (velas ya sincronizadas)…",
   "strategies.syncDone":
     "Sync: {bars} barras · {symbols} símbolos · {errors} errores. Escaneando…",
   "strategies.syncSkipped":
     "Usando velas ya sincronizadas (1h/1d). Escaneando…",
   "strategies.syncAborted": "Sync detenido. Pulsa Sync & TOP 5 otra vez.",
+  "strategies.syncAllFailed":
+    "No pude bajar velas ({error}). TOP 5 necesita Postgres local encendido. Arráncalo y reintenta.",
   "strategies.syncHint":
     "Sync descarga {tfs} desde Schwab para los símbolos de esta sesión — luego corre el scan.",
   "strategies.syncHintFutures":
@@ -816,7 +990,7 @@ const es: Dict = {
   "strategies.deskAutoHint":
     "Cada 2.5 min: sync de velas del desk + re-rank TOP 5. Apaga el auto de Focus (solo un auto a la vez).",
   "strategies.deskAutoHintFutures":
-    "Cada 2.5 min con Globex abierto: refresca 1h/15m/5m/1m hasta ahora y re-rankea TOP 5. ML03 solo NY 9:30–16:00; ML01/ML02 usan la estructura 1H + LTF completa.",
+    "Cada 2.5 min con Globex abierto: re-escanea TOP 5 (no vuelve a bajar todas las velas). Pulsa Desk scan una vez al día para sincronizar Yahoo.",
   "strategies.autoOffSession":
     "Auto está apagado antes de las 9:30 ET (premarket / fin de semana). Tras la apertura cash, Auto 2.5m está disponible. Trigger opens sigue pausándolo.",
   "strategies.scanSummary":
@@ -888,7 +1062,7 @@ const es: Dict = {
   "session.deskTop5Hint":
     "Primero Cargar capital (equity live). Sync & TOP 5 (Yahoo). Copia el plan a TOS (BUY_TO_OPEN). Open Schwab en el app está off.",
   "session.deskTop5HintFutures":
-    "Rankea MNQ/MES/FX/GC con Globex abierto. Primero matches live; si no hay, candidatos watching. ML03 solo en NY RTH.",
+    "Rankea MNQ/MES/FX/GC con Globex abierto. Primero matches live; si no hay, candidatos watching. ML03 solo 9:30–11:30 ET (no por la tarde).",
   "session.liveScan": "Sync & Scan",
   "session.liveScanHint": "Baja velas de este playbook y escanea su universo.",
   "session.scanDesk": "Scan",
@@ -908,6 +1082,11 @@ const es: Dict = {
   "sticky.boardCrHint": "Diagramas Creando Riquezas CR01–CR11.",
   "sticky.boardE": "Estrategias · E",
   "sticky.boardEHint": "Diagramas BB desk E01–E04.",
+  "sticky.boardCh": "Estrategias · Channel",
+  "sticky.boardChHint":
+    "Filtros de scan diario CH01–CH06 (Gap & Go · VWAP · EMA · RSI · RS · ORB).",
+  "sticky.boardChHintFutures":
+    "Channel en futuros (Yahoo NQ=F) — RTH 9:30 ET para Gap/ORB/VWAP; RS MNQ↔MES.",
   "sticky.boardMl": "Estrategias · Maylels",
   "sticky.boardMlHint": "Diagramas Maylels (ML01 ChoCh+BOS · ML02 H4→15M→1M · ML03 Primera vela NY 5m).",
   "sticky.boardStudy": "Estudio",

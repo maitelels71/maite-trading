@@ -9,6 +9,10 @@ import {
   CREANDO_RIQUEZAS_PLAYBOOKS,
   CR_ORDER,
 } from "@/lib/playbooks-creando-riquezas";
+import {
+  CHANNEL_OPTIONS,
+  CH_ORDER,
+} from "@/lib/playbooks-channel";
 import { FUTURES_PLAYBOOKS, ML_ORDER } from "@/lib/playbooks-futures";
 import { ML02_OPTIONS } from "@/lib/playbooks-ml02";
 import type { Venue } from "@/lib/types";
@@ -371,6 +375,7 @@ const ETF_BB_PLAYBOOKS: StrategyPlaybook[] = [
 export const STRATEGY_PLAYBOOKS: StrategyPlaybook[] = [
   ...ETF_BB_PLAYBOOKS,
   ...CREANDO_RIQUEZAS_PLAYBOOKS,
+  ...CHANNEL_OPTIONS,
   ML02_OPTIONS,
   ...FUTURES_PLAYBOOKS,
 ];
@@ -394,11 +399,20 @@ export function strategyDisplayName(strategyKey: string): string {
 
 export function scannableStrategyKeys(venue: Venue): string[] {
   return playbooksForVenue(venue)
+    .filter((p) => p.deskTop5 !== false)
     .map((p) => p.strategyKey)
     .filter((k): k is string => Boolean(k));
 }
 
-const ETF_ORDER = ["e01", "e02", "e03", "e04", ...CR_ORDER, "ml02o"] as const;
+const ETF_ORDER = [
+  "e01",
+  "e02",
+  "e03",
+  "e04",
+  ...CR_ORDER,
+  ...CH_ORDER,
+  "ml02o",
+] as const;
 
 export function playbooksForVenue(venue: Venue): StrategyPlaybook[] {
   const books = STRATEGY_PLAYBOOKS.filter((p) => p.venue === venue);

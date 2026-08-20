@@ -102,7 +102,12 @@ class CoinbaseTrader:
         return self._client
 
     def list_balances(self) -> dict[str, Decimal]:
-        payload = _as_dict(self._rest().get_accounts())
+        try:
+            payload = _as_dict(self._rest().get_accounts())
+        except ProviderError:
+            raise
+        except Exception as exc:  # noqa: BLE001 — SDK raises HTTPError
+            raise ProviderError(f"coinbase accounts: {exc}") from exc
         rows = payload.get("accounts") or []
         out: dict[str, Decimal] = {}
         for row in rows:

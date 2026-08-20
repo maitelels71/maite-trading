@@ -83,21 +83,36 @@ const DESK_OPENS_ENABLED = false;
  * can use live equity/cash. Order POSTs stay off (DESK_OPENS_ENABLED).
  */
 const SCHWAB_TRADER_READS = true;
-const DESK_SYNC_TFS = ["1h", "1d", "15m", "4h", "1m"] as const;
-const DESK_LOOKBACK_DAYS = 30;
-const DESK_15M_LOOKBACK_DAYS = 14;
-/** Futures live desk: H4 (ML02) + HTF/LTF for ML01/ML03 whenever Globex is open. */
+/** Options TOP 5 — no 1m here (too slow across the equity book; Focus/ML02 pulls 1m). */
+const DESK_SYNC_TFS = ["1h", "1d", "15m", "4h"] as const;
+const DESK_LOOKBACK_DAYS = 25;
+const DESK_15M_LOOKBACK_DAYS = 7;
+const DESK_5M_LOOKBACK_DAYS = 3;
+const DESK_4H_LOOKBACK_DAYS = 14;
+/** Futures live desk: union of ML01/ML02/ML03 TFs. */
 const DESK_SYNC_TFS_FUTURES = ["4h", "1h", "15m", "5m", "1m"] as const;
-const DESK_LOOKBACK_FUTURES = 30;
-const DESK_1M_LOOKBACK_DAYS = 2;
+const DESK_LOOKBACK_FUTURES = 14;
+const DESK_1M_LOOKBACK_DAYS = 1;
+/** Parallel Yahoo sync calls — sequential was ~30+ requests and felt stuck. */
+const DESK_SYNC_CONCURRENCY = 4;
 /** One strategy per HTTP call — extras (15m/1m) still trip API Gateway ~29s. */
 const DESK_STRATEGY_CHUNK = 1;
 const SCAN_SYMBOL_BATCH = 2;
 const DESK_SCAN_SYMBOL_BATCH = 4;
 const DESK_SCAN_SYMBOL_BATCH_FUTURES = 1;
 const HARD_SYNC_KEY = "maite.strategies.hardSyncDay";
+/** Session day when desk candle sync last completed (skip re-download on Auto). */
+const DESK_SYNCED_DAY_KEY = "maite.strategies.deskSyncedDay";
 /** Watch + rich-premium names stay on Focus Sync & Scan, not the TOP 5 universe. */
 const DESK_FOCUS_ONLY = new Set([...WATCH_SYMBOLS, "IOVA"]);
+
+function lookbackDaysForTf(tf: string, base: number): number {
+  if (tf === "1m") return Math.min(base, DESK_1M_LOOKBACK_DAYS);
+  if (tf === "5m") return Math.min(base, DESK_5M_LOOKBACK_DAYS);
+  if (tf === "15m") return Math.min(base, DESK_15M_LOOKBACK_DAYS);
+  if (tf === "4h") return Math.min(base, DESK_4H_LOOKBACK_DAYS);
+  return base;
+}
 
 function takeHardRefresh(sessionDay: string, fromAuto: boolean): boolean {
   if (fromAuto) return false;
@@ -109,6 +124,24 @@ function takeHardRefresh(sessionDay: string, fromAuto: boolean): boolean {
     return true;
   } catch {
     return true;
+  }
+}
+
+function deskSyncedToday(sessionDay: string): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    return window.localStorage.getItem(DESK_SYNCED_DAY_KEY) === sessionDay;
+  } catch {
+    return false;
+  }
+}
+
+function markDeskSyncedToday(sessionDay: string): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(DESK_SYNCED_DAY_KEY, sessionDay);
+  } catch {
+    /* ignore */
   }
 }
 
@@ -265,7 +298,28 @@ function rankByConfluence(hits: ScanHit[], topN: number): DeskConfluenceGroup[] 
   return groups.slice(0, topN);
 }
 
-/** Futures: if live matches are thin, pad TOP 5 with watching rows (not no_data / RTH-gated). */
+/** Skip session-gated watching rows (not actionable on this desk right now). */
+const GATED_WATCH_DETAIL =
+  /NY RTH|not live in Globex|Globex closed|opening play|not a live match in the afternoon|live until 11:30/i;
+
+function watchingStrategyRank(strategy: string): number {
+  if (strategy.startsWith("ml01")) return 0;
+  if (strategy.startsWith("ml02")) return 1;
+  if (strategy.startsWith("ml03")) return 9;
+  return 5;
+}
+
+function pickWatchingHit(hits: ScanHit[]): ScanHit | null {
+  const usable = hits.filter((h) => !GATED_WATCH_DETAIL.test(String(h.detail || "")));
+  if (!usable.length) return null;
+  const withSig = usable.filter((h) => h.last_signal);
+  const pool = withSig.length ? withSig : usable;
+  return [...pool].sort((a, b) => {
+    const rank = watchingStrategyRank(a.strategy) - watchingStrategyRank(b.strategy);
+    if (rank !== 0) return rank;
+    return a.strategy.localeCompare(b.strategy);
+  })[0];
+}
 function padWithWatchingCandidates(
   matched: DeskConfluenceGroup[],
   allHits: ScanHit[],
@@ -279,8 +333,7 @@ function padWithWatchingCandidates(
     if (hit.status === "no_data") continue;
     const st = String(hit.status || "").toLowerCase();
     if (st !== "watching" && st !== "flat_after_trades") continue;
-    const detail = String(hit.detail || "");
-    if (/NY RTH|not live in Globex|Globex closed/i.test(detail)) continue;
+    if (GATED_WATCH_DETAIL.test(String(hit.detail || ""))) continue;
     const sym = hit.symbol.toUpperCase();
     if (taken.has(sym)) continue;
     const list = bySymbol.get(sym) ?? [];
@@ -290,20 +343,13 @@ function padWithWatchingCandidates(
   }
   const extras: DeskConfluenceGroup[] = [];
   for (const [symbol, symbolHits] of bySymbol.entries()) {
-    const withSide = symbolHits.filter((h) => hitSide(h) != null);
-    const keep = withSide.length > 0 ? withSide : symbolHits;
-    const side = hitSide(keep[0]) ?? "long";
-    const sided = keep.filter((h) => (hitSide(h) ?? side) === side);
-    const sortedHits = [...(sided.length ? sided : keep)].sort((a, b) => {
-      const ta = a.last_signal?.timestamp ?? "";
-      const tb = b.last_signal?.timestamp ?? "";
-      return tb.localeCompare(ta);
-    });
+    const picked = pickWatchingHit(symbolHits);
+    if (!picked) continue;
     extras.push({
       symbol,
-      name: symbolHits[0]?.name ?? symbol,
-      side,
-      hits: sortedHits,
+      name: picked.name ?? symbol,
+      side: hitSide(picked) ?? "long",
+      hits: [picked],
       confluence: 0,
       opposedCount: 0,
       candidate: true,
@@ -693,9 +739,10 @@ function TosFlag({
 
 type StrategiesDeskProps = {
   venue: Venue;
+  autoScan?: boolean;
 };
 
-export function StrategiesDesk({ venue }: StrategiesDeskProps) {
+export function StrategiesDesk({ venue, autoScan = false }: StrategiesDeskProps) {
   const { t, locale } = useLocale();
   const books = useMemo(() => playbooksForVenue(venue), [venue]);
   const [selectedId, setSelectedId] = useState(books[0]?.id ?? "");
@@ -710,6 +757,9 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
   const [deskError, setDeskError] = useState<string | null>(null);
   /** Which TOP 5 row checkbox is on (one row); still loads that row's playbook into Focus. */
   const [deskFocusKey, setDeskFocusKey] = useState<string | null>(null);
+  const deskFocusKeyRef = useRef<string | null>(null);
+  const deskFocusPinnedRef = useRef(false);
+  deskFocusKeyRef.current = deskFocusKey;
   const [error, setError] = useState<string | null>(null);
   const [syncNote, setSyncNote] = useState<string | null>(null);
   const [deskBusy, setDeskBusy] = useState(false);
@@ -719,7 +769,6 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
   );
   const [nowTick, setNowTick] = useState(() => Date.now());
   const wasHeavyBrokerBusy = useRef(false);
-  const wasCapitalBusy = useRef(false);
   const deskBusyRef = useRef(false);
   const focusBusyRef = useRef(false);
   const deskEpochRef = useRef(0);
@@ -769,7 +818,9 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
     window.localStorage.setItem(ARM_OPENS_KEY, "0");
     setHoldTrader(false);
     const blockAuto = venue === "schwab" && isCashAutoOffNy();
-    if (blockAuto) {
+    if (blockAuto || venue === "schwab") {
+      // Options never auto-starts TOP 5 (landing or leftover localStorage).
+      // The cash universe + multi-TF scan exceeds API Gateway ~29s.
       setAutoLive(false);
       setAutoDesk(false);
       window.localStorage.setItem(AUTO_LIVE_KEY, "0");
@@ -831,6 +882,12 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
   }, [brokerAccounts]);
 
   const capitalFetchedAt = useRef(0);
+
+  const startSchwabQuiet = useCallback((ms = RATE_LIMIT_QUIET_MS) => {
+    const until = extendSchwabQuiet(ms);
+    setQuietUntil(until);
+    setNowTick(Date.now());
+  }, []);
 
   const loadCapital = useCallback(async (force = false) => {
     if (venue !== "schwab") return;
@@ -899,6 +956,7 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
       } else {
         setCapitalNote(t("strategies.capitalNeed"));
       }
+      startSchwabQuiet(OPEN_QUIET_MS);
     } catch (err) {
       capitalFetchedAt.current = Date.now();
       setCapitalError(
@@ -908,18 +966,15 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
     } finally {
       setCapitalPending(false);
     }
-  }, [venue, t]);
+  }, [venue, t, startSchwabQuiet]);
 
   useEffect(() => {
     if (venue !== "schwab") return;
-    void loadCapital();
+    // Cache only on landing — a live Schwab GET here 503s (~29s) and
+    // used to look like a Desk TOP 5 timeout.
+    const cached = readCapitalCache();
+    if (cached) void loadCapital(false);
   }, [venue, loadCapital]);
-
-  const startSchwabQuiet = useCallback((ms = RATE_LIMIT_QUIET_MS) => {
-    const until = extendSchwabQuiet(ms);
-    setQuietUntil(until);
-    setNowTick(Date.now());
-  }, []);
 
   useEffect(() => {
     const sync = () => {
@@ -938,14 +993,6 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
     }
     wasHeavyBrokerBusy.current = heavy;
   }, [deskBusy, focusBusy, venue, startSchwabQuiet]);
-
-  useEffect(() => {
-    if (venue !== "schwab") return;
-    if (wasCapitalBusy.current && !capitalPending) {
-      startSchwabQuiet(OPEN_QUIET_MS);
-    }
-    wasCapitalBusy.current = capitalPending;
-  }, [capitalPending, venue, startSchwabQuiet]);
 
   useEffect(() => {
     if (quietUntil <= Date.now()) return;
@@ -1197,38 +1244,69 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
     endDay: string;
     items: Instrument[];
     forceRefresh: boolean;
+    onProgress?: (done: number, total: number, label: string) => void;
   }) {
-    let syncedBars = 0;
-    let syncErrors = 0;
+    const jobs: { inst: Instrument; tf: string }[] = [];
     for (const inst of opts.items) {
       if (inst.data_provider && inst.data_provider !== venue) continue;
       for (const tf of opts.tfs) {
-        if (opts.gen !== opts.genRef.current) return null;
-        const days =
-          tf === "1m"
-            ? Math.min(opts.lookback, DESK_1M_LOOKBACK_DAYS)
-            : tf === "15m"
-              ? Math.min(opts.lookback, DESK_15M_LOOKBACK_DAYS)
-              : opts.lookback;
-        const { start, end } = syncRangeIso(days);
-        try {
-          const res = await syncMarketData({
-            ticker: inst.symbol,
-            timeframe: tf,
-            start,
-            end,
-            market_type: inst.market_type,
-            force_refresh: opts.forceRefresh,
-          });
-          syncedBars += res.candles_count;
-        } catch {
-          syncErrors += 1;
-        }
-        if (venue === "schwab") await sleepMs(400);
+        jobs.push({ inst, tf });
+      }
+    }
+    let syncedBars = 0;
+    let syncErrors = 0;
+    let lastError = "";
+    let done = 0;
+    const total = jobs.length;
+    const concurrency =
+      venue === "schwab" ? 1 : Math.min(DESK_SYNC_CONCURRENCY, Math.max(1, total));
+
+    const runOne = async (job: { inst: Instrument; tf: string }) => {
+      if (opts.gen !== opts.genRef.current) return;
+      const days = lookbackDaysForTf(job.tf, opts.lookback);
+      const { start, end } = syncRangeIso(days);
+      try {
+        const res = await syncMarketData({
+          ticker: job.inst.symbol,
+          timeframe: job.tf,
+          start,
+          end,
+          market_type: job.inst.market_type,
+          force_refresh: opts.forceRefresh,
+        });
+        syncedBars += res.candles_count;
+      } catch (err) {
+        syncErrors += 1;
+        lastError = err instanceof Error ? err.message : "sync failed";
+      } finally {
+        done += 1;
+        opts.onProgress?.(
+          done,
+          total,
+          `${job.inst.symbol} ${job.tf}`,
+        );
+      }
+      if (venue === "schwab") await sleepMs(400);
+    };
+
+    for (let i = 0; i < jobs.length; i += concurrency) {
+      if (opts.gen !== opts.genRef.current) return null;
+      const chunk = jobs.slice(i, i + concurrency);
+      const errorsBefore = syncErrors;
+      await Promise.all(chunk.map(runOne));
+      if (syncedBars === 0 && syncErrors > errorsBefore) {
+        break;
       }
     }
     if (opts.gen !== opts.genRef.current) return null;
-    return { syncedBars, syncErrors, symbolCount: opts.items.length };
+    return {
+      syncedBars,
+      syncErrors,
+      lastError,
+      symbolCount: opts.items.filter(
+        (i) => !i.data_provider || i.data_provider === venue,
+      ).length,
+    };
   }
 
   const syncAndScan = useCallback(
@@ -1282,6 +1360,15 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
             endDay: day,
             items,
             forceRefresh,
+            onProgress: (done, total, label) => {
+              if (gen !== runGen.current) return;
+              setSyncNote(
+                t("strategies.syncProgress")
+                  .replace("{done}", String(done))
+                  .replace("{total}", String(total))
+                  .replace("{label}", label),
+              );
+            },
           });
           if (!synced) return;
           setSyncNote(
@@ -1340,32 +1427,65 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
       setDeskNote(t("strategies.syncing"));
       const fromAuto = Boolean(opts?.fromAuto);
       const forceRefresh = takeHardRefresh(day, fromAuto);
+      // First pass of the session day always syncs. Later Auto polls only scan
+      // (re-downloading 4h/1h/15m/5m/1m × all symbols is what froze TOP 5).
+      const needCandleSync = !fromAuto || !deskSyncedToday(day);
       try {
-      const synced = await syncUniverse({
-        tfs: [
-          ...(venue === "tradeadvocate" ? DESK_SYNC_TFS_FUTURES : DESK_SYNC_TFS),
-        ],
-        lookback:
-          venue === "tradeadvocate" ? DESK_LOOKBACK_FUTURES : DESK_LOOKBACK_DAYS,
-        gen,
-        genRef: deskGen,
-        endDay: day,
-        items: deskUniverse,
-        forceRefresh,
-      });
-      if (!synced) {
-        if (deskGen.current !== gen) {
-          setDeskNote(t("strategies.syncAborted"));
+      if (needCandleSync) {
+        const synced = await syncUniverse({
+          tfs: [
+            ...(venue === "tradeadvocate"
+              ? DESK_SYNC_TFS_FUTURES
+              : DESK_SYNC_TFS),
+          ],
+          lookback:
+            venue === "tradeadvocate"
+              ? DESK_LOOKBACK_FUTURES
+              : DESK_LOOKBACK_DAYS,
+          gen,
+          genRef: deskGen,
+          endDay: day,
+          items: deskUniverse,
+          forceRefresh,
+          onProgress: (done, total, label) => {
+            if (gen !== deskGen.current) return;
+            setDeskNote(
+              t("strategies.syncProgress")
+                .replace("{done}", String(done))
+                .replace("{total}", String(total))
+                .replace("{label}", label),
+            );
+          },
+        });
+        if (!synced) {
+          if (deskGen.current !== gen) {
+            setDeskNote(t("strategies.syncAborted"));
+          }
+          return;
         }
-        return;
-      }
+        if (synced.syncedBars === 0 && synced.syncErrors > 0) {
+          setAutoDesk(false);
+          window.localStorage.setItem(AUTO_DESK_KEY, "0");
+          setDeskError(
+            t("strategies.syncAllFailed").replace(
+              "{error}",
+              synced.lastError || "sync failed",
+            ),
+          );
+          setDeskNote(null);
+          return;
+        }
+        markDeskSyncedToday(day);
 
-      setDeskNote(
-        t("strategies.syncDone")
-          .replace("{bars}", String(synced.syncedBars))
-          .replace("{symbols}", String(synced.symbolCount))
-          .replace("{errors}", String(synced.syncErrors)),
-      );
+        setDeskNote(
+          t("strategies.syncDone")
+            .replace("{bars}", String(synced.syncedBars))
+            .replace("{symbols}", String(synced.symbolCount))
+            .replace("{errors}", String(synced.syncErrors)),
+        );
+      } else {
+        setDeskNote(t("strategies.deskScanningOnly"));
+      }
 
       try {
         const allHits: ScanHit[] = [];
@@ -1451,20 +1571,38 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
         const focusPb = firstHit
           ? playbookByStrategyKey(firstHit.strategy)
           : undefined;
-        if (firstHit && focusPb?.strategyKey) {
+        const pinnedKey = deskFocusPinnedRef.current
+          ? deskFocusKeyRef.current
+          : null;
+        const pinnedStillThere = Boolean(
+          pinnedKey &&
+            ranked.some((g) =>
+              g.hits.some((h) => `${h.symbol}::${h.strategy}` === pinnedKey),
+            ),
+        );
+        if (pinnedStillThere) {
+          // User picked a TOP 5 row — Auto / refresh must not steal the playbook.
+        } else if (firstHit && focusPb?.strategyKey) {
+          deskFocusPinnedRef.current = false;
           setDeskFocusKey(`${firstHit.symbol}::${firstHit.strategy}`);
           setSelectedId(focusPb.id);
           if (gen !== deskGen.current) return;
           // Options: do not Focus-sync the whole universe after TOP 5 — that
           // second Schwab blast is what 429s the Open POST.
-          if (!armOpens && venue !== "schwab") {
+          // Futures Auto: skip Focus re-sync (would restart the slow loop).
+          // Manual: Focus only the winning symbol, not the full book.
+          if (!armOpens && venue !== "schwab" && !fromAuto) {
+            const focusItems = universe.filter(
+              (i) => i.symbol.toUpperCase() === firstHit.symbol.toUpperCase(),
+            );
             await syncAndScan(focusPb, {
               fromAuto,
               skipDeskTfs: true,
-              items: universe,
+              items: focusItems.length ? focusItems : universe.slice(0, 1),
             });
           }
         } else {
+          deskFocusPinnedRef.current = false;
           setDeskFocusKey(null);
         }
       } catch (err) {
@@ -1494,6 +1632,32 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
     void runDeskTop5({ fromAuto: false });
   }, [runDeskTop5]);
 
+  const landedScanKey = useRef<string>("");
+  useEffect(() => {
+    if (!autoScan || armOpens) return;
+    if (deskStrategyKeys.length === 0 || deskUniverse.length === 0) return;
+    if (venue === "schwab") return;
+    setAutoLive(false);
+    window.localStorage.setItem(AUTO_LIVE_KEY, "0");
+    setAutoDesk(true);
+    window.localStorage.setItem(AUTO_DESK_KEY, "1");
+    const key = venue;
+    if (landedScanKey.current === key) return;
+    const id = window.setTimeout(() => {
+      landedScanKey.current = key;
+      if (deskBusyRef.current || focusBusyRef.current) return;
+      void runDeskTop5({ fromAuto: false });
+    }, 450);
+    return () => window.clearTimeout(id);
+  }, [
+    autoScan,
+    armOpens,
+    deskStrategyKeys.length,
+    deskUniverse.length,
+    venue,
+    runDeskTop5,
+  ]);
+
   const autoBlocked = venue === "schwab" && isCashAutoOffNy();
 
   function toggleAutoLive() {
@@ -1522,6 +1686,16 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
       return next;
     });
   }
+
+  useEffect(() => {
+    return () => {
+      // Leaving the tab aborts in-flight desk/focus work so remount is not stuck.
+      deskGen.current += 1;
+      runGen.current += 1;
+      deskBusyRef.current = false;
+      focusBusyRef.current = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (!autoLive || armOpens || autoBlocked || !playbook?.strategyKey) return;
@@ -1907,12 +2081,22 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
                             }
                             onChange={() => {
                               if (!pb) return;
-                              setDeskFocusKey(rowKey);
+                              const nextKey = rowKey;
+                              deskFocusPinnedRef.current = true;
+                              deskFocusKeyRef.current = nextKey;
+                              setDeskFocusKey(nextKey);
                               setSelectedId(pb.id);
                               if (armOpens) return;
+                              const focusItems = universe.filter(
+                                (i) =>
+                                  i.symbol.toUpperCase() ===
+                                  hit.symbol.toUpperCase(),
+                              );
                               void syncAndScan(pb, {
                                 skipDeskTfs: true,
-                                items: universe,
+                                items: focusItems.length
+                                  ? focusItems
+                                  : universe.slice(0, 1),
                               });
                             }}
                           />
@@ -2099,6 +2283,7 @@ export function StrategiesDesk({ venue }: StrategiesDeskProps) {
               className={field}
               value={playbook.id}
               onChange={(e) => {
+                deskFocusPinnedRef.current = false;
                 setSelectedId(e.target.value);
                 setDeskFocusKey(null);
               }}

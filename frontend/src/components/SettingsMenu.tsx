@@ -26,7 +26,7 @@ export function SettingsMenu({
   onAdmin,
   onAbout,
   adminActive = false,
-  adminHref = "/?view=admin",
+  adminHref = "/desk/?view=admin",
 }: SettingsMenuProps) {
   const { t, locale, setLocale } = useLocale();
   const { theme, setTheme } = useTheme();

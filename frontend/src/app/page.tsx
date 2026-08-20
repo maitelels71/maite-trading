@@ -1,5 +1,10 @@
-import { AppShell } from "@/components/AppShell";
+import { AppProviders } from "@/components/AppProviders";
+import { HubLanding } from "@/components/HubLanding";
 
 export default function Home() {
-  return <AppShell />;
+  return (
+    <AppProviders>
+      <HubLanding />
+    </AppProviders>
+  );
 }

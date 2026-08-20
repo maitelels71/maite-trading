@@ -3,9 +3,9 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { DeskSession, DeskStack } from "@/components/DeskSession";
+import { useDeskMode } from "@/components/DeskModeProvider";
 import { useLocale } from "@/components/LocaleProvider";
 import { fetchInstruments } from "@/lib/api";
-import { APP_VENUE } from "@/lib/app-mode";
 import {
   EMPTY_OPTIONS_TICKET,
   OPTIONS_CHECKLIST_SECTIONS,
@@ -144,6 +144,7 @@ const field =
 
 export function OptionsChecklistDesk() {
   const { t } = useLocale();
+  const { venue } = useDeskMode();
   const [date, setDate] = useState(todayNyIso);
   const [checked, setChecked] = useState<Record<string, boolean>>({});
   const [notes, setNotes] = useState("");
@@ -177,10 +178,10 @@ export function OptionsChecklistDesk() {
 
   const watchlist = useMemo(() => {
     const fromApi = instruments
-      .filter((i) => !i.data_provider || i.data_provider === APP_VENUE)
+      .filter((i) => !i.data_provider || i.data_provider === venue)
       .map((i) => i.symbol.toUpperCase());
     return [...new Set([...fromApi, ...FALLBACK_WATCHLIST])];
-  }, [instruments]);
+  }, [instruments, venue]);
 
   const watchlistGroups = useMemo(
     () => groupEquitySymbols(watchlist),

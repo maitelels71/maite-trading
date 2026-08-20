@@ -1,13 +1,7 @@
 import type { Metadata } from "next";
 import { IBM_Plex_Mono, Source_Sans_3 } from "next/font/google";
 
-import {
-  APP_DOCUMENT_TITLE,
-  APP_ICON_PNG,
-  APP_ICON_SVG,
-  APP_MODE_HINT,
-  APP_MODE_LABEL,
-} from "@/lib/app-mode";
+import { APP_DOCUMENT_TITLE, APP_ICON_PNG } from "@/lib/app-mode";
 import { THEME_BOOT_SCRIPT } from "@/lib/theme";
 
 import "./globals.css";
@@ -25,9 +19,9 @@ const ibmPlexMono = IBM_Plex_Mono({
 
 export const metadata: Metadata = {
   title: APP_DOCUMENT_TITLE,
-  description: `${APP_MODE_LABEL} trading desk — ${APP_MODE_HINT}`,
+  description: "Trading Like a Boss — Options, Futures, and Coinbase desks.",
   icons: {
-    icon: [{ url: APP_ICON_SVG, type: "image/svg+xml" }],
+    icon: [{ url: APP_ICON_PNG, type: "image/png" }],
     apple: [{ url: APP_ICON_PNG }],
   },
 };

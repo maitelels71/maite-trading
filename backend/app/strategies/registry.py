@@ -2,6 +2,7 @@ from app.core.constants import STRATEGY_ML02_H4
 from app.ports.strategy import Strategy
 from app.strategies.bb15_gap_open import Bb15GapOpenStrategy
 from app.strategies.bb_trend_flip_h import BbTrendFlipHStrategy
+from app.strategies.channel_scan import ALL_CH_STRATEGIES
 from app.strategies.creando_riquezas import ALL_CR_STRATEGIES
 from app.strategies.daily_mid_bounce import DailyMidBounceStrategy
 from app.strategies.magnet_ma20_gap import MagnetMa20GapStrategy
@@ -45,6 +46,8 @@ def build_default_registry() -> StrategyRegistry:
     registry.register(Ml01StructureChochBosStrategy())
     registry.register(Ml02H4M15M1Strategy())
     registry.register(Ml03FirstNy5mStrategy())
+    for strategy in ALL_CH_STRATEGIES:
+        registry.register(strategy)
     for strategy in ALL_CR_STRATEGIES:
         registry.register(strategy)
     return registry
