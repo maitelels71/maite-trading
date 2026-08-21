@@ -454,6 +454,9 @@ class Ml02H4M15M1Strategy(BaseStrategy):
             "confidence_threshold": 90,
             "use_active_candle": True,
             "timezone": "America/New_York",
+            # Skip 1m bars while hunting first setup — full-day WAIT walks
+            # otherwise blow past API Gateway ~29s on evaluate/backtest.
+            "m1_walk_stride": 5,
         }
 
     def evaluate(
@@ -468,6 +471,7 @@ class Ml02H4M15M1Strategy(BaseStrategy):
         pd_level = float(params.get("premium_discount_level") or 0.50)
         conf_th = int(params.get("confidence_threshold") or 90)
         use_active = bool(params.get("use_active_candle", True))
+        stride = max(1, int(params.get("m1_walk_stride") or 5))
 
         h4 = sorted(candles, key=lambda c: c.timestamp)
         extras = context.extra_candles or {}
@@ -488,7 +492,10 @@ class Ml02H4M15M1Strategy(BaseStrategy):
             if not day_m1:
                 return None
             # Warm-up: need enough LTF history before the day for PD/breakouts.
-            for bar in day_m1:
+            last_i = len(day_m1) - 1
+            for i, bar in enumerate(day_m1):
+                if i % stride and i != last_i:
+                    continue
                 as_of = bar.timestamp
                 snap = analyze_mtf(
                     _slice_as_of(h4, as_of),

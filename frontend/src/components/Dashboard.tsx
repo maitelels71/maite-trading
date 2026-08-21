@@ -165,6 +165,67 @@ function daysBetweenIso(start: string, end: string): number {
   return Math.max(0, Math.round((b - a) / 86_400_000));
 }
 
+function eachDayIso(start: string, end: string): string[] {
+  const out: string[] = [];
+  const cur = new Date(`${start}T12:00:00Z`);
+  const last = new Date(`${end}T12:00:00Z`);
+  if (Number.isNaN(cur.getTime()) || Number.isNaN(last.getTime())) return out;
+  while (cur.getTime() <= last.getTime()) {
+    out.push(cur.toISOString().slice(0, 10));
+    cur.setUTCDate(cur.getUTCDate() + 1);
+  }
+  return out;
+}
+
+function mergeBacktestChunks(
+  chunks: BacktestResponse[],
+  meta: {
+    ticker: string;
+    strategy: string;
+    timeframe: string;
+    start_date: string;
+    end_date: string;
+  },
+): BacktestResponse {
+  const trades = chunks.flatMap((c) => c.trades ?? []);
+  const signals = chunks.flatMap((c) => c.signals ?? []);
+  let wins = 0;
+  let losses = 0;
+  let pnl = 0;
+  let maxDd = 0;
+  let peak = 0;
+  let equity = 0;
+  for (const t of trades) {
+    const p = Number(t.profit_loss ?? 0);
+    if (!Number.isNaN(p)) {
+      pnl += p;
+      equity += p;
+      if (equity > peak) peak = equity;
+      const dd = peak - equity;
+      if (dd > maxDd) maxDd = dd;
+      if (p > 0) wins += 1;
+      else if (p < 0) losses += 1;
+    }
+  }
+  const total = trades.length;
+  return {
+    run_id: null,
+    ticker: meta.ticker,
+    strategy: meta.strategy,
+    timeframe: meta.timeframe,
+    start_date: meta.start_date,
+    end_date: meta.end_date,
+    total_trades: total,
+    winning_trades: wins,
+    losing_trades: losses,
+    win_rate: total ? wins / total : 0,
+    profit_loss: pnl,
+    max_drawdown: maxDd,
+    trades,
+    signals,
+  };
+}
+
 export function Dashboard() {
   const { t, locale } = useLocale();
   const { venue, label } = useDeskMode();
@@ -297,8 +358,20 @@ export function Dashboard() {
   }, [strategy]);
 
   useEffect(() => {
-    setSyncReport(loadSyncReport(venue, symbol));
-  }, [venue, symbol]);
+    const report = loadSyncReport(venue, symbol);
+    const need = playbook?.syncTimeframes?.length
+      ? playbook.syncTimeframes
+      : [timeframe];
+    if (
+      report &&
+      need.some((tf) => !report.rows.some((r) => r.tf === tf && r.count > 0))
+    ) {
+      // Stale report from another playbook (e.g. ML02 4h/15m/1m while on CH03 5m).
+      setSyncReport(null);
+      return;
+    }
+    setSyncReport(report);
+  }, [venue, symbol, strategy, playbook, timeframe]);
 
   useEffect(() => {
     let cancelled = false;
@@ -519,17 +592,28 @@ export function Dashboard() {
         }
         // Multi-TF playbooks (ML02/ML03) need every listed TF in the DB.
         if (syncTfs.length > 1) {
-          setStatus(t("analyzer.syncBeforeRun"));
-          const { perTf } = await syncPlaybookTfs();
-          const missing = perTf.filter((p) => p.count === 0).map((p) => p.tf);
-          if (missing.length) {
-            throw new Error(
-              `Faltan velas ${missing.join("+")} tras sync. Yahoo 1m ≈ 7 días — acorta el rango.`,
+          const recent =
+            syncReport &&
+            syncReport.symbol === symbol &&
+            Date.now() - new Date(syncReport.at).getTime() < 10 * 60_000 &&
+            syncReport.rows.every((r) => r.count > 0);
+          if (recent) {
+            setStatus(
+              `Using last sync · ${syncReport.rows.map((p) => `${p.tf}:${p.count}`).join(" · ")} · running…`,
+            );
+          } else {
+            setStatus(t("analyzer.syncBeforeRun"));
+            const { perTf } = await syncPlaybookTfs();
+            const missing = perTf.filter((p) => p.count === 0).map((p) => p.tf);
+            if (missing.length) {
+              throw new Error(
+                `Faltan velas ${missing.join("+")} tras sync. Yahoo 1m ≈ 7 días — acorta el rango.`,
+              );
+            }
+            setStatus(
+              `Synced ${perTf.map((p) => `${p.tf}:${p.count}`).join(" · ")} · running…`,
             );
           }
-          setStatus(
-            `Synced ${perTf.map((p) => `${p.tf}:${p.count}`).join(" · ")} · running…`,
-          );
         }
         if (mode === "evaluate") {
           const res = await evaluateStrategy({
@@ -546,20 +630,55 @@ export function Dashboard() {
             `${strategyDisplayName(strategy)} · ${symbol} · ${date} · ${res.signals?.length ?? 0} signals · ${res.trades.length} trades${zeroHint}`,
           );
         } else {
-          const res = await backtestStrategy({
-            ticker: symbol,
-            strategy,
-            timeframe,
-            start_date: startDate,
-            end_date: endDate,
-            market_type: selected?.market_type,
-            persist: true,
-          });
+          // ML02 (and other 1m walks) blow past API Gateway ~29s on multi-day
+          // ranges — run one calendar day per request and merge.
+          const days = eachDayIso(startDate, endDate);
+          // Chunk multi-day backtests — API Gateway ~29s kills long ranges
+          // (ML02 1m walks and heavy CH scans alike).
+          const chunked = days.length > 1;
+          let res: BacktestResponse;
+          if (chunked) {
+            const parts: BacktestResponse[] = [];
+            for (let i = 0; i < days.length; i += 1) {
+              const day = days[i]!;
+              setStatus(
+                `Backtest ${day} (${i + 1}/${days.length}) · ${strategyDisplayName(strategy)}…`,
+              );
+              parts.push(
+                await backtestStrategy({
+                  ticker: symbol,
+                  strategy,
+                  timeframe,
+                  start_date: day,
+                  end_date: day,
+                  market_type: selected?.market_type,
+                  persist: false,
+                }),
+              );
+            }
+            res = mergeBacktestChunks(parts, {
+              ticker: symbol,
+              strategy,
+              timeframe,
+              start_date: startDate,
+              end_date: endDate,
+            });
+          } else {
+            res = await backtestStrategy({
+              ticker: symbol,
+              strategy,
+              timeframe,
+              start_date: startDate,
+              end_date: endDate,
+              market_type: selected?.market_type,
+              persist: true,
+            });
+          }
           applyBacktest(res);
           const zeroHint =
             res.total_trades === 0 && needs1m ? ` · ${zeroTradesHint()}` : "";
           setStatus(
-            `${strategyDisplayName(strategy)} · backtest ${startDate}→${endDate} · ${res.total_trades} trades${res.run_id ? ` · run ${res.run_id}` : ""}${zeroHint}`,
+            `${strategyDisplayName(strategy)} · backtest ${startDate}→${endDate} · ${res.total_trades} trades${res.run_id ? ` · run ${res.run_id}` : ""}${chunked ? " · day chunks" : ""}${zeroHint}`,
           );
         }
         await loadCandles();

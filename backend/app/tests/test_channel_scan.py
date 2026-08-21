@@ -104,6 +104,47 @@ def test_ch01_gap_go_long() -> None:
     assert "CH01" in result.signals[0].reason
 
 
+def test_ch03_ema_cross_fires_intraday() -> None:
+    """Cross mid-session (not only on the last two bars) must produce a signal."""
+    day = date(2026, 8, 4)
+    base = datetime(2026, 8, 4, 9, 30, tzinfo=ET)
+    bars: list[Candle] = []
+    px = Decimal("100")
+    # Warm-up downtrend, then sharp rally that crosses EMAs around bar 35.
+    for i in range(50):
+        t = base + timedelta(minutes=5 * i)
+        if i < 28:
+            px -= Decimal("0.25")
+        else:
+            px += Decimal("0.6")
+        vol = "50" if i % 2 == 0 else "2000"  # Yahoo-like zero-ish alternation
+        if i % 2 == 0:
+            vol = "0"
+        bars.append(
+            _c(
+                t,
+                str(px),
+                str(px + Decimal("0.2")),
+                str(px - Decimal("0.2")),
+                str(px),
+                vol=vol,
+            )
+        )
+    strat = Ch03EmaCrossStrategy()
+    result = strat.evaluate(
+        bars,
+        StrategyContext(
+            ticker="MNQ",
+            timeframe="5m",
+            start=day,
+            end=day,
+        ),
+    )
+    assert result.signals, "expected CH03 cross during the RTH walk"
+    assert result.signals[0].side in (Side.LONG, Side.SHORT)
+    assert "CH03" in result.signals[0].reason
+
+
 def test_ch03_ema_cross_needs_volume() -> None:
     day = date(2026, 8, 4)
     base = datetime(2026, 8, 1, 9, 30, tzinfo=ET)

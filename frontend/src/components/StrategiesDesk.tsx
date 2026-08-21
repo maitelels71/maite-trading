@@ -92,13 +92,17 @@ const DESK_4H_LOOKBACK_DAYS = 14;
 const DESK_SYNC_TFS_FUTURES = ["4h", "1h", "15m", "5m", "1m"] as const;
 const DESK_LOOKBACK_FUTURES = 14;
 const DESK_1M_LOOKBACK_DAYS = 1;
+/** After the first full sync of the day: only pull the last ~N days (latest bars). */
+const DESK_TAIL_LOOKBACK_DAYS = 1;
+const DESK_TAIL_LOOKBACK_OPTIONS = 2;
 /** Parallel Yahoo sync calls — sequential was ~30+ requests and felt stuck. */
 const DESK_SYNC_CONCURRENCY = 4;
 /** One strategy per HTTP call — extras (15m/1m) still trip API Gateway ~29s. */
 const DESK_STRATEGY_CHUNK = 1;
 const SCAN_SYMBOL_BATCH = 2;
 const DESK_SCAN_SYMBOL_BATCH = 4;
-const DESK_SCAN_SYMBOL_BATCH_FUTURES = 1;
+/** Futures: 2 symbols/request is usually under API Gateway ~29s when strategies are chunked. */
+const DESK_SCAN_SYMBOL_BATCH_FUTURES = 2;
 const HARD_SYNC_KEY = "maite.strategies.hardSyncDay";
 /** Session day when desk candle sync last completed (skip re-download on Auto). */
 const DESK_SYNCED_DAY_KEY = "maite.strategies.deskSyncedDay";
@@ -136,6 +140,15 @@ function markDeskSyncedToday(sessionDay: string): void {
   if (typeof window === "undefined") return;
   try {
     window.localStorage.setItem(DESK_SYNCED_DAY_KEY, sessionDay);
+  } catch {
+    /* ignore */
+  }
+}
+
+function clearDeskSyncedToday(): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.removeItem(DESK_SYNCED_DAY_KEY);
   } catch {
     /* ignore */
   }
@@ -747,6 +760,12 @@ export function StrategiesDesk({ venue, autoScan = false }: StrategiesDeskProps)
   const [sessionDate, setSessionDate] = useState(() =>
     operativeSessionNyIso(new Date(), venue),
   );
+  const [deskCandlesSyncedDay, setDeskCandlesSyncedDay] = useState<string | null>(
+    () => {
+      const day = operativeSessionNyIso(new Date(), venue);
+      return deskSyncedToday(day) ? day : null;
+    },
+  );
   const [premarket, setPremarket] = useState(false);
   const [scan, setScan] = useState<ScanResponse | null>(null);
   const [deskGroups, setDeskGroups] = useState<DeskConfluenceGroup[]>([]);
@@ -842,6 +861,8 @@ export function StrategiesDesk({ venue, autoScan = false }: StrategiesDeskProps)
       const now = new Date();
       setSessionDate(operativeSessionNyIso(now, venue));
       setPremarket(isPremarketOrClosedNy(now, venue));
+      const day = operativeSessionNyIso(now, venue);
+      if (deskSyncedToday(day)) setDeskCandlesSyncedDay(day);
       if (venue === "schwab" && isCashAutoOffNy(now)) {
         if (autoLiveRef.current || autoDeskRef.current) abortBrokerSync();
         autoLiveRef.current = false;
@@ -1405,7 +1426,7 @@ export function StrategiesDesk({ venue, autoScan = false }: StrategiesDeskProps)
   );
 
   const runDeskTop5 = useCallback(
-    async (opts?: { fromAuto?: boolean }) => {
+    async (opts?: { fromAuto?: boolean; forceCandleSync?: boolean }) => {
       if (deskStrategyKeys.length === 0) {
         setDeskError(t("strategies.draftError"));
         return;
@@ -1419,12 +1440,19 @@ export function StrategiesDesk({ venue, autoScan = false }: StrategiesDeskProps)
       setDeskError(null);
       setDeskNote(t("strategies.syncing"));
       const fromAuto = Boolean(opts?.fromAuto);
-      const forceRefresh = takeHardRefresh(day, fromAuto);
-      // First pass of the session day always syncs. Later Auto polls only scan
-      // (re-downloading 4h/1h/15m/5m/1m × all symbols is what froze TOP 5).
-      const needCandleSync = !fromAuto || !deskSyncedToday(day);
+      const forceCandleSync = Boolean(opts?.forceCandleSync);
+      if (forceCandleSync) {
+        clearDeskSyncedToday();
+        setDeskCandlesSyncedDay(null);
+      }
+      const forceRefresh =
+        forceCandleSync || takeHardRefresh(day, fromAuto);
+      // 1) First pass / Force: full Yahoo lookback into Dynamo.
+      // 2) Auto + later TOP 5 scan: only refresh the latest bars, then re-rank.
+      // Historical structure stays in Dynamo — never re-download 14d every 10m.
+      const needFullCandleSync = forceCandleSync || !deskSyncedToday(day);
       try {
-      if (needCandleSync) {
+      if (needFullCandleSync) {
         const synced = await syncUniverse({
           tfs: [
             ...(venue === "tradeadvocate"
@@ -1469,6 +1497,7 @@ export function StrategiesDesk({ venue, autoScan = false }: StrategiesDeskProps)
           return;
         }
         markDeskSyncedToday(day);
+        setDeskCandlesSyncedDay(day);
 
         setDeskNote(
           t("strategies.syncDone")
@@ -1477,7 +1506,43 @@ export function StrategiesDesk({ venue, autoScan = false }: StrategiesDeskProps)
             .replace("{errors}", String(synced.syncErrors)),
         );
       } else {
-        setDeskNote(t("strategies.deskScanningOnly"));
+        setDeskNote(t("strategies.deskRefreshingTail"));
+        const synced = await syncUniverse({
+          tfs: [
+            ...(venue === "tradeadvocate"
+              ? DESK_SYNC_TFS_FUTURES
+              : DESK_SYNC_TFS),
+          ],
+          lookback:
+            venue === "tradeadvocate"
+              ? DESK_TAIL_LOOKBACK_DAYS
+              : DESK_TAIL_LOOKBACK_OPTIONS,
+          gen,
+          genRef: deskGen,
+          endDay: day,
+          items: deskUniverse,
+          forceRefresh: false,
+          onProgress: (done, total, label) => {
+            if (gen !== deskGen.current) return;
+            setDeskNote(
+              t("strategies.syncTailProgress")
+                .replace("{done}", String(done))
+                .replace("{total}", String(total))
+                .replace("{label}", label),
+            );
+          },
+        });
+        if (!synced) {
+          if (deskGen.current !== gen) {
+            setDeskNote(t("strategies.syncAborted"));
+          }
+          return;
+        }
+        setDeskNote(
+          t("strategies.deskTailThenScan")
+            .replace("{bars}", String(synced.syncedBars))
+            .replace("{errors}", String(synced.syncErrors)),
+        );
       }
 
       try {
@@ -1624,6 +1689,13 @@ export function StrategiesDesk({ venue, autoScan = false }: StrategiesDeskProps)
     if (deskBusyRef.current) return;
     void runDeskTop5({ fromAuto: false });
   }, [runDeskTop5]);
+
+  const runDeskForceSync = useCallback(() => {
+    if (deskBusyRef.current) return;
+    void runDeskTop5({ fromAuto: false, forceCandleSync: true });
+  }, [runDeskTop5]);
+
+  const candlesReadyToday = deskCandlesSyncedDay === sessionDate;
 
   const landedScanKey = useRef<string>("");
   useEffect(() => {
@@ -1939,11 +2011,35 @@ export function StrategiesDesk({ venue, autoScan = false }: StrategiesDeskProps)
               }
               onClick={runDeskScan}
               className="shrink-0 cursor-pointer rounded-md bg-[var(--accent)] px-3 py-1.5 text-xs font-medium text-[var(--on-accent)] hover:bg-[var(--accent-hover)] disabled:cursor-not-allowed disabled:opacity-50"
+              title={
+                candlesReadyToday
+                  ? t("strategies.deskTopScanOnlyHint")
+                  : t("strategies.deskTopScanHint")
+              }
             >
               {deskBusy
                 ? t("strategies.deskTopScanning")
-                : t("strategies.deskTopScan")}
+                : candlesReadyToday
+                  ? t("strategies.deskTopScanOnly")
+                  : t("strategies.deskTopScan")}
             </button>
+            {candlesReadyToday ? (
+              <button
+                type="button"
+                disabled={
+                  deskBusy ||
+                  deskStrategyKeys.length === 0 ||
+                  Boolean(openingKey) ||
+                  armOpens ||
+                  quietRemainSec > 0
+                }
+                onClick={runDeskForceSync}
+                className="shrink-0 rounded-md border border-[var(--border)] px-3 py-1.5 text-xs font-medium text-[var(--muted)] hover:bg-[var(--hover)] disabled:opacity-50"
+                title={t("strategies.deskTopResyncHint")}
+              >
+                {t("strategies.deskTopResync")}
+              </button>
+            ) : null}
             <button
               type="button"
               disabled={deskStrategyKeys.length === 0 || armOpens || autoBlocked}

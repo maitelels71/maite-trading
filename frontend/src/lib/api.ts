@@ -48,15 +48,23 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       }
     }
     if (res.status === 503) {
-      const scan = /\/strateg|\/scan/i.test(path);
-      if (detail && !scan) {
+      const isScan = /\/strategy\/scan/i.test(path);
+      const isEval = /\/strategy\/evaluate/i.test(path);
+      const isBt = /\/strategy\/backtest/i.test(path);
+      if (detail && !isScan && !isEval && !isBt) {
         throw new Error(detail);
       }
-      throw new Error(
-        scan
-          ? "Scan timed out (API ~29s). Sync & Scan now runs in smaller batches — retry."
-          : detail || "Request timed out (API ~29s). Retry.",
-      );
+      if (isEval || isBt) {
+        throw new Error(
+          "Analyzer timed out (API ~29s). Use Evaluate on one day, or a short backtest range (ML02 1m is heavy) — retry.",
+        );
+      }
+      if (isScan) {
+        throw new Error(
+          "Scan timed out (API ~29s). Sync & Scan now runs in smaller batches — retry.",
+        );
+      }
+      throw new Error(detail || "Request timed out (API ~29s). Retry.");
     }
     if (res.status === 429) {
       const headerRetry = (res.headers.get("Retry-After") || "").trim();

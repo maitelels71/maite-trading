@@ -192,6 +192,7 @@ def evaluate_strategy(
                 candle_start=candle_start,
                 fetch_missing=True,
                 require_extras=True,
+                extra_lookback_days=_EVAL_EXTRA_LOOKBACK,
             )
         else:
             engine = StrategyEngine(session=db)
@@ -248,6 +249,7 @@ def backtest_strategy(
                 candle_start=candle_start,
                 fetch_missing=True,
                 require_extras=True,
+                extra_lookback_days=_EVAL_EXTRA_LOOKBACK,
             )
             run_id = None
             if body.persist:
@@ -329,6 +331,9 @@ def backtest_strategy(
 
 # Live desk scan: extras (especially 1m) must stay small or API Gateway 503s.
 _SCAN_EXTRA_LOOKBACK: dict[str, int] = {"1m": 1, "5m": 3, "15m": 5}
+# Analyzer evaluate/backtest: keep 1m inside Yahoo's ~7d window so Dynamo loads
+# and ML02's 1m walk stay under API Gateway ~29s.
+_EVAL_EXTRA_LOOKBACK: dict[str, int] = {"1m": 7, "5m": 10, "15m": 21}
 
 
 def _evaluate_dynamo(

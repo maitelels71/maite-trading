@@ -290,7 +290,15 @@ const en: Dict = {
   "strategies.deskTopHintFutures":
     "Whenever Globex is open: sync 4h/1h/15m/5m/1m, scan every playbook (ML01–ML03 + CH01–CH06) on MNQ·MES·FX·MGC, rank TOP 5 by confluence. ML03 is NY RTH-gated.",
   "strategies.deskTopScan": "Sync & TOP 5",
+  "strategies.deskTopScanOnly": "TOP 5 scan",
   "strategies.deskTopScanning": "Desk scan…",
+  "strategies.deskTopScanHint":
+    "First run of the session day: download Yahoo candles into Dynamo, then rank TOP 5.",
+  "strategies.deskTopScanOnlyHint":
+    "History already in Dynamo — refreshes only the latest bars, then re-ranks TOP 5.",
+  "strategies.deskTopResync": "Re-sync candles",
+  "strategies.deskTopResyncHint":
+    "Force re-download Yahoo lookbacks for all desk symbols, then scan.",
   "strategies.deskTopEmpty": "No TOP 5 matches. Click the green Sync & TOP 5 to refresh.",
   "strategies.deskTopEmptyPremarket":
     "Premarket: Auto is off until 9:30 ET. Click Sync & TOP 5 — the desk uses yesterday’s cash session until the open (amber = prior day, not today’s RTH).",
@@ -330,6 +338,10 @@ const en: Dict = {
   "strategies.syncing": "Syncing candles from broker…",
   "strategies.syncProgress": "Syncing {done}/{total} · {label}",
   "strategies.deskScanningOnly": "Scanning TOP 5 (candles already synced)…",
+  "strategies.deskRefreshingTail": "Refreshing latest candles (history stays in Dynamo)…",
+  "strategies.syncTailProgress": "Latest bars {done}/{total} · {label}",
+  "strategies.deskTailThenScan":
+    "Latest bars updated ({bars}, {errors} errors) · scanning strategies…",
   "strategies.syncDone":
     "Synced {bars} bars across {symbols} symbols ({errors} sync errors). Scanning…",
   "strategies.syncSkipped":
@@ -347,9 +359,9 @@ const en: Dict = {
   "strategies.autoHint":
     "Every 10 minutes: sync candles + rescan this playbook. Turns off Desk TOP 5 auto (only one auto at a time). Before 9:30 ET the session is still yesterday’s cash day.",
   "strategies.deskAutoHint":
-    "Every 10 minutes: sync desk candles + re-rank TOP 5. Turns off Focus auto (only one auto at a time).",
+    "Every 10 minutes: refresh latest candles + re-rank TOP 5 (keeps Dynamo history). Turns off Focus auto.",
   "strategies.deskAutoHintFutures":
-    "Every 10 minutes while Globex is open: re-scan TOP 5 (skips re-downloading all candles). Click Desk scan once to sync Yahoo bars for the day.",
+    "Every 10 minutes while Globex is open: refresh latest Yahoo bars + re-scan TOP 5. First click of the day does the full sync.",
   "strategies.autoOffSession":
     "Auto is off before 9:30 ET (premarket / weekend). After the cash open, Auto 10m is available. Trigger opens still pauses it.",
   "strategies.scanSummary":
@@ -1025,7 +1037,15 @@ const es: Dict = {
   "strategies.deskTopHintFutures":
     "Con Globex abierto: sync 4h/1h/15m/5m/1m, escanea todos los playbooks (ML01–ML03 + CH01–CH06) en MNQ·MES·FX·MGC, rankea TOP 5 por confluencia. ML03 con gate NY RTH.",
   "strategies.deskTopScan": "Sync & TOP 5",
+  "strategies.deskTopScanOnly": "TOP 5 scan",
   "strategies.deskTopScanning": "Desk scan…",
+  "strategies.deskTopScanHint":
+    "Primera corrida del día de sesión: baja velas Yahoo a Dynamo y rankea TOP 5.",
+  "strategies.deskTopScanOnlyHint":
+    "Histórico ya en Dynamo — solo refresca las últimas velas y reordena TOP 5.",
+  "strategies.deskTopResync": "Re-sync velas",
+  "strategies.deskTopResyncHint":
+    "Fuerza re-descarga Yahoo del lookback de todos los símbolos del desk y luego scan.",
   "strategies.deskTopEmpty": "Sin TOP 5. Pulsa el Sync & TOP 5 verde para refrescar.",
   "strategies.deskTopEmptyPremarket":
     "Premarket: Auto está apagado hasta las 9:30 ET. Pulsa Sync & TOP 5 — el desk usa la sesión cash de ayer hasta la apertura (ámbar = día previo, no el RTH de hoy).",
@@ -1065,6 +1085,10 @@ const es: Dict = {
   "strategies.syncing": "Bajando velas del broker…",
   "strategies.syncProgress": "Sync {done}/{total} · {label}",
   "strategies.deskScanningOnly": "Escaneando TOP 5 (velas ya sincronizadas)…",
+  "strategies.deskRefreshingTail": "Refrescando últimas velas (el histórico queda en Dynamo)…",
+  "strategies.syncTailProgress": "Últimas velas {done}/{total} · {label}",
+  "strategies.deskTailThenScan":
+    "Últimas velas actualizadas ({bars}, {errors} errores) · escaneando estrategias…",
   "strategies.syncDone":
     "Sync: {bars} barras · {symbols} símbolos · {errors} errores. Escaneando…",
   "strategies.syncSkipped":
@@ -1082,9 +1106,9 @@ const es: Dict = {
   "strategies.autoHint":
     "Cada 10 min: sync de velas + rescan de este playbook. Apaga el auto de Desk TOP 5 (solo un auto a la vez). Antes de 9:30 ET la sesión sigue siendo el día cash de ayer.",
   "strategies.deskAutoHint":
-    "Cada 10 min: sync de velas del desk + re-rank TOP 5. Apaga el auto de Focus (solo un auto a la vez).",
+    "Cada 10 min: refresca últimas velas + re-rank TOP 5 (el histórico queda en Dynamo). Apaga el auto de Focus.",
   "strategies.deskAutoHintFutures":
-    "Cada 10 min con Globex abierto: re-escanea TOP 5 (no vuelve a bajar todas las velas). Pulsa Desk scan una vez al día para sincronizar Yahoo.",
+    "Cada 10 min con Globex abierto: refresca últimas velas Yahoo + re-scan TOP 5. El primer click del día hace el sync completo.",
   "strategies.autoOffSession":
     "Auto está apagado antes de las 9:30 ET (premarket / fin de semana). Tras la apertura cash, Auto 10m está disponible. Trigger opens sigue pausándolo.",
   "strategies.scanSummary":

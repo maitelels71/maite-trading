@@ -90,6 +90,9 @@ const CH_CORE: ChCore[] = [
       "Precio se aleja ≥1.5σ del VWAP de sesión RTH y empieza a revertir. " +
       "En futuros el VWAP se resetea en la sesión (9:30 ET), no en el día Globex.",
     sessionWindow: "RTH · tras ≥12 barras 5m desde 9:30 ET",
+    preferredTimeframe: "5m",
+    syncTimeframes: ["5m"],
+    syncLookbackDays: 10,
     setupImage: "/brand/ch02-vwap-reversion.svg",
     riskNotes: [
       "Tendencia fuerte puede no revertir — no forzar",
@@ -141,6 +144,9 @@ const CH_CORE: ChCore[] = [
       "EMA 9 cruza EMA 20 al alza o a la baja en 5m, confirmado con volumen " +
       "creciente. Se traslada igual a futuros (MNQ/MES/…).",
     sessionWindow: "RTH · 5m (Yahoo)",
+    preferredTimeframe: "5m",
+    syncTimeframes: ["5m"],
+    syncLookbackDays: 10,
     setupImage: "/brand/ch03-ema-cross.svg",
     riskNotes: [
       "Cruce sin volumen = falso — requiere vol creciente",
@@ -186,6 +192,9 @@ const CH_CORE: ChCore[] = [
       "RSI(14) en 5m ≤30 o ≥70, con volumen decreciente en la extensión. " +
       "Volumen promedio / fade sobre la sesión RTH activa (futuros 24h ≠ avg Globex).",
     sessionWindow: "RTH · 5m",
+    preferredTimeframe: "5m",
+    syncTimeframes: ["5m"],
+    syncLookbackDays: 10,
     setupImage: "/brand/ch04-rsi-extreme.svg",
     riskNotes: [
       "RSI extremo puede seguir extremo en tendencias fuertes",
@@ -231,6 +240,8 @@ const CH_CORE: ChCore[] = [
       "Fuerza relativa en la ventana AM RTH: equity vs SPY/QQQ; futuros " +
       "MNQ/NQ vs MES/ES cuando hay bench. Si no, vs propio promedio 5d.",
     sessionWindow: "RTH · ~primera hora desde 9:30 ET",
+    preferredTimeframe: "5m",
+    syncTimeframes: ["5m"],
     syncLookbackDays: 12,
     setupImage: "/brand/ch05-rel-strength.svg",
     riskNotes: [

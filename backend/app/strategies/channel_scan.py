@@ -172,8 +172,12 @@ class Ch01GapGoStrategy(BaseStrategy):
             ][-avg_lb:]
             if len(hist) < 10:
                 return None
-            avg_vol = _avg_volume(hist) * open_bars
-            if avg_vol <= 0 or open_vol < avg_vol * vol_mult:
+            hist_nz = [c for c in hist if (c.volume or Decimal("0")) > 0]
+            avg_vol = _avg_volume(hist_nz or hist) * open_bars
+            if avg_vol <= 0:
+                return None
+            # If opening window volume is all Yahoo zeros, don't block the gap.
+            if open_vol > 0 and open_vol < avg_vol * vol_mult:
                 return None
             side = Side.LONG if gap > 0 else Side.SHORT
             bar = window[-1]
@@ -242,38 +246,33 @@ class Ch02VwapReversionStrategy(BaseStrategy):
             if len(day_bars) < min_bars:
                 return None
             vwaps = session_vwap(day_bars)
+            # Expanding σ from session start; first reversion after |z|≥th wins.
             diffs: list[float] = []
-            for c, v in zip(day_bars, vwaps):
+            for i, (c, v) in enumerate(zip(day_bars, vwaps)):
                 if v is None:
                     continue
                 diffs.append(float(c.close - v))
-            if len(diffs) < min_bars:
-                return None
-            sd = pstdev(diffs) if len(diffs) > 1 else 0.0
-            if sd <= 0:
-                return None
-            i = len(day_bars) - 1
-            vwap = vwaps[i]
-            if vwap is None:
-                return None
-            z = float(day_bars[i].close - vwap) / sd
-            if abs(z) < z_th:
-                return None
-            # Reversion: last close moved toward VWAP vs prior bar.
-            if i < 1 or vwaps[i - 1] is None:
-                return None
-            prev_dist = abs(float(day_bars[i - 1].close - vwaps[i - 1]))
-            curr_dist = abs(float(day_bars[i].close - vwap))
-            if curr_dist >= prev_dist:
-                return None
-            side = Side.LONG if z < 0 else Side.SHORT
-            return _hit(
-                bar=day_bars[i],
-                side=side,
-                reason=f"CH02 VWAP reversion z={z:.2f}",
-                ticker=ticker,
-                day_bars=day_bars,
-            )
+                if len(diffs) < min_bars or i < 1:
+                    continue
+                sd = pstdev(diffs) if len(diffs) > 1 else 0.0
+                if sd <= 0 or vwaps[i - 1] is None:
+                    continue
+                z = float(c.close - v) / sd
+                if abs(z) < z_th:
+                    continue
+                prev_dist = abs(float(day_bars[i - 1].close - vwaps[i - 1]))
+                curr_dist = abs(float(c.close - v))
+                if curr_dist >= prev_dist:
+                    continue
+                side = Side.LONG if z < 0 else Side.SHORT
+                return _hit(
+                    bar=c,
+                    side=side,
+                    reason=f"CH02 VWAP reversion z={z:.2f}",
+                    ticker=ticker,
+                    day_bars=day_bars,
+                )
+            return None
 
         return evaluate_each_session_day(
             context, tz=tz, candles_for_days=series, score_day=score_day
@@ -334,32 +333,38 @@ class Ch03EmaCrossStrategy(BaseStrategy):
             ]
             if len(idxs) < 2:
                 return None
-            i = idxs[-1]
-            j = idxs[-2] if len(idxs) >= 2 else i - 1
-            if j < 0 or fast[i] is None or slow[i] is None:
-                return None
-            if fast[j] is None or slow[j] is None:
-                return None
-            bull_cross = fast[j] <= slow[j] and fast[i] > slow[i]
-            bear_cross = fast[j] >= slow[j] and fast[i] < slow[i]
-            if not bull_cross and not bear_cross:
-                return None
-            vol_now = series[i].volume or Decimal("0")
-            vol_prev = series[j].volume or Decimal("0")
-            if vol_now <= vol_prev:
-                return None
-            side = Side.LONG if bull_cross else Side.SHORT
             day_bars = [series[k] for k in idxs]
-            return _hit(
-                bar=series[i],
-                side=side,
-                reason=(
-                    f"CH03 EMA{fast_n}/{slow_n} "
-                    f"{'bull' if bull_cross else 'bear'} cross + rising vol"
-                ),
-                ticker=ticker,
-                day_bars=day_bars,
-            )
+            # Walk the whole RTH day (first cross wins). Checking only the last
+            # two bars made Analyzer backtests return 0 almost always.
+            for n in range(1, len(idxs)):
+                i = idxs[n]
+                j = idxs[n - 1]
+                if fast[i] is None or slow[i] is None:
+                    continue
+                if fast[j] is None or slow[j] is None:
+                    continue
+                bull_cross = fast[j] <= slow[j] and fast[i] > slow[i]
+                bear_cross = fast[j] >= slow[j] and fast[i] < slow[i]
+                if not bull_cross and not bear_cross:
+                    continue
+                vol_now = series[i].volume or Decimal("0")
+                vol_prev = series[j].volume or Decimal("0")
+                # Yahoo futures often print 0 volume on alternate bars — only
+                # enforce rising vol when both bars have real volume.
+                if vol_now > 0 and vol_prev > 0 and vol_now <= vol_prev:
+                    continue
+                side = Side.LONG if bull_cross else Side.SHORT
+                return _hit(
+                    bar=series[i],
+                    side=side,
+                    reason=(
+                        f"CH03 EMA{fast_n}/{slow_n} "
+                        f"{'bull' if bull_cross else 'bear'} cross + rising vol"
+                    ),
+                    ticker=ticker,
+                    day_bars=day_bars,
+                )
+            return None
 
         return evaluate_each_session_day(
             context, tz=tz, candles_for_days=series, score_day=score_day
@@ -423,25 +428,34 @@ class Ch04RsiExtremeStrategy(BaseStrategy):
             ]
             if len(idxs) < fade_n:
                 return None
-            i = idxs[-1]
-            val = rsis[i]
-            if val is None:
-                return None
-            if val > lo and val < hi:
-                return None
-            # Decreasing volume on last fade_n bars.
-            vols = [series[k].volume or Decimal("0") for k in idxs[-fade_n:]]
-            if not all(vols[k] >= vols[k + 1] for k in range(len(vols) - 1)):
-                return None
-            side = Side.LONG if val <= lo else Side.SHORT
             day_bars = [series[k] for k in idxs]
-            return _hit(
-                bar=series[i],
-                side=side,
-                reason=f"CH04 RSI={float(val):.1f} + volume fade",
-                ticker=ticker,
-                day_bars=day_bars,
-            )
+            # Walk RTH day — last-bar-only missed intraday RSI extremes.
+            for n in range(fade_n - 1, len(idxs)):
+                i = idxs[n]
+                val = rsis[i]
+                if val is None:
+                    continue
+                if val > lo and val < hi:
+                    continue
+                win = idxs[n - fade_n + 1 : n + 1]
+                vols = [series[k].volume or Decimal("0") for k in win]
+                # Soft fade: ignore zero-volume Yahoo glitches.
+                nonzero = [v for v in vols if v > 0]
+                if len(nonzero) >= 2:
+                    if not all(
+                        nonzero[k] >= nonzero[k + 1]
+                        for k in range(len(nonzero) - 1)
+                    ):
+                        continue
+                side = Side.LONG if val <= lo else Side.SHORT
+                return _hit(
+                    bar=series[i],
+                    side=side,
+                    reason=f"CH04 RSI={float(val):.1f} + volume fade",
+                    ticker=ticker,
+                    day_bars=day_bars,
+                )
+            return None
 
         return evaluate_each_session_day(
             context, tz=tz, candles_for_days=series, score_day=score_day
@@ -648,7 +662,9 @@ class Ch06OrbStrategy(BaseStrategy):
             or_vol = _avg_volume(or_bars)
             for c in post:
                 vol = c.volume or Decimal("0")
-                if or_vol > 0 and vol < or_vol * vol_mult:
+                # Yahoo futures often print 0 volume — only enforce when both
+                # OR avg and this bar have real volume.
+                if or_vol > 0 and vol > 0 and vol < or_vol * vol_mult:
                     continue
                 if c.close > hi:
                     return _hit(
