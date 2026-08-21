@@ -71,11 +71,14 @@ export function JobsDesk() {
       setNote(t("jobs.runningEod"));
       try {
         const res = await runCandleArchiveEod();
-        setNote(
-          "accepted" in res && res.accepted
-            ? String(res.message || t("jobs.acceptedBg"))
-            : `${t("jobs.done")} · ${res.status} · ${res.summary?.bars ?? 0} bars`,
-        );
+        if ("accepted" in res && res.accepted) {
+          setNote(String(res.message || t("jobs.acceptedBg")));
+        } else {
+          const run = res as JobRun;
+          setNote(
+            `${t("jobs.done")} · ${run.status} · ${run.summary?.bars ?? 0} bars`,
+          );
+        }
         reload();
       } catch (err) {
         setError(err instanceof Error ? err.message : "EOD failed");
@@ -90,11 +93,14 @@ export function JobsDesk() {
       setNote(t("jobs.runningBackfill"));
       try {
         const res = await runCandleArchiveBackfill({ lookback_days: 59 });
-        setNote(
-          "accepted" in res && res.accepted
-            ? String(res.message || t("jobs.acceptedBg"))
-            : `${t("jobs.done")} · ${res.status} · ${res.summary?.bars ?? 0} bars`,
-        );
+        if ("accepted" in res && res.accepted) {
+          setNote(String(res.message || t("jobs.acceptedBg")));
+        } else {
+          const run = res as JobRun;
+          setNote(
+            `${t("jobs.done")} · ${run.status} · ${run.summary?.bars ?? 0} bars`,
+          );
+        }
         reload();
       } catch (err) {
         setError(err instanceof Error ? err.message : "Backfill failed");
