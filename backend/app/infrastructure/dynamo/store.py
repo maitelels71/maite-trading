@@ -326,3 +326,55 @@ class DynamoStore:
             if code == "ConditionalCheckFailedException":
                 return False
             raise
+
+    def latest_candle_timestamp(
+        self,
+        symbol: str,
+        market_type: str,
+        timeframe: str,
+    ) -> datetime | None:
+        pk = f"{symbol}#{market_type}#{timeframe}"
+        resp = ddb.candles_table().query(
+            KeyConditionExpression=Key("pk").eq(pk),
+            ScanIndexForward=False,
+            Limit=1,
+        )
+        items = resp.get("Items") or []
+        if not items:
+            return None
+        return _parse_ts(str(items[0].get("timestamp") or items[0].get("sk")))
+
+    def save_job_run(self, record: dict[str, Any]) -> None:
+        job_name = str(record.get("job_name") or "unknown")
+        started = str(record.get("started_at") or _iso(datetime.now(UTC)))
+        item = {
+            "pk": job_name,
+            "sk": started,
+            **record,
+        }
+        ddb.put_item(ddb.job_runs_table(), _dynamo_safe(item))
+
+    def list_job_runs(
+        self,
+        *,
+        job_name: str | None = None,
+        limit: int = 30,
+    ) -> list[dict[str, Any]]:
+        limit = max(1, min(int(limit), 100))
+        if job_name:
+            resp = ddb.job_runs_table().query(
+                KeyConditionExpression=Key("pk").eq(job_name),
+                ScanIndexForward=False,
+                Limit=limit,
+            )
+            return list(resp.get("Items") or [])
+
+        # Recent across jobs: scan + sort (job volume is tiny).
+        resp = ddb.job_runs_table().scan(Limit=max(limit * 3, 50))
+        items = list(resp.get("Items") or [])
+        items.sort(key=lambda x: str(x.get("sk") or ""), reverse=True)
+        return items[:limit]
+
+    def latest_job_run(self, job_name: str) -> dict[str, Any] | None:
+        rows = self.list_job_runs(job_name=job_name, limit=1)
+        return rows[0] if rows else None

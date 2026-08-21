@@ -55,6 +55,8 @@ Globals:
         TABLE_BACKTEST_RUNS: !Ref BacktestRunsTable
         TABLE_TRADES: !Ref TradesTable
         TABLE_ALERTS: !Ref AlertsTable
+        TABLE_JOB_RUNS: !Ref JobRunsTable
+        CANDLE_ARCHIVE_FUNCTION_NAME: !Ref CandleArchiveFunction
         APP_SECRETS_ARN: !Ref AppSecrets
         CORS_ORIGINS: !Ref CorsOrigins
         DEFAULT_TIMEZONE: America/New_York
@@ -86,6 +88,7 @@ Resources:
       CodeUri: ../../backend/
       Handler: app.lambda_handler.handler
       Description: FastAPI (Mangum) trading research API
+      Timeout: 300
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref InstrumentsTable
@@ -99,12 +102,18 @@ Resources:
             TableName: !Ref TradesTable
         - DynamoDBCrudPolicy:
             TableName: !Ref AlertsTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref JobRunsTable
         - Statement:
             - Effect: Allow
               Action:
                 - secretsmanager:GetSecretValue
                 - secretsmanager:PutSecretValue
               Resource: !Ref AppSecrets
+            - Effect: Allow
+              Action:
+                - lambda:InvokeFunction
+              Resource: !GetAtt CandleArchiveFunction.Arn
       Events:
         ProxyApi:
           Type: HttpApi
@@ -159,6 +168,38 @@ Resources:
             Schedule: rate(5 minutes)
             Enabled: true
             Description: Options TOP5 + Futures ready-to-enter SMS
+    Metadata:
+      BuildMethod: python3.12
+
+  CandleArchiveFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${ProjectName}-${EnvironmentName}-candle-archive"
+      CodeUri: ../../backend/
+      Handler: app.lambda_candle_archive.handler
+      Description: Nightly Yahoo candle gaps into Dynamo (15m/1h/4h/1m)
+      Timeout: 600
+      MemorySize: 1024
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref InstrumentsTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref CandlesTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref JobRunsTable
+        - Statement:
+            - Effect: Allow
+              Action:
+                - secretsmanager:GetSecretValue
+              Resource: !Ref AppSecrets
+      Events:
+        NightlyEod:
+          Type: Schedule
+          Properties:
+            # 02:15 UTC ≈ 22:15 America/New_York (EST); still post-session in EDT
+            Schedule: cron(15 2 * * ? *)
+            Enabled: true
+            Description: EOD candle archive gaps after Globex/cash
     Metadata:
       BuildMethod: python3.12
 
@@ -244,6 +285,22 @@ Resources:
       TimeToLiveSpecification:
         AttributeName: expires_at
         Enabled: true
+
+  JobRunsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "${ProjectName}-${EnvironmentName}-job-runs"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: pk
+          AttributeType: S
+        - AttributeName: sk
+          AttributeType: S
+      KeySchema:
+        - AttributeName: pk
+          KeyType: HASH
+        - AttributeName: sk
+          KeyType: RANGE
 
   AppSecrets:
     Type: AWS::SecretsManager::Secret
@@ -522,6 +579,9 @@ Outputs:
   AlertsFunctionName:
     Description: EventBridge SMS scanner (every 5 minutes)
     Value: !Ref AlertsFunction
+  CandleArchiveFunctionName:
+    Description: Nightly EOD candle archive into Dynamo
+    Value: !Ref CandleArchiveFunction
   StackMode:
     Value: cheap-serverless
     Description: No NAT / RDS / App Runner

@@ -7,6 +7,7 @@ from app.api.coinbase import router as coinbase_router
 from app.api.daily import router as daily_router
 from app.api.health import router as health_router
 from app.api.instruments import router as instruments_router
+from app.api.jobs import router as jobs_router
 from app.api.journal import router as journal_router
 from app.api.market_data import router as market_data_router
 from app.api.news import router as news_router
@@ -28,3 +29,4 @@ api_router.include_router(strategy_router)
 api_router.include_router(market_data_router)
 api_router.include_router(news_router)
 api_router.include_router(premarket_router)
+api_router.include_router(jobs_router)

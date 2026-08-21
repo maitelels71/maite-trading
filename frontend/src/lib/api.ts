@@ -5,6 +5,8 @@ import type {
   Candle,
   EvaluateResponse,
   Instrument,
+  JobRun,
+  JobsStatusResponse,
   NewsBriefing,
   PremarketAlarmCheck,
   PremarketResult,
@@ -539,5 +541,34 @@ export async function runCoinbaseBot(payload: {
   return request("/coinbase/run", {
     method: "POST",
     body: JSON.stringify(payload),
+  });
+}
+
+export async function fetchJobsStatus(): Promise<JobsStatusResponse> {
+  return request("/jobs/status");
+}
+
+export async function fetchJobsRuns(
+  limit = 30,
+  jobName?: string,
+): Promise<JobRun[]> {
+  const qs = new URLSearchParams({ limit: String(limit) });
+  if (jobName) qs.set("job_name", jobName);
+  const data = await request<{ items: JobRun[] }>(`/jobs/runs?${qs}`);
+  return data.items;
+}
+
+export async function runCandleArchiveEod(): Promise<
+  JobRun | { accepted: boolean; message?: string; mode?: string }
+> {
+  return request("/jobs/candle-archive/eod", { method: "POST" });
+}
+
+export async function runCandleArchiveBackfill(payload?: {
+  lookback_days?: number;
+}): Promise<JobRun | { accepted: boolean; message?: string; mode?: string }> {
+  return request("/jobs/candle-archive/backfill", {
+    method: "POST",
+    body: JSON.stringify(payload ?? {}),
   });
 }

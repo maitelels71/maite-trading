@@ -440,3 +440,38 @@ export type TpCheckResponse = {
   order_id: string | null;
   message: string;
 };
+
+export type JobRunSummary = {
+  bars: number;
+  units_ok: number;
+  units_err: number;
+};
+
+export type JobRun = {
+  job_name: string;
+  started_at: string;
+  finished_at?: string | null;
+  status: string;
+  trigger?: string | null;
+  summary: JobRunSummary;
+  detail?: Array<Record<string, unknown>>;
+};
+
+export type JobStatusCard = {
+  job_name: string;
+  label: string;
+  schedule: string;
+  schedule_et?: string;
+  schedule_utc?: string;
+  schedule_note?: string;
+  timeframes: string[];
+  latest: JobRun | null;
+  yahoo_caps?: Record<string, number>;
+};
+
+export type JobsStatusResponse = {
+  now_et: string;
+  note: string;
+  backend?: string;
+  jobs: JobStatusCard[];
+};

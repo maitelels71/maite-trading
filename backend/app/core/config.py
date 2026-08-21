@@ -88,6 +88,10 @@ class Settings(BaseSettings):
         default=".secrets/coinbase_bot_runs.json",
         alias="COINBASE_RUNS_PATH",
     )
+    job_runs_path: str = Field(
+        default=".secrets/job_runs.json",
+        alias="JOB_RUNS_PATH",
+    )
     coinbase_settings_path: str = Field(
         default=".secrets/coinbase_bot_settings.json",
         alias="COINBASE_SETTINGS_PATH",

@@ -8,7 +8,9 @@ import { AdminDesk } from "@/components/AdminDesk";
 import { DailyReview } from "@/components/DailyReview";
 import { Dashboard } from "@/components/Dashboard";
 import { DeskModeProvider, useDeskMode } from "@/components/DeskModeProvider";
+import { CandlesMark, FuturesMark } from "@/components/HubDeskIcons";
 import { JournalDesk } from "@/components/JournalDesk";
+import { JobsDesk } from "@/components/JobsDesk";
 import { useLocale } from "@/components/LocaleProvider";
 import { MindDesk } from "@/components/MindDesk";
 import { NewsDesk } from "@/components/NewsDesk";
@@ -17,7 +19,7 @@ import { PositionsDesk } from "@/components/PositionsDesk";
 import { SettingsMenu } from "@/components/SettingsMenu";
 import { StickyNotesDesk } from "@/components/StickyNotesDesk";
 import { StrategiesDesk } from "@/components/StrategiesDesk";
-import { APP_DOCUMENT_TITLE, APP_ICON_PNG, deskViewHref, type AppMode } from "@/lib/app-mode";
+import { APP_DOCUMENT_TITLE, deskViewHref, type AppMode } from "@/lib/app-mode";
 import { DESK_VERSION } from "@/lib/desk-version";
 
 type AppView =
@@ -30,6 +32,7 @@ type AppView =
   | "optionsChecklist"
   | "positions"
   | "news"
+  | "jobs"
   | "admin";
 
 const APP_VIEWS = new Set<string>([
@@ -42,6 +45,7 @@ const APP_VIEWS = new Set<string>([
   "optionsChecklist",
   "positions",
   "news",
+  "jobs",
   "admin",
 ]);
 
@@ -112,6 +116,7 @@ function toolsForMode(mode: AppMode): ExtraItem[] {
         ] as ExtraItem[])
       : []),
     { kind: "extra", id: "mind", labelKey: "nav.mind" },
+    { kind: "extra", id: "jobs", labelKey: "nav.jobs" },
   ];
 }
 
@@ -165,13 +170,12 @@ function AppShellInner() {
             className="flex shrink-0 items-center gap-2 rounded-lg py-0.5 pr-1 text-left transition hover:bg-[var(--hover)]"
             aria-label={APP_DOCUMENT_TITLE}
           >
-            <span className="flex h-9 w-9 shrink-0 overflow-hidden rounded-md ring-1 ring-[var(--border)] bg-[#1c1917]">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={APP_ICON_PNG}
-                alt=""
-                className="h-full w-full object-cover"
-              />
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-md">
+              {venue === "tradeadvocate" ? (
+                <FuturesMark className="h-9 w-9" />
+              ) : (
+                <CandlesMark className="h-9 w-9" />
+              )}
             </span>
             <span className="min-w-0">
               <span className="block truncate text-sm font-bold leading-tight sm:text-base">
@@ -278,6 +282,8 @@ function AppShellInner() {
         <Dashboard />
       ) : view === "news" ? (
         <NewsDesk />
+      ) : view === "jobs" ? (
+        <JobsDesk />
       ) : (
         <AdminDesk />
       )}

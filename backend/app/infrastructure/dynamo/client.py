@@ -44,6 +44,10 @@ def alerts_table():
     return table("TABLE_ALERTS")
 
 
+def job_runs_table():
+    return table("TABLE_JOB_RUNS")
+
+
 def put_item(tbl, item: dict[str, Any]) -> None:
     tbl.put_item(Item=item)
 
@@ -55,6 +59,7 @@ __all__ = [
     "candles_table",
     "get_dynamodb_resource",
     "instruments_table",
+    "job_runs_table",
     "put_item",
     "strategies_table",
     "trades_table",
