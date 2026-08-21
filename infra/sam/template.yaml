@@ -56,7 +56,6 @@ Globals:
         TABLE_TRADES: !Ref TradesTable
         TABLE_ALERTS: !Ref AlertsTable
         TABLE_JOB_RUNS: !Ref JobRunsTable
-        CANDLE_ARCHIVE_FUNCTION_NAME: !Ref CandleArchiveFunction
         APP_SECRETS_ARN: !Ref AppSecrets
         CORS_ORIGINS: !Ref CorsOrigins
         DEFAULT_TIMEZONE: America/New_York
@@ -89,6 +88,10 @@ Resources:
       Handler: app.lambda_handler.handler
       Description: FastAPI (Mangum) trading research API
       Timeout: 300
+      Environment:
+        Variables:
+          # Only on API — must not sit in Globals (circular Ref on CandleArchiveFunction)
+          CANDLE_ARCHIVE_FUNCTION_NAME: !Ref CandleArchiveFunction
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref InstrumentsTable
